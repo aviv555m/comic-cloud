@@ -51,7 +51,16 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
             <span className="text-xl font-bold">Bookshelf</span>
           </div>
 
-          <DropdownMenu>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.href = '/public'}
+            >
+              Public Library
+            </Button>
+
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10">
@@ -75,6 +84,7 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </div>
       </div>
     </nav>

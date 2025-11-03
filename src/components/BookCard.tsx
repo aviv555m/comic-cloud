@@ -1,9 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Globe, Lock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookOpen, Globe, Lock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface BookCardProps {
+  id: string;
   title: string;
   author?: string;
   series?: string;
@@ -11,9 +16,11 @@ interface BookCardProps {
   fileType: string;
   isPublic: boolean;
   onClick?: () => void;
+  onCoverGenerated?: () => void;
 }
 
 export const BookCard = ({
+  id,
   title,
   author,
   series,
@@ -21,7 +28,38 @@ export const BookCard = ({
   fileType,
   isPublic,
   onClick,
+  onCoverGenerated,
 }: BookCardProps) => {
+  const [generating, setGenerating] = useState(false);
+  const { toast } = useToast();
+
+  const handleGenerateCover = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGenerating(true);
+
+    try {
+      const { error } = await supabase.functions.invoke('generate-cover', {
+        body: { bookId: id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Cover generated!",
+        description: "Your book cover has been created",
+      });
+      
+      onCoverGenerated?.();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate cover",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
   return (
     <Card
       className={cn(
@@ -39,8 +77,18 @@ export const BookCard = ({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="flex items-center justify-center w-full h-full">
+            <div className="flex flex-col items-center justify-center w-full h-full gap-3">
               <BookOpen className="w-16 h-16 text-muted-foreground/40" />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleGenerateCover}
+                disabled={generating}
+                className="text-xs"
+              >
+                <Sparkles className="w-3 h-3 mr-1" />
+                {generating ? "Generating..." : "Generate Cover"}
+              </Button>
             </div>
           )}
           <div className="absolute top-2 right-2 flex gap-1">

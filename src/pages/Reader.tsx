@@ -16,6 +16,8 @@ import {
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import { EpubReader } from "@/components/EpubReader";
+import { ComicReader } from "@/components/ComicReader";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -43,6 +45,7 @@ const Reader = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
+  const [signedUrl, setSignedUrl] = useState<string>("");
 
   useEffect(() => {
     if (!bookId) return;
@@ -62,11 +65,29 @@ const Reader = () => {
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
       
+      // Generate signed URL for private files
+      if (data.file_type === 'pdf' || data.file_type === 'epub') {
+        const filePath = data.file_url.split('/book-files/')[1];
+        const { data: urlData, error: urlError } = await supabase.storage
+          .from('book-files')
+          .createSignedUrl(filePath, 3600); // 1 hour expiry
+        
+        if (urlError) throw urlError;
+        setSignedUrl(urlData.signedUrl);
+      }
+      
       // If it's a text file, fetch and display content
       if (data.file_type === 'txt') {
-        const response = await fetch(data.file_url);
-        const text = await response.text();
-        setTextContent(text);
+        const filePath = data.file_url.split('/book-files/')[1];
+        const { data: urlData } = await supabase.storage
+          .from('book-files')
+          .createSignedUrl(filePath, 3600);
+        
+        if (urlData?.signedUrl) {
+          const response = await fetch(urlData.signedUrl);
+          const text = await response.text();
+          setTextContent(text);
+        }
       }
       
       setLoading(false);
@@ -135,8 +156,11 @@ const Reader = () => {
   }
 
   const isPDF = book.file_type === 'pdf';
+  const isEPUB = book.file_type === 'epub';
+  const isCBZ = book.file_type === 'cbz';
+  const isCBR = book.file_type === 'cbr';
   const isTXT = book.file_type === 'txt';
-  const isUnsupported = !isPDF && !isTXT;
+  const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
 
   return (
     <div className="min-h-screen bg-background">
@@ -201,10 +225,10 @@ const Reader = () => {
 
       {/* Reader Content */}
       <div className="container mx-auto px-4 py-8">
-        {isPDF && (
+        {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-6">
             <Document
-              file={book.file_url}
+              file={signedUrl}
               onLoadSuccess={onDocumentLoadSuccess}
               loading={
                 <div className="flex items-center justify-center py-20">
@@ -254,6 +278,33 @@ const Reader = () => {
           </div>
         )}
 
+        {isEPUB && signedUrl && (
+          <EpubReader
+            url={signedUrl}
+            onLocationChange={(location) => {
+              // Save location for progress tracking
+              if (book) {
+                supabase
+                  .from("books")
+                  .update({ last_page_read: currentPage })
+                  .eq("id", book.id);
+              }
+            }}
+            initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
+          />
+        )}
+
+        {(isCBZ || isCBR) && signedUrl && (
+          <ComicReader
+            url={signedUrl}
+            onPageChange={(page) => {
+              setCurrentPage(page);
+              updateProgress(page);
+            }}
+            initialPage={book.last_page_read || 0}
+          />
+        )}
+
         {isTXT && (
           <div className="max-w-4xl mx-auto">
             <div className="glass-card p-8 rounded-lg">
@@ -275,7 +326,7 @@ const Reader = () => {
                 Support for {book.file_type.toUpperCase()} files is in development.
               </p>
               <p className="text-sm text-muted-foreground">
-                Currently supported: PDF, TXT
+                Currently supported: PDF, EPUB, CBZ, CBR, TXT
               </p>
               <Button
                 className="mt-6"

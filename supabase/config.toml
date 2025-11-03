@@ -1,1 +1,7 @@
 project_id = "cmybkhvdwtmaxhhhgkul"
+
+[functions.extract-metadata]
+verify_jwt = true
+
+[functions.generate-cover]
+verify_jwt = true

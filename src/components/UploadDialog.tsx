@@ -65,7 +65,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
         .getPublicUrl(fileName);
 
       // Insert book record
-      const { error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await supabase
         .from("books")
         .insert({
           user_id: userId,
@@ -76,9 +76,24 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           file_type: fileExt || "unknown",
           file_size: file.size,
           is_public: isPublic,
-        });
+        })
+        .select()
+        .single();
 
       if (insertError) throw insertError;
+
+      // Trigger metadata extraction and cover generation in background
+      if (insertData) {
+        // Extract metadata
+        supabase.functions.invoke('extract-metadata', {
+          body: { bookId: insertData.id }
+        }).catch(console.error);
+
+        // Generate cover if none exists
+        supabase.functions.invoke('generate-cover', {
+          body: { bookId: insertData.id }
+        }).catch(console.error);
+      }
 
       toast({
         title: "Success!",
