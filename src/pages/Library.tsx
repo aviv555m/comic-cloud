@@ -155,12 +155,7 @@ const Library = () => {
                 coverUrl={book.cover_url || undefined}
                 fileType={book.file_type}
                 isPublic={book.is_public}
-                onClick={() => {
-                  toast({
-                    title: "Coming soon",
-                    description: "Reader functionality will be available in the next update",
-                  });
-                }}
+                onClick={() => navigate(`/reader/${book.id}`)}
               />
             ))}
           </div>
