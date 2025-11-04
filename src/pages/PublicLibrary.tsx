@@ -24,6 +24,7 @@ const PublicLibrary = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [groupedBySeries, setGroupedBySeries] = useState<{ [key: string]: Book[] }>({});
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -55,6 +56,18 @@ const PublicLibrary = () => {
 
       if (error) throw error;
       setBooks(data || []);
+
+      // Group books by series
+      const grouped: { [key: string]: Book[] } = {};
+      data?.forEach((book) => {
+        if (book.series) {
+          if (!grouped[book.series]) {
+            grouped[book.series] = [];
+          }
+          grouped[book.series].push(book);
+        }
+      });
+      setGroupedBySeries(grouped);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -75,31 +88,37 @@ const PublicLibrary = () => {
     );
   });
 
+  const seriesWithMultipleBooks = Object.entries(groupedBySeries).filter(
+    ([_, books]) => books.length > 1
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       {user && <Navigation userEmail={user.email} />}
       
       <main className="container mx-auto px-4 py-8">
         <div className="flex flex-col gap-6 mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/")}
-                className="mb-4"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to My Library
-              </Button>
-              <h1 className="text-3xl font-bold mb-2">Public Library</h1>
-              <p className="text-muted-foreground">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="w-full sm:w-auto">
+              {user && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/")}
+                  className="mb-4"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to My Library
+                </Button>
+              )}
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">Public Library</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 Discover {books.length} {books.length === 1 ? "book" : "books"} shared by the community
               </p>
             </div>
           </div>
 
-          <div className="relative max-w-md">
+          <div className="relative max-w-full sm:max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
             <Input
               placeholder="Search public books..."
@@ -109,6 +128,44 @@ const PublicLibrary = () => {
             />
           </div>
         </div>
+
+        {/* Series sections */}
+        {!searchQuery && seriesWithMultipleBooks.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4">Series</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {seriesWithMultipleBooks.map(([seriesName, seriesBooks]) => (
+                <div
+                  key={seriesName}
+                  className="glass-card p-4 cursor-pointer hover:shadow-lg transition-smooth"
+                  onClick={() => navigate(`/series/${encodeURIComponent(seriesName)}`)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="relative w-16 h-24 shrink-0">
+                      {seriesBooks[0].cover_url ? (
+                        <img
+                          src={seriesBooks[0].cover_url}
+                          alt={seriesName}
+                          className="w-full h-full object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-muted to-secondary/50 rounded flex items-center justify-center">
+                          <BookOpen className="w-8 h-8 text-muted-foreground/40" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold truncate">{seriesName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {seriesBooks.length} {seriesBooks.length === 1 ? "book" : "books"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">

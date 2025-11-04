@@ -23,8 +23,11 @@ export type Database = {
           file_type: string
           file_url: string
           id: string
+          is_completed: boolean | null
           is_public: boolean | null
           last_page_read: number | null
+          reading_mode: string | null
+          reading_progress: number | null
           series: string | null
           title: string
           total_pages: number | null
@@ -39,8 +42,11 @@ export type Database = {
           file_type: string
           file_url: string
           id?: string
+          is_completed?: boolean | null
           is_public?: boolean | null
           last_page_read?: number | null
+          reading_mode?: string | null
+          reading_progress?: number | null
           series?: string | null
           title: string
           total_pages?: number | null
@@ -55,8 +61,11 @@ export type Database = {
           file_type?: string
           file_url?: string
           id?: string
+          is_completed?: boolean | null
           is_public?: boolean | null
           last_page_read?: number | null
+          reading_mode?: string | null
+          reading_progress?: number | null
           series?: string | null
           title?: string
           total_pages?: number | null

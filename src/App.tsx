@@ -7,6 +7,7 @@ import Library from "./pages/Library";
 import Auth from "./pages/Auth";
 import Reader from "./pages/Reader";
 import PublicLibrary from "./pages/PublicLibrary";
+import Series from "./pages/Series";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/reader/:bookId" element={<Reader />} />
           <Route path="/public" element={<PublicLibrary />} />
+          <Route path="/series/:seriesName" element={<Series />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

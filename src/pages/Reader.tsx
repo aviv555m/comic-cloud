@@ -46,6 +46,7 @@ const Reader = () => {
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
 
   useEffect(() => {
     if (!bookId) return;
@@ -64,6 +65,7 @@ const Reader = () => {
       
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
+      setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       
       // Generate signed URL for private files
       if (data.file_type === 'pdf' || data.file_type === 'epub') {
@@ -101,12 +103,31 @@ const Reader = () => {
     }
   };
 
-  const updateProgress = async (page: number) => {
+  const updateProgress = async (page: number, total?: number) => {
     if (!book) return;
+    
+    const totalPages = total || numPages || book.total_pages || 1;
+    const progress = Math.round((page / totalPages) * 100);
+    const isCompleted = progress >= 98;
     
     await supabase
       .from("books")
-      .update({ last_page_read: page })
+      .update({ 
+        last_page_read: page,
+        reading_progress: progress,
+        is_completed: isCompleted
+      })
+      .eq("id", book.id);
+  };
+
+  const toggleReadingMode = async () => {
+    if (!book) return;
+    const newMode = readingMode === "page" ? "scroll" : "page";
+    setReadingMode(newMode);
+    
+    await supabase
+      .from("books")
+      .update({ reading_mode: newMode })
       .eq("id", book.id);
   };
 
@@ -126,7 +147,7 @@ const Reader = () => {
     const newPage = currentPage + delta;
     if (newPage >= 1 && numPages && newPage <= numPages) {
       setCurrentPage(newPage);
-      updateProgress(newPage);
+      updateProgress(newPage, numPages);
     }
   };
 
@@ -166,115 +187,147 @@ const Reader = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/")}
+                className="shrink-0"
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Library
+                <ArrowLeft className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back to Library</span>
               </Button>
-              <div className="border-l h-6 mx-2" />
-              <div>
-                <h1 className="font-semibold truncate max-w-md">{book.title}</h1>
+              <div className="border-l h-6 mx-1 sm:mx-2 hidden sm:block" />
+              <div className="min-w-0 flex-1">
+                <h1 className="font-semibold truncate text-sm sm:text-base">{book.title}</h1>
                 {book.author && (
-                  <p className="text-sm text-muted-foreground">{book.author}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{book.author}</p>
                 )}
               </div>
             </div>
 
-            {isPDF && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => changeScale(-0.1)}
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </Button>
-                <span className="text-sm font-medium min-w-[60px] text-center">
-                  {Math.round(scale * 100)}%
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => changeScale(0.1)}
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </Button>
-                <div className="border-l h-6 mx-2" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={toggleFullscreen}
-                >
-                  {isFullscreen ? (
-                    <Minimize className="w-4 h-4" />
-                  ) : (
-                    <Maximize className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
+              {isPDF && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleReadingMode}
+                    className="text-xs"
+                  >
+                    {readingMode === "page" ? "Scroll" : "Page"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => changeScale(-0.1)}
+                  >
+                    <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </Button>
+                  <span className="text-xs sm:text-sm font-medium min-w-[50px] text-center">
+                    {Math.round(scale * 100)}%
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => changeScale(0.1)}
+                  >
+                    <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </Button>
+                  <div className="border-l h-6 mx-1 sm:mx-2 hidden sm:block" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleFullscreen}
+                  >
+                    {isFullscreen ? (
+                      <Minimize className="w-3 h-3 sm:w-4 sm:h-4" />
+                    ) : (
+                      <Maximize className="w-3 h-3 sm:w-4 sm:h-4" />
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Reader Content */}
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
         {isPDF && signedUrl && (
-          <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-col items-center gap-4 sm:gap-6">
             <Document
               file={signedUrl}
               onLoadSuccess={onDocumentLoadSuccess}
               loading={
                 <div className="flex items-center justify-center py-20">
-                  <p className="text-muted-foreground">Loading PDF...</p>
+                  <p className="text-muted-foreground text-sm">Loading PDF...</p>
                 </div>
               }
               error={
                 <div className="flex items-center justify-center py-20">
-                  <p className="text-destructive">Failed to load PDF</p>
+                  <p className="text-destructive text-sm">Failed to load PDF</p>
                 </div>
               }
             >
-              <div className="shadow-2xl rounded-lg overflow-hidden">
-                <Page
-                  pageNumber={currentPage}
-                  scale={scale}
-                  renderTextLayer={true}
-                  renderAnnotationLayer={true}
-                />
-              </div>
+              {readingMode === "page" ? (
+                <div className="shadow-2xl rounded-lg overflow-hidden max-w-full">
+                  <Page
+                    pageNumber={currentPage}
+                    scale={scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="max-w-full h-auto"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-4 max-w-full">
+                  {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map((pageNum) => (
+                    <div key={pageNum} className="shadow-2xl rounded-lg overflow-hidden max-w-full">
+                      <Page
+                        pageNumber={pageNum}
+                        scale={scale}
+                        renderTextLayer={true}
+                        renderAnnotationLayer={true}
+                        className="max-w-full h-auto"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </Document>
 
-            {/* Page Navigation */}
-            <div className="flex items-center gap-4">
-              <Button
-                onClick={() => changePage(-1)}
-                disabled={currentPage <= 1}
-                variant="outline"
-              >
-                <ChevronLeft className="w-4 h-4 mr-2" />
-                Previous
-              </Button>
-              
-              <div className="text-sm font-medium">
-                Page {currentPage} of {numPages || "..."}
-              </div>
+            {/* Page Navigation - only show in page mode */}
+            {readingMode === "page" && (
+              <div className="flex items-center gap-2 sm:gap-4">
+                <Button
+                  onClick={() => changePage(-1)}
+                  disabled={currentPage <= 1}
+                  variant="outline"
+                  size="sm"
+                >
+                  <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Previous</span>
+                </Button>
+                
+                <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
+                  Page {currentPage} of {numPages || "..."}
+                </div>
 
-              <Button
-                onClick={() => changePage(1)}
-                disabled={!numPages || currentPage >= numPages}
-                variant="outline"
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+                <Button
+                  onClick={() => changePage(1)}
+                  disabled={!numPages || currentPage >= numPages}
+                  variant="outline"
+                  size="sm"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

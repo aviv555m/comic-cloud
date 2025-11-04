@@ -21,6 +21,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
   const [series, setSeries] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -64,6 +65,24 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
         .from("book-files")
         .getPublicUrl(fileName);
 
+      // Upload custom cover if provided
+      let coverUrl = null;
+      if (coverFile) {
+        const coverExt = coverFile.name.split('.').pop();
+        const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
+        
+        const { error: coverUploadError } = await supabase.storage
+          .from('book-covers')
+          .upload(coverPath, coverFile);
+
+        if (!coverUploadError) {
+          const { data: coverData } = supabase.storage
+            .from('book-covers')
+            .getPublicUrl(coverPath);
+          coverUrl = coverData.publicUrl;
+        }
+      }
+
       // Insert book record
       const { data: insertData, error: insertError } = await supabase
         .from("books")
@@ -76,6 +95,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           file_type: fileExt || "unknown",
           file_size: file.size,
           is_public: isPublic,
+          cover_url: coverUrl,
         })
         .select()
         .single();
@@ -89,10 +109,12 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           body: { bookId: insertData.id }
         }).catch(console.error);
 
-        // Generate cover if none exists
-        supabase.functions.invoke('generate-cover', {
-          body: { bookId: insertData.id }
-        }).catch(console.error);
+        // Generate cover only if no custom cover was uploaded
+        if (!coverUrl) {
+          supabase.functions.invoke('generate-cover', {
+            body: { bookId: insertData.id }
+          }).catch(console.error);
+        }
       }
 
       toast({
@@ -106,6 +128,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       setSeries("");
       setIsPublic(false);
       setFile(null);
+      setCoverFile(null);
       onOpenChange(false);
       onUploadComplete();
     } catch (error: any) {
@@ -172,6 +195,21 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
               onChange={(e) => setSeries(e.target.value)}
               placeholder="Series name"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="cover">Custom Cover (Optional)</Label>
+            <Input
+              id="cover"
+              type="file"
+              onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+              accept="image/*"
+            />
+            {coverFile && (
+              <p className="text-xs text-muted-foreground">
+                {coverFile.name}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center justify-between">

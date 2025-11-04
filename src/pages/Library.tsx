@@ -18,6 +18,8 @@ interface Book {
   cover_url: string | null;
   file_type: string;
   is_public: boolean;
+  is_completed: boolean;
+  reading_progress: number;
 }
 
 const Library = () => {
@@ -156,6 +158,9 @@ const Library = () => {
                 coverUrl={book.cover_url || undefined}
                 fileType={book.file_type}
                 isPublic={book.is_public}
+                isCompleted={book.is_completed}
+                readingProgress={book.reading_progress}
+                canEdit={true}
                 onClick={() => navigate(`/reader/${book.id}`)}
                 onCoverGenerated={() => user && fetchBooks(user.id)}
               />
