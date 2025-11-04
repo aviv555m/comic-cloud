@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { 
   ChevronLeft, 
@@ -47,6 +48,7 @@ const Reader = () => {
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
+  const [pageInput, setPageInput] = useState("");
 
   useEffect(() => {
     if (!bookId) return;
@@ -131,6 +133,15 @@ const Reader = () => {
       .eq("id", book.id);
   };
 
+  const jumpToPage = () => {
+    const page = parseInt(pageInput);
+    if (page >= 1 && numPages && page <= numPages) {
+      setCurrentPage(page);
+      updateProgress(page, numPages);
+      setPageInput("");
+    }
+  };
+
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     
@@ -208,14 +219,34 @@ const Reader = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
               {isPDF && (
                 <>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      type="number"
+                      placeholder="Page"
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
+                      className="w-16 h-8 text-xs"
+                      min={1}
+                      max={numPages || 1}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={jumpToPage}
+                      className="h-8 px-2 text-xs"
+                    >
+                      Go
+                    </Button>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleReadingMode}
-                    className="text-xs"
+                    className="text-xs h-8"
                   >
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
@@ -223,24 +254,26 @@ const Reader = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => changeScale(-0.1)}
+                    className="h-8 px-2"
                   >
                     <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
                   </Button>
-                  <span className="text-xs sm:text-sm font-medium min-w-[50px] text-center">
+                  <span className="text-xs sm:text-sm font-medium min-w-[40px] text-center">
                     {Math.round(scale * 100)}%
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => changeScale(0.1)}
+                    className="h-8 px-2"
                   >
                     <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
                   </Button>
-                  <div className="border-l h-6 mx-1 sm:mx-2 hidden sm:block" />
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleFullscreen}
+                    className="h-8 px-2 hidden sm:flex"
                   >
                     {isFullscreen ? (
                       <Minimize className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -274,25 +307,25 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-2xl rounded-lg overflow-hidden max-w-full">
+                <div className="shadow-lg rounded overflow-hidden w-full max-w-4xl mx-auto">
                   <Page
                     pageNumber={currentPage}
                     scale={scale}
                     renderTextLayer={true}
                     renderAnnotationLayer={true}
-                    className="max-w-full h-auto"
+                    width={Math.min(window.innerWidth - 32, 800)}
                   />
                 </div>
               ) : (
-                <div className="space-y-4 max-w-full">
-                  {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map((pageNum) => (
-                    <div key={pageNum} className="shadow-2xl rounded-lg overflow-hidden max-w-full">
+                <div className="space-y-6 w-full max-w-4xl mx-auto">
+                  {Array.from({ length: Math.min(numPages || 0, 10) }, (_, i) => currentPage + i).filter(p => p <= (numPages || 0)).map((pageNum) => (
+                    <div key={pageNum} className="shadow-lg rounded overflow-hidden">
                       <Page
                         pageNumber={pageNum}
                         scale={scale}
-                        renderTextLayer={true}
-                        renderAnnotationLayer={true}
-                        className="max-w-full h-auto"
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        width={Math.min(window.innerWidth - 32, 800)}
                       />
                     </div>
                   ))}
