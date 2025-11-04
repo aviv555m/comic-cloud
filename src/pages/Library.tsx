@@ -87,6 +87,20 @@ const Library = () => {
     );
   });
 
+  // Group books by series
+  const groupedBySeries = filteredBooks.reduce((acc, book) => {
+    if (book.series) {
+      if (!acc[book.series]) {
+        acc[book.series] = [];
+      }
+      acc[book.series].push(book);
+    }
+    return acc;
+  }, {} as Record<string, Book[]>);
+
+  // Books without a series
+  const standaloneBooks = filteredBooks.filter((book) => !book.series);
+
   if (!user) return null;
 
   return (
@@ -147,24 +161,69 @@ const Library = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredBooks.map((book) => (
-              <BookCard
-                key={book.id}
-                id={book.id}
-                title={book.title}
-                author={book.author || undefined}
-                series={book.series || undefined}
-                coverUrl={book.cover_url || undefined}
-                fileType={book.file_type}
-                isPublic={book.is_public}
-                isCompleted={book.is_completed}
-                readingProgress={book.reading_progress}
-                canEdit={true}
-                onClick={() => navigate(`/reader/${book.id}`)}
-                onCoverGenerated={() => user && fetchBooks(user.id)}
-              />
+          <div className="space-y-8">
+            {/* Series Sections */}
+            {Object.entries(groupedBySeries).map(([seriesName, seriesBooks]) => (
+              <div key={seriesName} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-semibold">{seriesName}</h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate(`/series/${encodeURIComponent(seriesName)}`)}
+                  >
+                    View All ({seriesBooks.length})
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {seriesBooks.slice(0, 6).map((book) => (
+                    <BookCard
+                      key={book.id}
+                      id={book.id}
+                      title={book.title}
+                      author={book.author || undefined}
+                      series={book.series || undefined}
+                      coverUrl={book.cover_url || undefined}
+                      fileType={book.file_type}
+                      isPublic={book.is_public}
+                      isCompleted={book.is_completed}
+                      readingProgress={book.reading_progress}
+                      canEdit={true}
+                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onCoverGenerated={() => user && fetchBooks(user.id)}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
+
+            {/* Standalone Books */}
+            {standaloneBooks.length > 0 && (
+              <div className="space-y-4">
+                {Object.keys(groupedBySeries).length > 0 && (
+                  <h2 className="text-2xl font-semibold">Other Books</h2>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {standaloneBooks.map((book) => (
+                    <BookCard
+                      key={book.id}
+                      id={book.id}
+                      title={book.title}
+                      author={book.author || undefined}
+                      series={book.series || undefined}
+                      coverUrl={book.cover_url || undefined}
+                      fileType={book.file_type}
+                      isPublic={book.is_public}
+                      isCompleted={book.is_completed}
+                      readingProgress={book.reading_progress}
+                      canEdit={true}
+                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onCoverGenerated={() => user && fetchBooks(user.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

@@ -71,11 +71,18 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
         const coverExt = coverFile.name.split('.').pop();
         const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
         
-        const { error: coverUploadError } = await supabase.storage
+        const { error: coverUploadError, data: uploadData } = await supabase.storage
           .from('book-covers')
-          .upload(coverPath, coverFile);
+          .upload(coverPath, coverFile, { upsert: true });
 
-        if (!coverUploadError) {
+        if (coverUploadError) {
+          console.error('Cover upload error:', coverUploadError);
+          toast({
+            variant: "destructive",
+            title: "Warning",
+            description: "Failed to upload custom cover, will generate one instead",
+          });
+        } else if (uploadData) {
           const { data: coverData } = supabase.storage
             .from('book-covers')
             .getPublicUrl(coverPath);
