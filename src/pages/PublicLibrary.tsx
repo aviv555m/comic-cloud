@@ -60,11 +60,13 @@ const PublicLibrary = () => {
       // Group books by series
       const grouped: { [key: string]: Book[] } = {};
       data?.forEach((book) => {
-        if (book.series) {
-          if (!grouped[book.series]) {
-            grouped[book.series] = [];
+        const raw = book.series?.trim();
+        if (raw) {
+          const key = raw.toLowerCase();
+          if (!grouped[key]) {
+            grouped[key] = [];
           }
-          grouped[book.series].push(book);
+          grouped[key].push(book);
         }
       });
       setGroupedBySeries(grouped);
@@ -88,9 +90,14 @@ const PublicLibrary = () => {
     );
   });
 
-  const seriesWithMultipleBooks = Object.entries(groupedBySeries).filter(
-    ([_, books]) => books.length > 1
-  );
+  const seriesWithMultipleBooks = Object.entries(groupedBySeries)
+    .filter(([_, books]) => books.length > 1)
+    .map(([key, books]) => [key, [...books].sort((a, b) => a.title.localeCompare(b.title))] as [string, Book[]])
+    .sort((a, b) => {
+      const an = a[1][0]?.series || a[0];
+      const bn = b[1][0]?.series || b[0];
+      return an.localeCompare(bn);
+    });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
@@ -134,35 +141,38 @@ const PublicLibrary = () => {
           <div className="mb-8">
             <h2 className="text-xl font-bold mb-4">Series</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {seriesWithMultipleBooks.map(([seriesName, seriesBooks]) => (
-                <div
-                  key={seriesName}
-                  className="glass-card p-4 cursor-pointer hover:shadow-lg transition-smooth"
-                  onClick={() => navigate(`/series/${encodeURIComponent(seriesName)}`)}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="relative w-16 h-24 shrink-0">
-                      {seriesBooks[0].cover_url ? (
-                        <img
-                          src={seriesBooks[0].cover_url}
-                          alt={seriesName}
-                          className="w-full h-full object-cover rounded"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-muted to-secondary/50 rounded flex items-center justify-center">
-                          <BookOpen className="w-8 h-8 text-muted-foreground/40" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold truncate">{seriesName}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {seriesBooks.length} {seriesBooks.length === 1 ? "book" : "books"}
-                      </p>
+              {seriesWithMultipleBooks.map(([seriesKey, seriesBooks]) => {
+                const displayName = seriesBooks[0].series || seriesKey;
+                return (
+                  <div
+                    key={seriesKey}
+                    className="glass-card p-4 cursor-pointer hover:shadow-lg transition-smooth"
+                    onClick={() => navigate(`/series/${encodeURIComponent(displayName)}`)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-16 h-24 shrink-0">
+                        {seriesBooks[0].cover_url ? (
+                          <img
+                            src={seriesBooks[0].cover_url}
+                            alt={displayName}
+                            className="w-full h-full object-cover rounded"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-muted to-secondary/50 rounded flex items-center justify-center">
+                            <BookOpen className="w-8 h-8 text-muted-foreground/40" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold truncate">{displayName}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {seriesBooks.length} {seriesBooks.length === 1 ? "book" : "books"}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

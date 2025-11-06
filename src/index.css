@@ -35,9 +35,11 @@ All colors MUST be HSL.
     --border: 35 20% 88%;
     --input: 35 20% 88%;
     --ring: 28 80% 52%;
-
+    
     --radius: 0.75rem;
-
+    /* Root font sizing for responsive typography */
+    --font-size-root: 16px;
+    
     /* Glass morphism & effects */
     --glass-bg: 0 0% 100% / 0.7;
     --glass-border: 35 20% 88% / 0.3;
@@ -97,6 +99,10 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    font-size: var(--font-size-root);
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -122,5 +128,12 @@ All colors MUST be HSL.
 
   .transition-smooth {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+/* Responsive root font size */
+@media (max-width: 767px) {
+  :root {
+    --font-size-root: 17px;
   }
 }
