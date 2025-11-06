@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      annotations: {
+        Row: {
+          book_id: string
+          created_at: string
+          highlight_color: string
+          id: string
+          note: string | null
+          page_number: number
+          position_data: Json | null
+          selected_text: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          highlight_color?: string
+          id?: string
+          note?: string | null
+          page_number: number
+          position_data?: Json | null
+          selected_text: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          highlight_color?: string
+          id?: string
+          note?: string | null
+          page_number?: number
+          position_data?: Json | null
+          selected_text?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "annotations_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       books: {
         Row: {
           author: string | null
@@ -97,6 +144,47 @@ export type Database = {
           username?: string | null
         }
         Relationships: []
+      }
+      reading_sessions: {
+        Row: {
+          book_id: string
+          created_at: string
+          duration_minutes: number | null
+          end_time: string | null
+          id: string
+          pages_read: number
+          start_time: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string
+          duration_minutes?: number | null
+          end_time?: string | null
+          id?: string
+          pages_read?: number
+          start_time?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string
+          duration_minutes?: number | null
+          end_time?: string | null
+          id?: string
+          pages_read?: number
+          start_time?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_sessions_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
