@@ -163,7 +163,7 @@ const Reader = () => {
   };
 
   const changeScale = (delta: number) => {
-    const newScale = Math.max(0.5, Math.min(3.0, scale + delta));
+    const newScale = Math.max(0.5, Math.min(5.0, scale + delta));
     setScale(newScale);
   };
 
@@ -219,7 +219,7 @@ const Reader = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
               {isPDF && (
                 <>
                   <div className="flex items-center gap-1">
@@ -229,7 +229,7 @@ const Reader = () => {
                       value={pageInput}
                       onChange={(e) => setPageInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
-                      className="w-16 h-8 text-xs"
+                      className="w-16 sm:w-20 h-9 text-sm"
                       min={1}
                       max={numPages || 1}
                     />
@@ -237,7 +237,7 @@ const Reader = () => {
                       variant="outline"
                       size="sm"
                       onClick={jumpToPage}
-                      className="h-8 px-2 text-xs"
+                      className="h-9 px-3 text-sm"
                     >
                       Go
                     </Button>
@@ -246,39 +246,39 @@ const Reader = () => {
                     variant="outline"
                     size="sm"
                     onClick={toggleReadingMode}
-                    className="text-xs h-8"
+                    className="text-sm h-9 px-3"
                   >
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => changeScale(-0.1)}
-                    className="h-8 px-2"
+                    onClick={() => changeScale(-0.2)}
+                    className="h-9 px-3"
                   >
-                    <ZoomOut className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ZoomOut className="w-4 h-4" />
                   </Button>
-                  <span className="text-xs sm:text-sm font-medium min-w-[40px] text-center">
+                  <span className="text-sm font-medium min-w-[50px] text-center">
                     {Math.round(scale * 100)}%
                   </span>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => changeScale(0.1)}
-                    className="h-8 px-2"
+                    onClick={() => changeScale(0.2)}
+                    className="h-9 px-3"
                   >
-                    <ZoomIn className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ZoomIn className="w-4 h-4" />
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleFullscreen}
-                    className="h-8 px-2 hidden sm:flex"
+                    className="h-9 px-3 hidden sm:flex"
                   >
                     {isFullscreen ? (
-                      <Minimize className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <Minimize className="w-4 h-4" />
                     ) : (
-                      <Maximize className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <Maximize className="w-4 h-4" />
                     )}
                   </Button>
                 </>
@@ -307,17 +307,17 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden w-full max-w-4xl mx-auto">
+                <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
                   <Page
                     pageNumber={currentPage}
                     scale={scale}
                     renderTextLayer={true}
                     renderAnnotationLayer={true}
-                    width={Math.min(window.innerWidth - 32, 800)}
+                    className="mx-auto"
                   />
                 </div>
               ) : (
-                <div className="space-y-6 w-full max-w-4xl mx-auto">
+                <div className="space-y-6 w-full mx-auto" style={{ maxWidth: '100%' }}>
                   {Array.from({ length: Math.min(numPages || 0, 10) }, (_, i) => currentPage + i).filter(p => p <= (numPages || 0)).map((pageNum) => (
                     <div key={pageNum} className="shadow-lg rounded overflow-hidden">
                       <Page
@@ -325,7 +325,7 @@ const Reader = () => {
                         scale={scale}
                         renderTextLayer={false}
                         renderAnnotationLayer={false}
-                        width={Math.min(window.innerWidth - 32, 800)}
+                        className="mx-auto"
                       />
                     </div>
                   ))}

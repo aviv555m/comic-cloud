@@ -54,7 +54,7 @@ const Series = () => {
       let query = supabase
         .from("books")
         .select("*")
-        .eq("series", decodedSeries)
+        .ilike("series", decodedSeries)
         .order("title", { ascending: true });
 
       // If user is logged in, show their books + public books
