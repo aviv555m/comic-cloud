@@ -3,11 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
 import { BookCard } from "@/components/BookCard";
 import { UploadDialog } from "@/components/UploadDialog";
+import { AddFromUrlDialog } from "@/components/AddFromUrlDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, BookOpen } from "lucide-react";
+import { Plus, Search, BookOpen, Upload, Link } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { User } from "@supabase/supabase-js";
 
 interface Book {
@@ -27,6 +34,7 @@ const Library = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -116,10 +124,24 @@ const Library = () => {
                 {books.length} {books.length === 1 ? "book" : "books"} in your collection
               </p>
             </div>
-            <Button onClick={() => setUploadOpen(true)} size="lg" className="gap-2">
-              <Plus className="w-5 h-5" />
-              Add Book
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="lg" className="gap-2">
+                  <Plus className="w-5 h-5" />
+                  Add Book
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setUploadOpen(true)}>
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload from Device
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setUrlDialogOpen(true)}>
+                  <Link className="w-4 h-4 mr-2" />
+                  Add from URL
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <div className="relative max-w-md">
@@ -233,6 +255,12 @@ const Library = () => {
         onOpenChange={setUploadOpen}
         onUploadComplete={() => user && fetchBooks(user.id)}
         userId={user.id}
+      />
+
+      <AddFromUrlDialog
+        open={urlDialogOpen}
+        onOpenChange={setUrlDialogOpen}
+        onSuccess={() => user && fetchBooks(user.id)}
       />
     </div>
   );
