@@ -40,14 +40,38 @@ export const BookChatDialog = ({ open, onOpenChange, userId }: BookChatDialogPro
     setIsLoading(true);
 
     try {
-      // Fetch user's books for context
+      // Fetch enhanced context: books, reading stats, and annotations
       let userBooks = [];
+      let readingStats = null;
+      let recentAnnotations = [];
+      
       if (userId) {
-        const { data } = await supabase
+        const { data: booksData } = await supabase
           .from("books")
-          .select("title, author, series")
+          .select("title, author, series, reading_progress, is_completed")
           .eq("user_id", userId);
-        userBooks = data || [];
+        userBooks = booksData || [];
+
+        // Get reading statistics
+        const { data: sessions } = await supabase
+          .from("reading_sessions")
+          .select("duration_minutes, pages_read")
+          .eq("user_id", userId);
+        
+        if (sessions) {
+          const totalTime = sessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+          const totalPages = sessions.reduce((sum, s) => sum + (s.pages_read || 0), 0);
+          readingStats = { totalTime, totalPages, sessionCount: sessions.length };
+        }
+
+        // Get recent annotations
+        const { data: annotationsData } = await supabase
+          .from("annotations")
+          .select("selected_text, note, book_id")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        recentAnnotations = annotationsData || [];
       }
 
       const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/book-chat`;
@@ -59,7 +83,9 @@ export const BookChatDialog = ({ open, onOpenChange, userId }: BookChatDialogPro
         },
         body: JSON.stringify({ 
           messages: [...messages, userMessage],
-          userBooks 
+          userBooks,
+          readingStats,
+          recentAnnotations
         }),
       });
 

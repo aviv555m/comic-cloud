@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,19 @@ import {
   Maximize, 
   Minimize,
   ArrowLeft,
-  BookOpen
+  BookOpen,
+  Volume2,
+  VolumeX,
+  Highlighter,
+  StickyNote
 } from "lucide-react";
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { EpubReader } from "@/components/EpubReader";
 import { ComicReader } from "@/components/ComicReader";
+import { AnnotationPanel } from "@/components/AnnotationPanel";
+import { HighlightMenu } from "@/components/HighlightMenu";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -49,11 +55,49 @@ const Reader = () => {
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
   const [pageInput, setPageInput] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [showAnnotations, setShowAnnotations] = useState(false);
+  const [selectedText, setSelectedText] = useState("");
+  const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const sessionStartTime = useRef<Date>(new Date());
 
   useEffect(() => {
     if (!bookId) return;
     fetchBook();
+    startReadingSession();
+
+    return () => {
+      endReadingSession();
+    };
   }, [bookId]);
+
+  useEffect(() => {
+    const handleSelection = () => {
+      const selection = window.getSelection();
+      const text = selection?.toString().trim();
+      
+      if (text && text.length > 0 && book?.file_type === 'pdf') {
+        const range = selection?.getRangeAt(0);
+        const rect = range?.getBoundingClientRect();
+        
+        if (rect) {
+          setSelectedText(text);
+          setHighlightMenuPos({
+            x: rect.left + rect.width / 2 - 160,
+            y: rect.top - 10,
+          });
+        }
+      } else {
+        setHighlightMenuPos(null);
+      }
+    };
+
+    document.addEventListener("mouseup", handleSelection);
+    return () => document.removeEventListener("mouseup", handleSelection);
+  }, [book]);
 
   const fetchBook = async () => {
     try {
@@ -103,6 +147,44 @@ const Reader = () => {
       });
       navigate("/");
     }
+  };
+
+  const startReadingSession = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !bookId) return;
+
+    const { data } = await supabase
+      .from("reading_sessions")
+      .insert({
+        book_id: bookId,
+        user_id: user.id,
+        start_time: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setSessionId(data.id);
+      sessionStartTime.current = new Date();
+    }
+  };
+
+  const endReadingSession = async () => {
+    if (!sessionId) return;
+
+    const endTime = new Date();
+    const durationMinutes = Math.round(
+      (endTime.getTime() - sessionStartTime.current.getTime()) / 60000
+    );
+
+    await supabase
+      .from("reading_sessions")
+      .update({
+        end_time: endTime.toISOString(),
+        duration_minutes: durationMinutes,
+        pages_read: currentPage - (book?.last_page_read || 0),
+      })
+      .eq("id", sessionId);
   };
 
   const updateProgress = async (page: number, total?: number) => {
@@ -176,6 +258,67 @@ const Reader = () => {
     setIsFullscreen(!isFullscreen);
   };
 
+  const generateAudio = async (text: string) => {
+    try {
+      const response = await supabase.functions.invoke("text-to-speech", {
+        body: { text, voice: "alloy" },
+      });
+
+      if (response.error) throw response.error;
+
+      const { audioContent } = response.data;
+      const audioBlob = new Blob(
+        [Uint8Array.from(atob(audioContent), c => c.charCodeAt(0))],
+        { type: "audio/mpeg" }
+      );
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+      return url;
+    } catch (error) {
+      console.error("TTS error:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate audio",
+      });
+      return null;
+    }
+  };
+
+  const toggleAudio = async () => {
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      let url = audioUrl;
+      
+      if (!url && textContent) {
+        // For text files
+        url = await generateAudio(textContent.substring(0, 3000));
+      } else if (!url && isPDF) {
+        // For PDFs, generate audio for current page
+        toast({
+          title: "Generating audio",
+          description: "Please wait...",
+        });
+        
+        // This would need actual PDF text extraction
+        // For now, show a placeholder message
+        toast({
+          title: "Feature coming soon",
+          description: "PDF text-to-speech is being implemented",
+        });
+        return;
+      }
+
+      if (url && audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
   if (loading || !book) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -220,6 +363,26 @@ const Reader = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleAudio}
+                className="h-9 px-3"
+                title={isPlaying ? "Stop narration" : "Play narration"}
+              >
+                {isPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAnnotations(!showAnnotations)}
+                className="h-9 px-3"
+                title="View annotations"
+              >
+                <StickyNote className="w-4 h-4" />
+              </Button>
+
               {isPDF && (
                 <>
                   <div className="flex items-center gap-1">
@@ -424,6 +587,46 @@ const Reader = () => {
           </div>
         )}
       </div>
+
+      {/* Hidden audio element */}
+      <audio
+        ref={audioRef}
+        onEnded={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to play audio",
+          });
+        }}
+      />
+
+      {/* Annotation Panel */}
+      {showAnnotations && book && (
+        <AnnotationPanel
+          bookId={book.id}
+          currentPage={currentPage}
+          onClose={() => setShowAnnotations(false)}
+        />
+      )}
+
+      {/* Highlight Menu */}
+      {highlightMenuPos && book && (
+        <HighlightMenu
+          selectedText={selectedText}
+          bookId={book.id}
+          pageNumber={currentPage}
+          position={highlightMenuPos}
+          onClose={() => {
+            setHighlightMenuPos(null);
+            window.getSelection()?.removeAllRanges();
+          }}
+          onSaved={() => {
+            window.getSelection()?.removeAllRanges();
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, User, MessageSquare } from "lucide-react";
+import { BookOpen, LogOut, User, MessageSquare, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -69,6 +69,16 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                 onClick={() => window.location.href = '/public'}
               >
                 Public Library
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.href = '/statistics'}
+                className="gap-2"
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span className="hidden sm:inline">Stats</span>
               </Button>
 
               <Button

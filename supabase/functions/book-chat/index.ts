@@ -11,29 +11,49 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, userBooks } = await req.json();
+    const { messages, userBooks, readingStats, recentAnnotations } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Build system prompt with user's reading history
-    let systemPrompt = `You are a helpful book assistant with expertise in literature, reading recommendations, and book analysis. You can:
-1. Discuss books and literature in general
-2. Provide personalized book recommendations
-3. Summarize books, chapters, or specific sections
-4. Answer questions about books, themes, characters, and plots
+    // Build enhanced system prompt with user context
+    let systemPrompt = `You are an AI book agent assistant with deep expertise in literature, reading analysis, and personalized recommendations. You can:
+1. Provide intelligent book recommendations based on reading history and preferences
+2. Summarize books, chapters, or specific sections
+3. Discuss themes, characters, plot analysis, and literary techniques
+4. Answer questions about books and literature
+5. Help with reading goals and progress tracking
+6. Analyze reading patterns and provide insights
 
-Keep your responses conversational, insightful, and helpful.`;
+Act as a personal reading assistant who understands the user's reading journey. Be conversational, insightful, and proactive in your suggestions.`;
 
     if (userBooks && userBooks.length > 0) {
-      systemPrompt += `\n\nThe user's reading library includes the following books:\n`;
+      systemPrompt += `\n\n📚 User's Reading Library (${userBooks.length} books):\n`;
       userBooks.forEach((book: any) => {
-        systemPrompt += `- "${book.title}"${book.author ? ` by ${book.author}` : ''}${book.series ? ` (${book.series} series)` : ''}\n`;
+        const progress = book.reading_progress ? ` (${book.reading_progress}% complete)` : '';
+        const status = book.is_completed ? ' ✓' : '';
+        systemPrompt += `- "${book.title}"${book.author ? ` by ${book.author}` : ''}${book.series ? ` (${book.series} series)` : ''}${progress}${status}\n`;
       });
-      systemPrompt += `\nUse this information to provide personalized recommendations based on their reading history.`;
     }
+
+    if (readingStats) {
+      systemPrompt += `\n\n📊 Reading Statistics:
+- Total reading time: ${readingStats.totalTime} minutes
+- Total pages read: ${readingStats.totalPages} pages
+- Reading sessions: ${readingStats.sessionCount}
+- Average reading speed: ${readingStats.totalPages > 0 ? Math.round((readingStats.totalPages / readingStats.totalTime) * 60) : 0} pages/hour`;
+    }
+
+    if (recentAnnotations && recentAnnotations.length > 0) {
+      systemPrompt += `\n\n💭 Recent Highlights & Notes:`;
+      recentAnnotations.forEach((annotation: any) => {
+        systemPrompt += `\n- "${annotation.selected_text}"${annotation.note ? ` (Note: ${annotation.note})` : ''}`;
+      });
+    }
+
+    systemPrompt += `\n\nUse this comprehensive context to provide highly personalized, context-aware recommendations and insights. Reference specific books they've read, their reading patterns, and their annotations when relevant.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
