@@ -14,21 +14,22 @@ interface AddFromUrlDialogProps {
 }
 
 export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDialogProps) => {
-  const [url, setUrl] = useState("");
+  const [urls, setUrls] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [series, setSeries] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!url.trim()) {
+    if (!urls.trim()) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Please enter a valid URL",
+        description: "Please enter at least one URL",
       });
       return;
     }
@@ -39,64 +40,92 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Download book via edge function
-      toast({
-        title: "Downloading",
-        description: "Downloading book from URL...",
-      });
+      // Parse URLs (one per line or comma-separated)
+      const urlList = urls
+        .split(/[\n,]/)
+        .map(u => u.trim())
+        .filter(u => u.length > 0);
 
-      const { data: downloadData, error: downloadError } = await supabase.functions.invoke(
-        "download-book",
-        {
-          body: { url, userId: user.id },
-        }
-      );
-
-      if (downloadError || !downloadData?.success) {
-        throw new Error(downloadData?.error || "Failed to download book");
+      if (urlList.length === 0) {
+        throw new Error("No valid URLs found");
       }
 
-      // Create book entry
-      const bookData = {
-        user_id: user.id,
-        title: title.trim() || downloadData.title || "Untitled Book",
-        author: author.trim() || null,
-        series: series.trim() || null,
-        file_url: downloadData.fileUrl,
-        file_type: downloadData.fileType,
-        file_size: downloadData.fileSize,
-        last_page_read: 0,
-        reading_progress: 0,
-        is_completed: false,
-      };
+      setProgress({ current: 0, total: urlList.length });
+      let successCount = 0;
+      let failCount = 0;
 
-      const { error: insertError } = await supabase
-        .from("books")
-        .insert(bookData);
+      // Process each URL
+      for (let i = 0; i < urlList.length; i++) {
+        const url = urlList[i];
+        setProgress({ current: i + 1, total: urlList.length });
 
-      if (insertError) throw insertError;
+        try {
+          // Download book via edge function
+          const { data: downloadData, error: downloadError } = await supabase.functions.invoke(
+            "download-book",
+            {
+              body: { url, userId: user.id },
+            }
+          );
 
-      toast({
-        title: "Success",
-        description: "Book added successfully!",
-      });
+          if (downloadError || !downloadData?.success) {
+            throw new Error(downloadData?.error || "Failed to download book");
+          }
+
+          // Create book entry
+          const bookData = {
+            user_id: user.id,
+            title: title.trim() || downloadData.title || "Untitled Book",
+            author: author.trim() || null,
+            series: series.trim() || null,
+            file_url: downloadData.fileUrl,
+            file_type: downloadData.fileType,
+            file_size: downloadData.fileSize,
+            last_page_read: 0,
+            reading_progress: 0,
+            is_completed: false,
+          };
+
+          const { error: insertError } = await supabase
+            .from("books")
+            .insert(bookData);
+
+          if (insertError) throw insertError;
+          successCount++;
+        } catch (error: any) {
+          console.error(`Error adding book from ${url}:`, error);
+          failCount++;
+        }
+      }
+
+      // Show result
+      if (successCount > 0) {
+        toast({
+          title: "Success",
+          description: `Added ${successCount} book${successCount > 1 ? 's' : ''} successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        });
+      } else {
+        throw new Error("Failed to add any books");
+      }
 
       // Reset form
-      setUrl("");
+      setUrls("");
       setTitle("");
       setAuthor("");
       setSeries("");
+      setProgress({ current: 0, total: 0 });
       onOpenChange(false);
       onSuccess();
     } catch (error: any) {
-      console.error("Error adding book:", error);
+      console.error("Error adding books:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to add book from URL",
+        description: error.message || "Failed to add books from URLs",
       });
     } finally {
       setLoading(false);
+      setProgress({ current: 0, total: 0 });
     }
   };
 
@@ -112,20 +141,34 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="url">Book URL *</Label>
-            <Input
-              id="url"
-              type="url"
-              placeholder="https://example.com/book.pdf"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+            <Label htmlFor="urls">Book URLs *</Label>
+            <textarea
+              id="urls"
+              placeholder="https://example.com/book1.pdf&#10;https://example.com/book2.epub&#10;https://example.com/book3.pdf"
+              value={urls}
+              onChange={(e) => setUrls(e.target.value)}
               disabled={loading}
               required
+              className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background resize-y"
             />
             <p className="text-xs text-muted-foreground">
-              Direct link to PDF, EPUB, CBZ, CBR, or TXT file
+              Enter one URL per line or comma-separated. Supports PDF, EPUB, CBZ, CBR, and TXT files.
             </p>
           </div>
+          
+          {loading && progress.total > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Processing {progress.current} of {progress.total}...
+              </p>
+              <div className="w-full bg-secondary rounded-full h-2">
+                <div 
+                  className="bg-primary h-2 rounded-full transition-all"
+                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="title">Title (Optional)</Label>

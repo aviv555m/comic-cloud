@@ -113,29 +113,16 @@ const Reader = () => {
       setCurrentPage(data.last_page_read || 1);
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       
-      // Generate signed URL for private files
+      // Use public URL for files (bucket is public)
       if (data.file_type === 'pdf' || data.file_type === 'epub') {
-        const filePath = data.file_url.split('/book-files/')[1];
-        const { data: urlData, error: urlError } = await supabase.storage
-          .from('book-files')
-          .createSignedUrl(filePath, 3600); // 1 hour expiry
-        
-        if (urlError) throw urlError;
-        setSignedUrl(urlData.signedUrl);
+        setSignedUrl(data.file_url);
       }
       
       // If it's a text file, fetch and display content
       if (data.file_type === 'txt') {
-        const filePath = data.file_url.split('/book-files/')[1];
-        const { data: urlData } = await supabase.storage
-          .from('book-files')
-          .createSignedUrl(filePath, 3600);
-        
-        if (urlData?.signedUrl) {
-          const response = await fetch(urlData.signedUrl);
-          const text = await response.text();
-          setTextContent(text);
-        }
+        const response = await fetch(data.file_url);
+        const text = await response.text();
+        setTextContent(text);
       }
       
       setLoading(false);
