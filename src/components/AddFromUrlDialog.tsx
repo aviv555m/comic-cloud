@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Link as LinkIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GutenbergSearch } from "./GutenbergSearch";
+import { PublicLibrarySearch } from "./PublicLibrarySearch";
 
 interface AddFromUrlDialogProps {
   open: boolean;
@@ -163,7 +163,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
         <Tabs defaultValue="url" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="url">Direct URL</TabsTrigger>
-            <TabsTrigger value="gutenberg">Project Gutenberg</TabsTrigger>
+            <TabsTrigger value="library">Public Libraries</TabsTrigger>
           </TabsList>
 
           <TabsContent value="url" className="space-y-4">
@@ -257,8 +257,8 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
         </form>
           </TabsContent>
 
-          <TabsContent value="gutenberg">
-            <GutenbergSearch onSuccess={onSuccess} />
+          <TabsContent value="library">
+            <PublicLibrarySearch onSuccess={onSuccess} />
           </TabsContent>
         </Tabs>
       </DialogContent>
