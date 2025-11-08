@@ -20,10 +20,25 @@ serve(async (req) => {
 
     console.log("Downloading book from URL:", url);
 
-    // Download the file
-    const fileResponse = await fetch(url);
+    // Download the file with browser-like headers to avoid being blocked
+    const fileResponse = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
+      }
+    });
+    
     if (!fileResponse.ok) {
-      throw new Error(`Failed to download file: ${fileResponse.statusText}`);
+      console.error(`Failed to download from ${url}: ${fileResponse.status} ${fileResponse.statusText}`);
+      throw new Error(`Failed to download file: ${fileResponse.statusText} (${fileResponse.status}). The server may be blocking automated downloads or the file may require authentication.`);
     }
 
     const contentType = fileResponse.headers.get("content-type") || "";
