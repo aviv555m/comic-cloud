@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Link as LinkIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GutenbergSearch } from "./GutenbergSearch";
 
 interface AddFromUrlDialogProps {
   open: boolean;
@@ -20,6 +22,8 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
   const [series, setSeries] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [showManualHelp, setShowManualHelp] = useState(false);
+  const [failedUrls, setFailedUrls] = useState<string[]>([]);
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,6 +57,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
       setProgress({ current: 0, total: urlList.length });
       let successCount = 0;
       let failCount = 0;
+      const failed: string[] = [];
 
       // Process each URL
       for (let i = 0; i < urlList.length; i++) {
@@ -69,7 +74,12 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
           );
 
           if (downloadError || !downloadData?.success) {
-            throw new Error(downloadData?.error || "Failed to download book");
+            const errorMsg = downloadData?.error || "Failed to download book";
+            // Check if it's an authentication/access error
+            if (errorMsg.includes("403") || errorMsg.includes("Forbidden") || errorMsg.includes("authentication")) {
+              failed.push(url);
+            }
+            throw new Error(errorMsg);
           }
 
           // Create book entry
@@ -104,18 +114,29 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
           title: "Success",
           description: `Added ${successCount} book${successCount > 1 ? 's' : ''} successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
         });
+        
+        if (failed.length > 0) {
+          setFailedUrls(failed);
+          setShowManualHelp(true);
+        }
       } else {
+        if (failed.length > 0) {
+          setFailedUrls(failed);
+          setShowManualHelp(true);
+        }
         throw new Error("Failed to add any books");
       }
 
-      // Reset form
-      setUrls("");
-      setTitle("");
-      setAuthor("");
-      setSeries("");
-      setProgress({ current: 0, total: 0 });
-      onOpenChange(false);
-      onSuccess();
+      // Reset form only if no failed URLs
+      if (failed.length === 0) {
+        setUrls("");
+        setTitle("");
+        setAuthor("");
+        setSeries("");
+        setProgress({ current: 0, total: 0 });
+        onOpenChange(false);
+        onSuccess();
+      }
     } catch (error: any) {
       console.error("Error adding books:", error);
       toast({
@@ -131,7 +152,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <LinkIcon className="w-5 h-5" />
@@ -139,7 +160,14 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <Tabs defaultValue="url" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="url">Direct URL</TabsTrigger>
+            <TabsTrigger value="gutenberg">Project Gutenberg</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="url" className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="urls">Book URLs *</Label>
             <textarea
@@ -227,6 +255,12 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
             </Button>
           </div>
         </form>
+          </TabsContent>
+
+          <TabsContent value="gutenberg">
+            <GutenbergSearch onSuccess={onSuccess} />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
