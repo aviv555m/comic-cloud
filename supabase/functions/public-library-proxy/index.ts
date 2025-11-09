@@ -14,6 +14,7 @@ const ALLOWED_HOSTS = new Set<string>([
   "archive.org",
   "openlibrary.org",
   "www.wattpad.com",
+  "api.mangadex.org",
 ]);
 
 serve(async (req) => {

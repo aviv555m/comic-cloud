@@ -104,18 +104,20 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   };
 
   const searchWattpad = async (query: string): Promise<BookResult[]> => {
-    // Wattpad API requires authentication, so we'll use their public search
-    // This is a simplified version - in production you'd need a backend proxy
+    // Wattpad search via their website API
     try {
       const { data, error } = await supabase.functions.invoke("public-library-proxy", {
         body: {
-          url: `https://www.wattpad.com/api/v3/stories?query=${encodeURIComponent(query)}&limit=20&fields=stories(id,title,user,description,completed)&filter=free`,
+          url: `https://www.wattpad.com/v4/search/stories?query=${encodeURIComponent(query)}&limit=20&mature=false&free=true`,
           responseType: "json",
         },
       });
-      if (error || !data?.success) return [];
+      if (error || !data?.success) {
+        console.error("Wattpad API error:", error, data);
+        return [];
+      }
       const api = data.data;
-      return (data.stories || []).map((story: any) => ({
+      return (api.stories || []).map((story: any) => ({
         id: `wattpad-${story.id}`,
         title: story.title,
         author: story.user?.name || "Unknown",
@@ -124,6 +126,37 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       }));
     } catch (error) {
       console.error("Wattpad search error:", error);
+      return [];
+    }
+  };
+
+  const searchMangaDex = async (query: string): Promise<BookResult[]> => {
+    // MangaDex public API
+    try {
+      const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+        body: {
+          url: `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=20&includes[]=cover_art&includes[]=author&contentRating[]=safe&contentRating[]=suggestive&availableTranslatedLanguage[]=en`,
+          responseType: "json",
+        },
+      });
+      if (error || !data?.success) {
+        console.error("MangaDex API error:", error, data);
+        return [];
+      }
+      const api = data.data;
+      return (api.data || []).map((manga: any) => {
+        const authorRel = manga.relationships?.find((r: any) => r.type === "author");
+        return {
+          id: `mangadex-${manga.id}`,
+          title: manga.attributes?.title?.en || Object.values(manga.attributes?.title || {})[0] || "Unknown",
+          author: authorRel?.attributes?.name || "Unknown",
+          source: "MangaDex",
+          description: manga.attributes?.description?.en || "",
+          downloadUrl: `https://mangadex.org/title/${manga.id}`,
+        };
+      });
+    } catch (error) {
+      console.error("MangaDex search error:", error);
       return [];
     }
   };
@@ -157,6 +190,9 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           break;
         case "wattpad":
           searchResults = await searchWattpad(searchQuery);
+          break;
+        case "mangadex":
+          searchResults = await searchMangaDex(searchQuery);
           break;
         case "all":
           const [gut, arch, open] = await Promise.allSettled([
@@ -274,6 +310,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             <SelectItem value="gutenberg">Project Gutenberg (70K+ books)</SelectItem>
             <SelectItem value="archive">Internet Archive</SelectItem>
             <SelectItem value="openlibrary">Open Library</SelectItem>
+            <SelectItem value="mangadex">MangaDex (Manga/Manhwa)</SelectItem>
             <SelectItem value="royalroad">RoyalRoad (Web Novels)</SelectItem>
             <SelectItem value="wattpad">Wattpad (Free Stories)</SelectItem>
           </SelectContent>
@@ -309,12 +346,12 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             {results.map((book) => (
               <div
                 key={book.id}
-                className="flex gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                className="flex flex-col sm:flex-row gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
               >
-                <Book className="w-8 h-8 text-muted-foreground shrink-0 mt-1" />
+                <Book className="w-8 h-8 text-muted-foreground shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium truncate">{book.title}</h4>
-                  <p className="text-sm text-muted-foreground">{book.author}</p>
+                  <h4 className="font-medium text-sm sm:text-base break-words">{book.title}</h4>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{book.author}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Source: {book.source}
                   </p>
@@ -324,7 +361,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
                     </p>
                   )}
                   {book.formats && (
-                    <div className="flex gap-2 mt-2 text-xs">
+                    <div className="flex gap-2 mt-2 text-xs flex-wrap">
                       {book.formats["application/epub+zip"] && (
                         <span className="px-2 py-1 bg-primary/10 text-primary rounded">EPUB</span>
                       )}
@@ -338,7 +375,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
                   size="sm"
                   onClick={() => addBook(book)}
                   disabled={downloading === book.id || (!book.downloadUrl && !book.formats)}
-                  className="shrink-0"
+                  className="shrink-0 w-full sm:w-auto"
                 >
                   {downloading === book.id ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

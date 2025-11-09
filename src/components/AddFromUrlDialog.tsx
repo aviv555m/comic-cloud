@@ -152,18 +152,18 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <LinkIcon className="w-5 h-5" />
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <LinkIcon className="w-4 h-4 sm:w-5 sm:h-5" />
             Add Book from URL
           </DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="url" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="url">Direct URL</TabsTrigger>
-            <TabsTrigger value="library">Public Libraries</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 text-xs sm:text-sm">
+            <TabsTrigger value="url" className="text-xs sm:text-sm">Direct URL</TabsTrigger>
+            <TabsTrigger value="library" className="text-xs sm:text-sm">Public Libraries</TabsTrigger>
           </TabsList>
 
           <TabsContent value="url" className="space-y-4">
