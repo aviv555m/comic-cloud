@@ -117,12 +117,13 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         return [];
       }
       const api = data.data;
-      return (api.stories || []).map((story: any) => ({
-        id: `wattpad-${story.id}`,
-        title: story.title,
-        author: story.user?.name || "Unknown",
+      const stories = api?.stories || api?.data?.stories || api?.results?.stories || [];
+      return stories.map((story: any) => ({
+        id: `wattpad-${story?.id}`,
+        title: story?.title || "Untitled",
+        author: story?.user?.name || story?.user?.username || "Unknown",
         source: "Wattpad",
-        description: story.description,
+        description: story?.description,
       }));
     } catch (error) {
       console.error("Wattpad search error:", error);
@@ -152,7 +153,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           author: authorRel?.attributes?.name || "Unknown",
           source: "MangaDex",
           description: manga.attributes?.description?.en || "",
-          downloadUrl: `https://mangadex.org/title/${manga.id}`,
+          downloadUrl: undefined,
         };
       });
     } catch (error) {
@@ -233,21 +234,19 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       if (!user) throw new Error("Not authenticated");
 
       let url = book.downloadUrl;
-      let fileType = "epub";
 
-      // Handle Gutenberg formats
+      // Handle sources that provide multiple formats (e.g., Gutenberg)
       if (book.formats) {
         const epubUrl = book.formats["application/epub+zip"];
         const pdfUrl = book.formats["application/pdf"];
-        url = epubUrl || pdfUrl;
-        fileType = epubUrl ? "epub" : "pdf";
+        url = epubUrl || pdfUrl || url;
       }
 
       if (!url) {
         throw new Error("No download URL available for this book");
       }
 
-      // Download via edge function
+      // Download via backend function
       const { data: downloadData, error: downloadError } = await supabase.functions.invoke(
         "download-book",
         {
@@ -259,14 +258,24 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         throw new Error(downloadData?.error || "Failed to download book");
       }
 
-      // Create book entry
+      const resolvedType = String(downloadData.fileType || "").toLowerCase();
+      try {
+        const host = new URL(url).hostname;
+        if ((host.includes("mangadex.org") || host.includes("wattpad.com")) && (!resolvedType || resolvedType === "txt")) {
+          throw new Error(
+            "Direct download isn't supported by this source. Open the item on its website and copy a direct EPUB/PDF/CBZ URL."
+          );
+        }
+      } catch {}
+
+      // Create book entry using the actual downloaded file type
       const bookData = {
         user_id: user.id,
         title: book.title,
         author: book.author,
         series: null,
         file_url: downloadData.fileUrl,
-        file_type: fileType,
+        file_type: resolvedType || "epub",
         file_size: downloadData.fileSize,
         last_page_read: 0,
         reading_progress: 0,
