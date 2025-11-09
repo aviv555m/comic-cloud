@@ -177,7 +177,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
               onChange={(e) => setUrls(e.target.value)}
               disabled={loading}
               required
-              className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background resize-y"
+              className="w-full min-h-[120px] px-3 py-2 text-base md:text-sm rounded-md border border-input bg-background resize-y"
             />
             <p className="text-xs text-muted-foreground">
               Enter one URL per line or comma-separated. Supports PDF, EPUB, CBZ, CBR, and TXT files.

@@ -136,4 +136,8 @@ All colors MUST be HSL.
   :root {
     --font-size-root: 17px;
   }
+  /* Prevent iOS zoom on form controls */
+  input, textarea, select, button {
+    font-size: 16px;
+  }
 }

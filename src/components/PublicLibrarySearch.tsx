@@ -31,11 +31,15 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   const { toast } = useToast();
 
   const searchGutenberg = async (query: string): Promise<BookResult[]> => {
-    const response = await fetch(
-      `https://gutendex.com/books?search=${encodeURIComponent(query)}`
-    );
-    const data = await response.json();
-    return (data.results || []).map((book: any) => ({
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://gutendex.com/books?search=${encodeURIComponent(query)}`,
+        responseType: "json",
+      },
+    });
+    if (error || !data?.success) return [];
+    const api = data.data;
+    return (api.results || []).map((book: any) => ({
       id: `gutenberg-${book.id}`,
       title: book.title,
       author: book.authors.map((a: any) => a.name).join(", ") || "Unknown",
@@ -45,11 +49,15 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   };
 
   const searchInternetArchive = async (query: string): Promise<BookResult[]> => {
-    const response = await fetch(
-      `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl=identifier,title,creator&rows=20&page=1&output=json&and[]=(mediatype:texts%20AND%20format:epub)`
-    );
-    const data = await response.json();
-    return (data.response?.docs || []).map((doc: any) => ({
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl=identifier,title,creator&rows=20&page=1&output=json&and[]=(mediatype:texts%20AND%20format:epub)`,
+        responseType: "json",
+      },
+    });
+    if (error || !data?.success) return [];
+    const api = data.data;
+    return (api.response?.docs || []).map((doc: any) => ({
       id: `archive-${doc.identifier}`,
       title: doc.title,
       author: doc.creator || "Unknown",
@@ -59,37 +67,45 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   };
 
   const searchOpenLibrary = async (query: string): Promise<BookResult[]> => {
-    const response = await fetch(
-      `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=20`
-    );
-    const data = await response.json();
-    return (data.docs || [])
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=20`,
+        responseType: "json",
+      },
+    });
+    if (error || !data?.success) return [];
+    const api = data.data;
+    return (api.docs || [])
       .filter((doc: any) => doc.has_fulltext)
       .map((doc: any) => ({
         id: `openlibrary-${doc.key}`,
         title: doc.title,
         author: doc.author_name?.join(", ") || "Unknown",
         source: "Open Library",
-        downloadUrl: doc.lending_edition ? 
-          `https://archive.org/download/${doc.lending_edition}/${doc.lending_edition}.epub` : undefined,
-      }))
-      .filter((book: BookResult) => book.downloadUrl);
+        downloadUrl: undefined,
+      }));
   };
 
   const searchStandardEbooks = async (query: string): Promise<BookResult[]> => {
-    // Standard Ebooks doesn't have a search API, so we'll fetch their catalog
-    const response = await fetch(`https://standardebooks.org/opds/all`);
-    const text = await response.text();
+    // Standard Ebooks OPDS catalog
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://standardebooks.org/opds/all`,
+        responseType: "text",
+      },
+    });
+    if (error || !data?.success) return [];
+    const text = data.data as string;
     const parser = new DOMParser();
     const xml = parser.parseFromString(text, "text/xml");
     const entries = xml.querySelectorAll("entry");
-    
+
     const books: BookResult[] = [];
     entries.forEach((entry) => {
       const title = entry.querySelector("title")?.textContent || "";
       const author = entry.querySelector("author name")?.textContent || "Unknown";
-      
-      if (title.toLowerCase().includes(query.toLowerCase()) || 
+
+      if (title.toLowerCase().includes(query.toLowerCase()) ||
           author.toLowerCase().includes(query.toLowerCase())) {
         const links = entry.querySelectorAll("link");
         let epubUrl = "";
@@ -98,7 +114,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             epubUrl = link.getAttribute("href") || "";
           }
         });
-        
+
         if (epubUrl) {
           books.push({
             id: `standardebooks-${title}`,
@@ -110,7 +126,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         }
       }
     });
-    
+
     return books.slice(0, 20);
   };
 
@@ -133,10 +149,14 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
     // Wattpad API requires authentication, so we'll use their public search
     // This is a simplified version - in production you'd need a backend proxy
     try {
-      const response = await fetch(
-        `https://www.wattpad.com/api/v3/stories?query=${encodeURIComponent(query)}&limit=20&fields=stories(id,title,user,description,completed)&filter=free`
-      );
-      const data = await response.json();
+      const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+        body: {
+          url: `https://www.wattpad.com/api/v3/stories?query=${encodeURIComponent(query)}&limit=20&fields=stories(id,title,user,description,completed)&filter=free`,
+          responseType: "json",
+        },
+      });
+      if (error || !data?.success) return [];
+      const api = data.data;
       return (data.stories || []).map((story: any) => ({
         id: `wattpad-${story.id}`,
         title: story.title,
@@ -184,13 +204,15 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           searchResults = await searchWattpad(searchQuery);
           break;
         case "all":
-          const [gut, arch, open, std] = await Promise.all([
+          const [gut, arch, open, std] = await Promise.allSettled([
             searchGutenberg(searchQuery),
             searchInternetArchive(searchQuery),
             searchOpenLibrary(searchQuery),
             searchStandardEbooks(searchQuery),
           ]);
-          searchResults = [...gut, ...arch, ...open, ...std];
+          searchResults = [gut, arch, open, std]
+            .filter((r): r is PromiseFulfilledResult<BookResult[]> => r.status === "fulfilled")
+            .flatMap((r) => r.value);
           break;
       }
       
