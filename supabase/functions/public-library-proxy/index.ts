@@ -13,7 +13,6 @@ const ALLOWED_HOSTS = new Set<string>([
   "gutendex.com",
   "archive.org",
   "openlibrary.org",
-  "standardebooks.org",
   "www.wattpad.com",
 ]);
 

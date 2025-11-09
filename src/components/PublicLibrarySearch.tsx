@@ -86,49 +86,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       }));
   };
 
-  const searchStandardEbooks = async (query: string): Promise<BookResult[]> => {
-    // Standard Ebooks OPDS catalog
-    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
-      body: {
-        url: `https://standardebooks.org/opds/all`,
-        responseType: "text",
-      },
-    });
-    if (error || !data?.success) return [];
-    const text = data.data as string;
-    const parser = new DOMParser();
-    const xml = parser.parseFromString(text, "text/xml");
-    const entries = xml.querySelectorAll("entry");
-
-    const books: BookResult[] = [];
-    entries.forEach((entry) => {
-      const title = entry.querySelector("title")?.textContent || "";
-      const author = entry.querySelector("author name")?.textContent || "Unknown";
-
-      if (title.toLowerCase().includes(query.toLowerCase()) ||
-          author.toLowerCase().includes(query.toLowerCase())) {
-        const links = entry.querySelectorAll("link");
-        let epubUrl = "";
-        links.forEach((link) => {
-          if (link.getAttribute("type") === "application/epub+zip") {
-            epubUrl = link.getAttribute("href") || "";
-          }
-        });
-
-        if (epubUrl) {
-          books.push({
-            id: `standardebooks-${title}`,
-            title,
-            author,
-            source: "Standard Ebooks",
-            downloadUrl: epubUrl,
-          });
-        }
-      }
-    });
-
-    return books.slice(0, 20);
-  };
+  // Standard Ebooks removed - now requires Patrons Circle membership
 
   const searchRoyalRoad = async (query: string): Promise<BookResult[]> => {
     // RoyalRoad doesn't have an official API, but we can search their fiction list
@@ -194,9 +152,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         case "openlibrary":
           searchResults = await searchOpenLibrary(searchQuery);
           break;
-        case "standardebooks":
-          searchResults = await searchStandardEbooks(searchQuery);
-          break;
         case "royalroad":
           searchResults = await searchRoyalRoad(searchQuery);
           break;
@@ -204,13 +159,12 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           searchResults = await searchWattpad(searchQuery);
           break;
         case "all":
-          const [gut, arch, open, std] = await Promise.allSettled([
+          const [gut, arch, open] = await Promise.allSettled([
             searchGutenberg(searchQuery),
             searchInternetArchive(searchQuery),
             searchOpenLibrary(searchQuery),
-            searchStandardEbooks(searchQuery),
           ]);
-          searchResults = [gut, arch, open, std]
+          searchResults = [gut, arch, open]
             .filter((r): r is PromiseFulfilledResult<BookResult[]> => r.status === "fulfilled")
             .flatMap((r) => r.value);
           break;
@@ -320,7 +274,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             <SelectItem value="gutenberg">Project Gutenberg (70K+ books)</SelectItem>
             <SelectItem value="archive">Internet Archive</SelectItem>
             <SelectItem value="openlibrary">Open Library</SelectItem>
-            <SelectItem value="standardebooks">Standard Ebooks</SelectItem>
             <SelectItem value="royalroad">RoyalRoad (Web Novels)</SelectItem>
             <SelectItem value="wattpad">Wattpad (Free Stories)</SelectItem>
           </SelectContent>
