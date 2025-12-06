@@ -15,6 +15,9 @@ const ALLOWED_HOSTS = new Set<string>([
   "openlibrary.org",
   "www.wattpad.com",
   "api.mangadex.org",
+  "standardebooks.org",
+  "www.standardebooks.org",
+  "covers.openlibrary.org",
 ]);
 
 serve(async (req) => {
@@ -57,18 +60,23 @@ serve(async (req) => {
       "Pragma": "no-cache",
     };
 
-    const upstream = await fetch(url, { headers });
+    console.log("Proxying request to:", url);
+    
+    const upstream = await fetch(url, { headers, redirect: "follow" });
     const contentType = upstream.headers.get("content-type") || "";
+
+    console.log("Upstream response:", upstream.status, contentType);
 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => "");
+      console.error("Upstream error:", upstream.status, text.substring(0, 200));
       return new Response(
-        JSON.stringify({ success: false, error: `Upstream error ${upstream.status}`, details: text }),
+        JSON.stringify({ success: false, error: `Upstream error ${upstream.status}`, details: text.substring(0, 500) }),
         { status: upstream.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (responseType === "text" || contentType.includes("xml") || contentType.includes("html")) {
+    if (responseType === "text" || contentType.includes("xml") || contentType.includes("html") || contentType.includes("atom")) {
       const text = await upstream.text();
       return new Response(JSON.stringify({ success: true, data: text, contentType }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -76,12 +84,21 @@ serve(async (req) => {
     }
 
     // default json
-    const data = await upstream.json();
-    return new Response(JSON.stringify({ success: true, data, contentType }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    try {
+      const data = await upstream.json();
+      return new Response(JSON.stringify({ success: true, data, contentType }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    } catch (jsonError) {
+      // If JSON parsing fails, return as text
+      const text = await upstream.text().catch(() => "");
+      return new Response(JSON.stringify({ success: true, data: text, contentType }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e ?? "Unknown error");
+    console.error("Proxy error:", message);
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
