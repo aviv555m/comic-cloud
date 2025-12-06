@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, User, MessageSquare, BarChart3 } from "lucide-react";
+import { BookOpen, LogOut, User, MessageSquare, BarChart3, Settings, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BookChatDialog } from "./BookChatDialog";
 
 interface NavigationProps {
@@ -21,14 +21,33 @@ interface NavigationProps {
 
 export const Navigation = ({ userEmail }: NavigationProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [chatOpen, setChatOpen] = useState(false);
   const [userId, setUserId] = useState<string>();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setUserId(data.user?.id);
-    });
+    const fetchUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        
+        // Fetch profile for avatar
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("avatar_url, username")
+          .eq("id", user.id)
+          .single();
+        
+        if (profile) {
+          setAvatarUrl(profile.avatar_url);
+          setUsername(profile.username);
+        }
+      }
+    };
+    fetchUserData();
   }, []);
 
   const handleSignOut = async () => {
@@ -48,34 +67,50 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
     }
   };
 
-  const userInitial = userEmail?.charAt(0).toUpperCase() || "U";
+  const userInitial = username?.charAt(0).toUpperCase() || userEmail?.charAt(0).toUpperCase() || "U";
+  const isActive = (path: string) => location.pathname === path;
 
   return (
     <>
       <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            >
               <div className="flex items-center justify-center w-10 h-10 gradient-warm rounded-lg shadow-md">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
-              <span className="text-xl font-bold">Bookshelf</span>
-            </div>
+              <span className="text-xl font-bold hidden sm:block">Bookshelf</span>
+            </button>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 sm:gap-2">
               <Button
-                variant="ghost"
+                variant={isActive("/") ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => window.location.href = '/public'}
+                onClick={() => navigate("/")}
+                className="gap-1.5 px-2 sm:px-3"
               >
-                Public Library
+                <Home className="w-4 h-4" />
+                <span className="hidden sm:inline">Library</span>
               </Button>
 
               <Button
-                variant="ghost"
+                variant={isActive("/public") ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => window.location.href = '/statistics'}
-                className="gap-2"
+                onClick={() => navigate("/public")}
+                className="gap-1.5 px-2 sm:px-3"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden sm:inline">Browse</span>
+              </Button>
+
+              <Button
+                variant={isActive("/statistics") ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => navigate("/statistics")}
+                className="gap-1.5 px-2 sm:px-3"
               >
                 <BarChart3 className="w-4 h-4" />
                 <span className="hidden sm:inline">Stats</span>
@@ -85,36 +120,46 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                 variant="ghost"
                 size="sm"
                 onClick={() => setChatOpen(true)}
-                className="gap-2"
+                className="gap-1.5 px-2 sm:px-3"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Book Chat</span>
+                <span className="hidden sm:inline">Chat</span>
               </Button>
 
               <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                  <Avatar className="h-10 w-10">
-                    <AvatarFallback className="gradient-warm text-white">
-                      {userInitial}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">My Account</p>
-                    <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={avatarUrl || undefined} />
+                      <AvatarFallback className="gradient-warm text-white text-sm">
+                        {userInitial}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium">{username || "My Account"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/statistics")}>
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Reading Stats
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
