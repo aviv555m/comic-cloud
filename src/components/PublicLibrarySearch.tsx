@@ -51,19 +51,40 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   const searchInternetArchive = async (query: string): Promise<BookResult[]> => {
     const { data, error } = await supabase.functions.invoke("public-library-proxy", {
       body: {
-        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}&fl=identifier,title,creator&rows=20&page=1&output=json&and[]=(mediatype:texts%20AND%20format:epub)`,
+        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:texts&fl=identifier,title,creator,format&rows=20&page=1&output=json`,
         responseType: "json",
       },
     });
     if (error || !data?.success) return [];
     const api = data.data;
-    return (api.response?.docs || []).map((doc: any) => ({
-      id: `archive-${doc.identifier}`,
-      title: doc.title,
-      author: doc.creator || "Unknown",
-      source: "Internet Archive",
-      downloadUrl: `https://archive.org/download/${doc.identifier}/${doc.identifier}.epub`,
-    }));
+    return (api.response?.docs || [])
+      .filter((doc: any) => {
+        // Only include if it has epub or pdf format
+        const formats = Array.isArray(doc.format) ? doc.format : [doc.format];
+        return formats.some((f: string) => 
+          f?.toLowerCase().includes('epub') || f?.toLowerCase().includes('pdf')
+        );
+      })
+      .map((doc: any) => {
+        const formats = Array.isArray(doc.format) ? doc.format : [doc.format];
+        const hasEpub = formats.some((f: string) => f?.toLowerCase().includes('epub'));
+        const hasPdf = formats.some((f: string) => f?.toLowerCase().includes('pdf'));
+        
+        // Prefer epub over pdf
+        const extension = hasEpub ? 'epub' : 'pdf';
+        
+        return {
+          id: `archive-${doc.identifier}`,
+          title: doc.title || "Unknown Title",
+          author: doc.creator || "Unknown",
+          source: "Internet Archive",
+          downloadUrl: `https://archive.org/download/${doc.identifier}/${doc.identifier}.${extension}`,
+          formats: {
+            ...(hasEpub && { "application/epub+zip": `https://archive.org/download/${doc.identifier}/${doc.identifier}.epub` }),
+            ...(hasPdf && { "application/pdf": `https://archive.org/download/${doc.identifier}/${doc.identifier}.pdf` }),
+          },
+        };
+      });
   };
 
   const searchOpenLibrary = async (query: string): Promise<BookResult[]> => {
@@ -86,81 +107,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       }));
   };
 
-  // Standard Ebooks removed - now requires Patrons Circle membership
-
-  const searchRoyalRoad = async (query: string): Promise<BookResult[]> => {
-    // RoyalRoad doesn't have an official API, but we can search their fiction list
-    try {
-      const response = await fetch(
-        `https://www.royalroad.com/fictions/search?title=${encodeURIComponent(query)}`
-      );
-      // Note: This would need CORS proxy in production
-      // For now, return empty to avoid CORS issues
-      return [];
-    } catch (error) {
-      console.error("RoyalRoad search error:", error);
-      return [];
-    }
-  };
-
-  const searchWattpad = async (query: string): Promise<BookResult[]> => {
-    // Wattpad search via their website API
-    try {
-      const { data, error } = await supabase.functions.invoke("public-library-proxy", {
-        body: {
-          url: `https://www.wattpad.com/v4/search/stories?query=${encodeURIComponent(query)}&limit=20&mature=false&free=true`,
-          responseType: "json",
-        },
-      });
-      if (error || !data?.success) {
-        console.error("Wattpad API error:", error, data);
-        return [];
-      }
-      const api = data.data;
-      const stories = api?.stories || api?.data?.stories || api?.results?.stories || [];
-      return stories.map((story: any) => ({
-        id: `wattpad-${story?.id}`,
-        title: story?.title || "Untitled",
-        author: story?.user?.name || story?.user?.username || "Unknown",
-        source: "Wattpad",
-        description: story?.description,
-      }));
-    } catch (error) {
-      console.error("Wattpad search error:", error);
-      return [];
-    }
-  };
-
-  const searchMangaDex = async (query: string): Promise<BookResult[]> => {
-    // MangaDex public API
-    try {
-      const { data, error } = await supabase.functions.invoke("public-library-proxy", {
-        body: {
-          url: `https://api.mangadex.org/manga?title=${encodeURIComponent(query)}&limit=20&includes[]=cover_art&includes[]=author&contentRating[]=safe&contentRating[]=suggestive&availableTranslatedLanguage[]=en`,
-          responseType: "json",
-        },
-      });
-      if (error || !data?.success) {
-        console.error("MangaDex API error:", error, data);
-        return [];
-      }
-      const api = data.data;
-      return (api.data || []).map((manga: any) => {
-        const authorRel = manga.relationships?.find((r: any) => r.type === "author");
-        return {
-          id: `mangadex-${manga.id}`,
-          title: manga.attributes?.title?.en || Object.values(manga.attributes?.title || {})[0] || "Unknown",
-          author: authorRel?.attributes?.name || "Unknown",
-          source: "MangaDex",
-          description: manga.attributes?.description?.en || "",
-          downloadUrl: undefined,
-        };
-      });
-    } catch (error) {
-      console.error("MangaDex search error:", error);
-      return [];
-    }
-  };
+  // Note: RoyalRoad, Wattpad, MangaDex don't provide direct downloads
 
   const searchBooks = async () => {
     if (!searchQuery.trim()) {
@@ -186,22 +133,12 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         case "openlibrary":
           searchResults = await searchOpenLibrary(searchQuery);
           break;
-        case "royalroad":
-          searchResults = await searchRoyalRoad(searchQuery);
-          break;
-        case "wattpad":
-          searchResults = await searchWattpad(searchQuery);
-          break;
-        case "mangadex":
-          searchResults = await searchMangaDex(searchQuery);
-          break;
         case "all":
-          const [gut, arch, open] = await Promise.allSettled([
+          const [gut, arch] = await Promise.allSettled([
             searchGutenberg(searchQuery),
             searchInternetArchive(searchQuery),
-            searchOpenLibrary(searchQuery),
           ]);
-          searchResults = [gut, arch, open]
+          searchResults = [gut, arch]
             .filter((r): r is PromiseFulfilledResult<BookResult[]> => r.status === "fulfilled")
             .flatMap((r) => r.value);
           break;
@@ -243,7 +180,13 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       }
 
       if (!url) {
-        throw new Error("No download URL available for this book");
+        // For sources without direct download (MangaDex, Wattpad, etc.)
+        toast({
+          variant: "destructive",
+          title: "No direct download available",
+          description: "This source doesn't provide direct downloads. Try Project Gutenberg or Internet Archive.",
+        });
+        return;
       }
 
       // Download via backend function
@@ -254,19 +197,21 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         }
       );
 
-      if (downloadError || !downloadData?.success) {
+      if (downloadError) {
+        throw new Error(downloadError.message || "Failed to download book");
+      }
+      
+      if (!downloadData?.success) {
         throw new Error(downloadData?.error || "Failed to download book");
       }
 
-      const resolvedType = String(downloadData.fileType || "").toLowerCase();
-      try {
-        const host = new URL(url).hostname;
-        if ((host.includes("mangadex.org") || host.includes("wattpad.com")) && (!resolvedType || resolvedType === "txt")) {
-          throw new Error(
-            "Direct download isn't supported by this source. Open the item on its website and copy a direct EPUB/PDF/CBZ URL."
-          );
-        }
-      } catch {}
+      const resolvedType = String(downloadData.fileType || "epub").toLowerCase();
+      
+      // Validate the file type
+      const validTypes = ["epub", "pdf", "cbz", "cbr"];
+      if (!validTypes.includes(resolvedType)) {
+        throw new Error(`Unsupported file type: ${resolvedType}. Only EPUB, PDF, CBZ, and CBR are supported.`);
+      }
 
       // Create book entry using the actual downloaded file type
       const bookData = {
@@ -275,7 +220,7 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         author: book.author,
         series: null,
         file_url: downloadData.fileUrl,
-        file_type: resolvedType || "epub",
+        file_type: resolvedType,
         file_size: downloadData.fileSize,
         last_page_read: 0,
         reading_progress: 0,
@@ -298,8 +243,8 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       console.error("Error adding book:", error);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to add book",
+        title: "Download failed",
+        description: error.message || "Failed to add book. Try a different source.",
       });
     } finally {
       setDownloading(null);
@@ -315,15 +260,15 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Sources</SelectItem>
-            <SelectItem value="gutenberg">Project Gutenberg (70K+ books)</SelectItem>
-            <SelectItem value="archive">Internet Archive</SelectItem>
-            <SelectItem value="openlibrary">Open Library</SelectItem>
-            <SelectItem value="mangadex">MangaDex (Manga/Manhwa)</SelectItem>
-            <SelectItem value="royalroad">RoyalRoad (Web Novels)</SelectItem>
-            <SelectItem value="wattpad">Wattpad (Free Stories)</SelectItem>
+            <SelectItem value="all">All Sources (Recommended)</SelectItem>
+            <SelectItem value="gutenberg">Project Gutenberg (70K+ free books)</SelectItem>
+            <SelectItem value="archive">Internet Archive (Millions of books)</SelectItem>
+            <SelectItem value="openlibrary">Open Library (Browse only)</SelectItem>
           </SelectContent>
         </Select>
+        <p className="text-xs text-muted-foreground">
+          Project Gutenberg and Internet Archive provide direct downloads
+        </p>
       </div>
 
       <div className="space-y-2">
