@@ -4,11 +4,14 @@ import { Navigation } from "@/components/Navigation";
 import { BookCard } from "@/components/BookCard";
 import { UploadDialog } from "@/components/UploadDialog";
 import { AddFromUrlDialog } from "@/components/AddFromUrlDialog";
+import { OfflineLibrary } from "@/components/OfflineLibrary";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, BookOpen, Upload, Link } from "lucide-react";
+import { Plus, Search, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,10 +26,12 @@ interface Book {
   author: string | null;
   series: string | null;
   cover_url: string | null;
+  file_url: string;
   file_type: string;
   is_public: boolean;
   is_completed: boolean;
   reading_progress: number;
+  last_page_read: number | null;
 }
 
 const Library = () => {
@@ -115,18 +120,20 @@ const Library = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
       <Navigation userEmail={user.email} />
       
+      <OfflineIndicator />
+      
       <main className="container mx-auto px-4 py-8">
         <div className="flex flex-col gap-6 mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold mb-2">My Library</h1>
-              <p className="text-muted-foreground">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">My Library</h1>
+              <p className="text-sm sm:text-base text-muted-foreground">
                 {books.length} {books.length === 1 ? "book" : "books"} in your collection
               </p>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="lg" className="gap-2">
+                <Button size="lg" className="gap-2 w-full sm:w-auto">
                   <Plus className="w-5 h-5" />
                   Add Book
                 </Button>
@@ -144,16 +151,28 @@ const Library = () => {
             </DropdownMenu>
           </div>
 
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search by title, author, or series..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
+          <Tabs defaultValue="library" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="library" className="gap-2">
+                <LibraryIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Library</span>
+              </TabsTrigger>
+              <TabsTrigger value="offline" className="gap-2">
+                <CloudOff className="w-4 h-4" />
+                <span className="hidden sm:inline">Offline</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="library">
+              <div className="relative max-w-md mb-6">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Search by title, author, or series..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -206,10 +225,12 @@ const Library = () => {
                       author={book.author || undefined}
                       series={book.series || undefined}
                       coverUrl={book.cover_url || undefined}
+                      fileUrl={book.file_url}
                       fileType={book.file_type}
                       isPublic={book.is_public}
                       isCompleted={book.is_completed}
                       readingProgress={book.reading_progress}
+                      lastPageRead={book.last_page_read || 0}
                       canEdit={true}
                       onClick={() => navigate(`/reader/${book.id}`)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
@@ -234,10 +255,12 @@ const Library = () => {
                       author={book.author || undefined}
                       series={book.series || undefined}
                       coverUrl={book.cover_url || undefined}
+                      fileUrl={book.file_url}
                       fileType={book.file_type}
                       isPublic={book.is_public}
                       isCompleted={book.is_completed}
                       readingProgress={book.reading_progress}
+                      lastPageRead={book.last_page_read || 0}
                       canEdit={true}
                       onClick={() => navigate(`/reader/${book.id}`)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
@@ -248,6 +271,13 @@ const Library = () => {
             )}
           </div>
         )}
+            </TabsContent>
+
+            <TabsContent value="offline">
+              <OfflineLibrary />
+            </TabsContent>
+          </Tabs>
+        </div>
       </main>
 
       <UploadDialog
