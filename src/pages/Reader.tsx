@@ -16,7 +16,8 @@ import {
   Volume2,
   VolumeX,
   Highlighter,
-  StickyNote
+  StickyNote,
+  CloudOff
 } from "lucide-react";
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -25,6 +26,9 @@ import { EpubReader } from "@/components/EpubReader";
 import { ComicReader } from "@/components/ComicReader";
 import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+import { Badge } from "@/components/ui/badge";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -44,6 +48,7 @@ const Reader = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isOnline, getOfflineFile, isBookOffline } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,6 +66,7 @@ const Reader = () => {
   const [selectedText, setSelectedText] = useState("");
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isReadingOffline, setIsReadingOffline] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
 
@@ -101,6 +107,42 @@ const Reader = () => {
 
   const fetchBook = async () => {
     try {
+      // First check if book is available offline
+      if (bookId && isBookOffline(bookId)) {
+        const offlineFile = await getOfflineFile(bookId);
+        if (offlineFile) {
+          // Get book metadata from database (may fail if offline)
+          try {
+            const { data } = await supabase
+              .from("books")
+              .select("*")
+              .eq("id", bookId)
+              .maybeSingle();
+              
+            if (data) {
+              setBook(data);
+              setCurrentPage(data.last_page_read || 1);
+              setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+            }
+          } catch {
+            // If we can't fetch from DB, continue with offline data
+          }
+          
+          // Create URL from offline blob
+          const url = URL.createObjectURL(offlineFile);
+          setSignedUrl(url);
+          setIsReadingOffline(true);
+          setLoading(false);
+          
+          toast({
+            title: "Reading offline",
+            description: "Book loaded from offline storage",
+          });
+          return;
+        }
+      }
+      
+      // Online fetch
       const { data, error } = await supabase
         .from("books")
         .select("*")
@@ -127,11 +169,20 @@ const Reader = () => {
       
       setLoading(false);
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load book",
-      });
+      // If offline and no cached book, show error
+      if (!isOnline) {
+        toast({
+          variant: "destructive",
+          title: "Offline",
+          description: "This book is not available offline. Save it for offline reading first.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load book",
+        });
+      }
       navigate("/");
     }
   };
@@ -341,10 +392,18 @@ const Reader = () => {
                 <span className="hidden sm:inline">Back to Library</span>
               </Button>
               <div className="border-l h-6 mx-1 sm:mx-2 hidden sm:block" />
-              <div className="min-w-0 flex-1">
-                <h1 className="font-semibold truncate text-sm sm:text-base">{book.title}</h1>
-                {book.author && (
-                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{book.author}</p>
+              <div className="min-w-0 flex-1 flex items-center gap-2">
+                <div>
+                  <h1 className="font-semibold truncate text-sm sm:text-base">{book.title}</h1>
+                  {book.author && (
+                    <p className="text-xs sm:text-sm text-muted-foreground truncate">{book.author}</p>
+                  )}
+                </div>
+                {isReadingOffline && (
+                  <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0">
+                    <CloudOff className="w-3 h-3 mr-1" />
+                    Offline
+                  </Badge>
                 )}
               </div>
             </div>

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Search, Book, Loader2, Download, ExternalLink } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 interface BookResult {
   id: string;
@@ -41,19 +42,36 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
     });
     if (error || !data?.success) return [];
     const api = data.data;
-    return (api.results || []).map((book: any) => ({
-      id: `gutenberg-${book.id}`,
-      title: book.title,
-      author: book.authors.map((a: any) => a.name).join(", ") || "Unknown",
-      source: "Project Gutenberg",
-      formats: book.formats,
-      coverUrl: book.formats?.["image/jpeg"],
-      externalUrl: `https://www.gutenberg.org/ebooks/${book.id}`,
-    }));
+    return (api.results || []).map((book: any) => {
+      // Get the best available format
+      const formats: { [key: string]: string } = {};
+      if (book.formats?.["application/epub+zip"]) {
+        formats["application/epub+zip"] = book.formats["application/epub+zip"];
+      }
+      if (book.formats?.["application/pdf"]) {
+        formats["application/pdf"] = book.formats["application/pdf"];
+      }
+      if (book.formats?.["text/plain; charset=utf-8"]) {
+        formats["text/plain"] = book.formats["text/plain; charset=utf-8"];
+      }
+      if (book.formats?.["text/plain"]) {
+        formats["text/plain"] = book.formats["text/plain"];
+      }
+      
+      return {
+        id: `gutenberg-${book.id}`,
+        title: book.title,
+        author: book.authors.map((a: any) => a.name).join(", ") || "Unknown",
+        source: "Project Gutenberg",
+        formats,
+        downloadUrl: formats["application/epub+zip"] || formats["application/pdf"] || formats["text/plain"],
+        coverUrl: book.formats?.["image/jpeg"],
+        externalUrl: `https://www.gutenberg.org/ebooks/${book.id}`,
+      };
+    });
   };
 
   const searchInternetArchive = async (query: string): Promise<BookResult[]> => {
-    // Search for texts with epub or pdf availability
     const { data, error } = await supabase.functions.invoke("public-library-proxy", {
       body: {
         url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:texts&fl=identifier,title,creator,format&rows=30&page=1&output=json`,
@@ -68,16 +86,16 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         const formats = Array.isArray(doc.format) ? doc.format : [doc.format].filter(Boolean);
         const formatStr = formats.join(" ").toLowerCase();
         
-        // Check for available formats
         const hasEpub = formatStr.includes("epub");
         const hasPdf = formatStr.includes("pdf");
-        const hasCbz = formatStr.includes("cbz") || formatStr.includes("comic");
+        const hasCbz = formatStr.includes("cbz") || formatStr.includes("comic book archive");
         
         if (!hasEpub && !hasPdf && !hasCbz) return null;
         
-        // Build format URLs - Internet Archive has consistent URL patterns
         const formatUrls: { [key: string]: string } = {};
         
+        // Internet Archive uses the identifier as part of the download URL
+        // We'll let the download function find the actual file
         if (hasEpub) {
           formatUrls["application/epub+zip"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}.epub`;
         }
@@ -102,10 +120,9 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   };
 
   const searchInternetArchiveManga = async (query: string): Promise<BookResult[]> => {
-    // Search specifically for manga/comics
     const { data, error } = await supabase.functions.invoke("public-library-proxy", {
       body: {
-        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+(subject:manga+OR+subject:comic+OR+subject:manhwa+OR+subject:manhua)&fl=identifier,title,creator,format&rows=30&page=1&output=json`,
+        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+(subject:manga+OR+subject:comic+OR+subject:manhwa+OR+subject:manhua+OR+subject:webtoon)&fl=identifier,title,creator,format&rows=30&page=1&output=json`,
         responseType: "json",
       },
     });
@@ -117,14 +134,14 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         const formats = Array.isArray(doc.format) ? doc.format : [doc.format].filter(Boolean);
         const formatStr = formats.join(" ").toLowerCase();
         
-        const hasCbz = formatStr.includes("cbz") || formatStr.includes("zip");
+        const hasCbz = formatStr.includes("cbz") || formatStr.includes("zip") || formatStr.includes("comic");
         const hasPdf = formatStr.includes("pdf");
         
         if (!hasCbz && !hasPdf) return null;
         
         const formatUrls: { [key: string]: string } = {};
         if (hasCbz) {
-          formatUrls["application/x-cbz"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}_cbz.cbz`;
+          formatUrls["application/x-cbz"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}.cbz`;
         }
         if (hasPdf) {
           formatUrls["application/pdf"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}.pdf`;
@@ -157,7 +174,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       .filter((doc: any) => doc.has_fulltext && doc.ia)
       .slice(0, 15)
       .map((doc: any) => {
-        // Get the first Internet Archive identifier
         const iaId = Array.isArray(doc.ia) ? doc.ia[0] : doc.ia;
         
         return {
@@ -165,7 +181,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           title: doc.title,
           author: doc.author_name?.join(", ") || "Unknown",
           source: "Open Library",
-          // Link to Internet Archive for actual download
           downloadUrl: iaId ? `https://archive.org/download/${iaId}/${iaId}.epub` : undefined,
           formats: iaId ? {
             "application/epub+zip": `https://archive.org/download/${iaId}/${iaId}.epub`,
@@ -178,7 +193,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
   };
 
   const searchStandardEbooks = async (query: string): Promise<BookResult[]> => {
-    // Standard Ebooks provides OPDS feed
     const { data, error } = await supabase.functions.invoke("public-library-proxy", {
       body: {
         url: `https://standardebooks.org/opds/all`,
@@ -191,7 +205,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
     const results: BookResult[] = [];
     const lowerQuery = query.toLowerCase();
     
-    // Parse XML to find matching entries
     const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
     let match;
     
@@ -205,32 +218,110 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       const title = titleMatch?.[1] || "";
       const author = authorMatch?.[1] || "Unknown";
       
-      // Filter by search query
       if (!title.toLowerCase().includes(lowerQuery) && 
           !author.toLowerCase().includes(lowerQuery)) {
         continue;
       }
       
-      // Extract epub link
-      const epubMatch = entry.match(/href="([^"]+\.epub[^"]*)"/);
-      const epubUrl = epubMatch?.[1];
+      // Find all epub links and prefer the non-advanced one
+      const epubMatches = [...entry.matchAll(/href="([^"]+\.epub[^"]*)"/g)];
+      let epubUrl = "";
+      
+      for (const m of epubMatches) {
+        const url = m[1];
+        if (!url.includes("advanced")) {
+          epubUrl = url;
+          break;
+        }
+      }
+      if (!epubUrl && epubMatches.length > 0) {
+        epubUrl = epubMatches[0][1];
+      }
       
       if (epubUrl && title) {
+        const fullUrl = epubUrl.startsWith("http") ? epubUrl : `https://standardebooks.org${epubUrl}`;
         results.push({
           id: `standardebooks-${idMatch?.[1] || title}`,
           title: title,
           author: author,
           source: "Standard Ebooks",
-          downloadUrl: epubUrl.startsWith("http") ? epubUrl : `https://standardebooks.org${epubUrl}`,
+          downloadUrl: fullUrl,
           formats: {
-            "application/epub+zip": epubUrl.startsWith("http") ? epubUrl : `https://standardebooks.org${epubUrl}`,
+            "application/epub+zip": fullUrl,
           },
-          externalUrl: `https://standardebooks.org/ebooks/${title.toLowerCase().replace(/\s+/g, "-")}`,
+          externalUrl: `https://standardebooks.org`,
         });
       }
     }
     
     return results;
+  };
+
+  // Search for light novels on Internet Archive
+  const searchLightNovels = async (query: string): Promise<BookResult[]> => {
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+(subject:"light novel"+OR+subject:lightnovel+OR+title:"light novel")&fl=identifier,title,creator,format&rows=30&page=1&output=json`,
+        responseType: "json",
+      },
+    });
+    if (error || !data?.success) return [];
+    const api = data.data;
+    
+    return (api.response?.docs || [])
+      .map((doc: any) => {
+        const formats = Array.isArray(doc.format) ? doc.format : [doc.format].filter(Boolean);
+        const formatStr = formats.join(" ").toLowerCase();
+        
+        const hasEpub = formatStr.includes("epub");
+        const hasPdf = formatStr.includes("pdf");
+        
+        if (!hasEpub && !hasPdf) return null;
+        
+        const formatUrls: { [key: string]: string } = {};
+        if (hasEpub) {
+          formatUrls["application/epub+zip"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}.epub`;
+        }
+        if (hasPdf) {
+          formatUrls["application/pdf"] = `https://archive.org/download/${doc.identifier}/${doc.identifier}.pdf`;
+        }
+        
+        return {
+          id: `archive-ln-${doc.identifier}`,
+          title: doc.title || "Unknown Title",
+          author: doc.creator || "Unknown",
+          source: "Internet Archive (Light Novels)",
+          formats: formatUrls,
+          downloadUrl: formatUrls["application/epub+zip"] || formatUrls["application/pdf"],
+          externalUrl: `https://archive.org/details/${doc.identifier}`,
+        };
+      })
+      .filter(Boolean) as BookResult[];
+  };
+
+  // Search for audiobooks on Internet Archive
+  const searchAudiobooks = async (query: string): Promise<BookResult[]> => {
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: {
+        url: `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+AND+mediatype:audio+AND+(subject:audiobook+OR+subject:"audio book"+OR+collection:librivoxaudio)&fl=identifier,title,creator,format&rows=20&page=1&output=json`,
+        responseType: "json",
+      },
+    });
+    if (error || !data?.success) return [];
+    
+    toast({
+      title: "Audiobooks",
+      description: "Audiobooks can be listened to on Internet Archive. Click to open.",
+    });
+    
+    const api = data.data;
+    return (api.response?.docs || []).slice(0, 10).map((doc: any) => ({
+      id: `archive-audio-${doc.identifier}`,
+      title: doc.title || "Unknown Title",
+      author: doc.creator || "Unknown",
+      source: "LibriVox / Internet Archive",
+      externalUrl: `https://archive.org/details/${doc.identifier}`,
+    }));
   };
 
   const searchBooks = async () => {
@@ -262,6 +353,12 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           break;
         case "manga":
           searchResults = await searchInternetArchiveManga(searchQuery);
+          break;
+        case "lightnovels":
+          searchResults = await searchLightNovels(searchQuery);
+          break;
+        case "audiobooks":
+          searchResults = await searchAudiobooks(searchQuery);
           break;
         case "all":
           const [gut, arch, openLib, standard] = await Promise.allSettled([
@@ -305,11 +402,11 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
       let url = book.downloadUrl;
       let preferredType = "epub";
 
-      // Handle sources that provide multiple formats
       if (book.formats) {
         const epubUrl = book.formats["application/epub+zip"];
         const pdfUrl = book.formats["application/pdf"];
         const cbzUrl = book.formats["application/x-cbz"];
+        const txtUrl = book.formats["text/plain"];
         
         if (epubUrl) {
           url = epubUrl;
@@ -320,6 +417,9 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
         } else if (cbzUrl) {
           url = cbzUrl;
           preferredType = "cbz";
+        } else if (txtUrl) {
+          url = txtUrl;
+          preferredType = "txt";
         }
       }
 
@@ -342,7 +442,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
 
       console.log("Downloading from URL:", url);
 
-      // Download via backend function
       const { data: downloadData, error: downloadError } = await supabase.functions.invoke(
         "download-book",
         {
@@ -362,13 +461,11 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
 
       const resolvedType = String(downloadData.fileType || preferredType).toLowerCase();
       
-      // Validate the file type
       const validTypes = ["epub", "pdf", "cbz", "cbr", "txt"];
       if (!validTypes.includes(resolvedType)) {
         throw new Error(`Unsupported file type: ${resolvedType}. Only EPUB, PDF, CBZ, CBR, and TXT are supported.`);
       }
 
-      // Create book entry using the actual downloaded file type
       const bookData = {
         user_id: user.id,
         title: book.title,
@@ -433,11 +530,13 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
             <SelectItem value="archive">Internet Archive (Millions of books)</SelectItem>
             <SelectItem value="openlibrary">Open Library (With downloads)</SelectItem>
             <SelectItem value="standardebooks">Standard Ebooks (High quality)</SelectItem>
-            <SelectItem value="manga">Manga / Comics (Internet Archive)</SelectItem>
+            <SelectItem value="manga">Manga / Comics</SelectItem>
+            <SelectItem value="lightnovels">Light Novels</SelectItem>
+            <SelectItem value="audiobooks">Audiobooks (LibriVox)</SelectItem>
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          All sources provide free, legal downloads of public domain books
+          All sources provide free, legal downloads of public domain content
         </p>
       </div>
 
@@ -482,45 +581,49 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
                   ) : (
                     <Book className="w-8 h-8 text-muted-foreground shrink-0" />
                   )}
+                  
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm sm:text-base break-words">{book.title}</h4>
-                    <p className="text-xs sm:text-sm text-muted-foreground">{book.author}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Source: {book.source}
-                    </p>
-                    {badges && badges.length > 0 && (
-                      <div className="flex gap-2 mt-2 text-xs flex-wrap">
-                        {badges.map((badge) => (
-                          <span key={badge} className="px-2 py-1 bg-primary/10 text-primary rounded">
-                            {badge}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    <h4 className="font-medium text-sm truncate">{book.title}</h4>
+                    <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                      <Badge variant="outline" className="text-xs">
+                        {book.source}
+                      </Badge>
+                      {badges?.map((badge) => (
+                        <Badge key={badge} variant="secondary" className="text-xs">
+                          {badge}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
+                  
                   <div className="flex gap-2 shrink-0">
+                    {hasDownload ? (
+                      <Button
+                        size="sm"
+                        onClick={() => addBook(book)}
+                        disabled={downloading === book.id}
+                      >
+                        {downloading === book.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Download className="w-4 h-4 mr-1" />
+                            Add
+                          </>
+                        )}
+                      </Button>
+                    ) : null}
+                    
                     {book.externalUrl && (
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => window.open(book.externalUrl, "_blank")}
-                        className="w-full sm:w-auto"
                       >
                         <ExternalLink className="w-4 h-4" />
                       </Button>
                     )}
-                    <Button
-                      size="sm"
-                      onClick={() => addBook(book)}
-                      disabled={downloading === book.id || !hasDownload}
-                      className="w-full sm:w-auto"
-                    >
-                      {downloading === book.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Download className="w-4 h-4" />
-                      )}
-                    </Button>
                   </div>
                 </div>
               );
@@ -528,18 +631,6 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
           </div>
         </ScrollArea>
       )}
-
-      <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 p-3 rounded-lg">
-        <p className="font-medium">About sources:</p>
-        <p>• <strong>Project Gutenberg</strong>: Classic literature, public domain</p>
-        <p>• <strong>Internet Archive</strong>: Massive collection of all types</p>
-        <p>• <strong>Open Library</strong>: Books linked to Internet Archive</p>
-        <p>• <strong>Standard Ebooks</strong>: Beautifully formatted classics</p>
-        <p>• <strong>Manga/Comics</strong>: Public domain manga from Internet Archive</p>
-        <p className="mt-2 text-muted-foreground/80">
-          Note: Wattpad and MangaDex don't offer direct downloads. For those, use the "Add from URL" option with a direct file link.
-        </p>
-      </div>
     </div>
   );
 };

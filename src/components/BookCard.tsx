@@ -1,12 +1,13 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BookOpen, Globe, Lock, Sparkles, Edit, CheckCircle2 } from "lucide-react";
+import { BookOpen, Globe, Lock, Sparkles, Edit, CheckCircle2, Download, CloudOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { EditBookDialog } from "./EditBookDialog";
+import { OfflineBookButton } from "./OfflineBookButton";
 
 interface BookCardProps {
   id: string;
@@ -14,10 +15,12 @@ interface BookCardProps {
   author?: string;
   series?: string;
   coverUrl?: string;
+  fileUrl?: string;
   fileType: string;
   isPublic: boolean;
   isCompleted?: boolean;
   readingProgress?: number;
+  lastPageRead?: number;
   canEdit?: boolean;
   onClick?: () => void;
   onCoverGenerated?: () => void;
@@ -29,10 +32,12 @@ export const BookCard = ({
   author,
   series,
   coverUrl,
+  fileUrl,
   fileType,
   isPublic,
   isCompleted = false,
   readingProgress = 0,
+  lastPageRead = 0,
   canEdit = false,
   onClick,
   onCoverGenerated,
@@ -128,7 +133,7 @@ export const BookCard = ({
             </div>
           )}
 
-          {/* Badges */}
+          {/* Badges and actions */}
           <div className="absolute top-2 right-2 flex flex-col gap-1">
             {canEdit && (
               <Button
@@ -139,6 +144,21 @@ export const BookCard = ({
               >
                 <Edit className="w-3 h-3" />
               </Button>
+            )}
+            {fileUrl && (
+              <OfflineBookButton
+                book={{
+                  id,
+                  title,
+                  author: author || null,
+                  file_url: fileUrl,
+                  file_type: fileType,
+                  cover_url: coverUrl || null,
+                  last_page_read: lastPageRead,
+                }}
+                size="sm"
+                variant="secondary"
+              />
             )}
             {isPublic ? (
               <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm">
