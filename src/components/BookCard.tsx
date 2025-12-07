@@ -1,13 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { BookOpen, Globe, Lock, Sparkles, Edit, CheckCircle2, Download, CloudOff } from "lucide-react";
+import { BookOpen, Globe, Lock, CheckCircle2, CloudOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
-import { EditBookDialog } from "./EditBookDialog";
-import { OfflineBookButton } from "./OfflineBookButton";
+import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 
 interface BookCardProps {
   id: string;
@@ -32,61 +27,16 @@ export const BookCard = ({
   author,
   series,
   coverUrl,
-  fileUrl,
   fileType,
   isPublic,
   isCompleted = false,
   readingProgress = 0,
-  lastPageRead = 0,
-  canEdit = false,
   onClick,
-  onCoverGenerated,
 }: BookCardProps) => {
-  const [generating, setGenerating] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const { toast } = useToast();
-
-  const handleGenerateCover = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setGenerating(true);
-
-    try {
-      const { error } = await supabase.functions.invoke('generate-cover', {
-        body: { bookId: id }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Cover generated!",
-        description: "Your book cover has been created",
-      });
-      
-      onCoverGenerated?.();
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to generate cover",
-      });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditDialogOpen(true);
-  };
+  const { isBookOffline } = useOfflineBooks();
+  const isOffline = isBookOffline(id);
 
   return (
-    <>
-      <EditBookDialog
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        book={{ id, title, author: author || null, series: series || null, cover_url: coverUrl || null }}
-        onSuccess={() => onCoverGenerated?.()}
-      />
     <Card
       className={cn(
         "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1",
@@ -108,24 +58,12 @@ export const BookCard = ({
           ) : (
             <div className="flex flex-col items-center justify-center w-full h-full gap-3">
               <BookOpen className="w-16 h-16 text-muted-foreground/40" />
-              {canEdit && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={handleGenerateCover}
-                  disabled={generating}
-                  className="text-xs"
-                >
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  {generating ? "Generating..." : "Generate Cover"}
-                </Button>
-              )}
             </div>
           )}
           
           {/* Progress bar */}
           {readingProgress > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20">
               <div 
                 className="h-full bg-primary transition-all duration-300"
                 style={{ width: `${readingProgress}%` }}
@@ -133,42 +71,20 @@ export const BookCard = ({
             </div>
           )}
 
-          {/* Badges and actions */}
+          {/* Status badges */}
           <div className="absolute top-2 right-2 flex flex-col gap-1">
-            {canEdit && (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-6 w-6 p-0 bg-white/90 backdrop-blur-sm"
-                onClick={handleEdit}
-              >
-                <Edit className="w-3 h-3" />
-              </Button>
-            )}
-            {fileUrl && (
-              <OfflineBookButton
-                book={{
-                  id,
-                  title,
-                  author: author || null,
-                  file_url: fileUrl,
-                  file_type: fileType,
-                  cover_url: coverUrl || null,
-                  last_page_read: lastPageRead,
-                }}
-                size="sm"
-                variant="secondary"
-              />
+            {isOffline && (
+              <Badge variant="secondary" className="bg-green-500/90 text-white border-0 text-xs">
+                <CloudOff className="w-3 h-3" />
+              </Badge>
             )}
             {isPublic ? (
-              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm">
-                <Globe className="w-3 h-3 mr-1" />
-                Public
+              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm text-xs">
+                <Globe className="w-3 h-3" />
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm">
-                <Lock className="w-3 h-3 mr-1" />
-                Private
+              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm text-xs">
+                <Lock className="w-3 h-3" />
               </Badge>
             )}
           </div>
@@ -182,6 +98,15 @@ export const BookCard = ({
             </div>
           )}
 
+          {/* File type badge */}
+          <Badge 
+            variant="secondary" 
+            className="absolute top-2 left-2 bg-black/50 text-white border-0 text-xs uppercase"
+          >
+            {fileType}
+          </Badge>
+
+          {/* Title and author overlay */}
           <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black/80 to-transparent">
             {isCompleted && (
               <Badge className="bg-green-500 mb-2 text-xs">
@@ -200,6 +125,5 @@ export const BookCard = ({
         </div>
       </CardContent>
     </Card>
-    </>
   );
 };
