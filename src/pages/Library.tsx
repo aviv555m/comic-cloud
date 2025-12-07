@@ -6,6 +6,7 @@ import { UploadDialog } from "@/components/UploadDialog";
 import { AddFromUrlDialog } from "@/components/AddFromUrlDialog";
 import { OfflineLibrary } from "@/components/OfflineLibrary";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { BookDetailsDialog } from "@/components/BookDetailsDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +33,9 @@ interface Book {
   is_completed: boolean;
   reading_progress: number;
   last_page_read: number | null;
+  total_pages: number | null;
+  file_size: number | null;
+  created_at: string;
 }
 
 const Library = () => {
@@ -41,6 +45,7 @@ const Library = () => {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -232,7 +237,7 @@ const Library = () => {
                       readingProgress={book.reading_progress}
                       lastPageRead={book.last_page_read || 0}
                       canEdit={true}
-                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onClick={() => setSelectedBook(book)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
                     />
                   ))}
@@ -262,7 +267,7 @@ const Library = () => {
                       readingProgress={book.reading_progress}
                       lastPageRead={book.last_page_read || 0}
                       canEdit={true}
-                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onClick={() => setSelectedBook(book)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
                     />
                   ))}
@@ -292,6 +297,17 @@ const Library = () => {
         onOpenChange={setUrlDialogOpen}
         onSuccess={() => user && fetchBooks(user.id)}
       />
+
+      {selectedBook && (
+        <BookDetailsDialog
+          open={!!selectedBook}
+          onOpenChange={(open) => !open && setSelectedBook(null)}
+          book={selectedBook}
+          canEdit={true}
+          onUpdate={() => user && fetchBooks(user.id)}
+          onDelete={() => user && fetchBooks(user.id)}
+        />
+      )}
     </div>
   );
 };
