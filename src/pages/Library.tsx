@@ -7,6 +7,8 @@ import { AddFromUrlDialog } from "@/components/AddFromUrlDialog";
 import { OfflineLibrary } from "@/components/OfflineLibrary";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { BookDetailsDialog } from "@/components/BookDetailsDialog";
+import { ReadingGoals } from "@/components/ReadingGoals";
+import { ContinueReading } from "@/components/ContinueReading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +48,11 @@ const Library = () => {
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [readingStats, setReadingStats] = useState({
+    currentStreak: 0,
+    todayMinutes: 0,
+    weeklyMinutes: 0,
+  });
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -85,6 +92,9 @@ const Library = () => {
 
       if (error) throw error;
       setBooks(data || []);
+      
+      // Fetch reading stats for goals widget
+      fetchReadingStats(userId);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -93,6 +103,59 @@ const Library = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchReadingStats = async (userId: string) => {
+    try {
+      const { data: sessions } = await supabase
+        .from("reading_sessions")
+        .select("*")
+        .eq("user_id", userId)
+        .order("start_time", { ascending: false });
+
+      if (!sessions) return;
+
+      const today = new Date().toDateString();
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      // Today's reading time
+      const todayMinutes = sessions
+        .filter(s => new Date(s.start_time).toDateString() === today)
+        .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+
+      // Weekly reading time
+      const weeklyMinutes = sessions
+        .filter(s => new Date(s.start_time) >= weekAgo)
+        .reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+
+      // Calculate current streak
+      const dates = sessions
+        .map(s => new Date(s.start_time).toDateString())
+        .filter((date, i, self) => self.indexOf(date) === i)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+      let currentStreak = 0;
+      const todayStr = new Date().toDateString();
+      const yesterdayStr = new Date(Date.now() - 86400000).toDateString();
+
+      if (dates[0] === todayStr || dates[0] === yesterdayStr) {
+        currentStreak = 1;
+        for (let i = 1; i < dates.length; i++) {
+          const prev = new Date(dates[i - 1]).getTime();
+          const curr = new Date(dates[i]).getTime();
+          if (Math.round((prev - curr) / 86400000) === 1) {
+            currentStreak++;
+          } else {
+            break;
+          }
+        }
+      }
+
+      setReadingStats({ currentStreak, todayMinutes, weeklyMinutes });
+    } catch (error) {
+      console.error("Error fetching reading stats:", error);
     }
   };
 
@@ -169,14 +232,36 @@ const Library = () => {
             </TabsList>
 
             <TabsContent value="library">
-              <div className="relative max-w-md mb-6">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search by title, author, or series..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+              {/* Continue Reading Section */}
+              {books.find(b => b.reading_progress > 0 && b.reading_progress < 100) && (
+                <div className="mb-6">
+                  <ContinueReading 
+                    book={books
+                      .filter(b => b.reading_progress > 0 && b.reading_progress < 100)
+                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null
+                    }
+                  />
+                </div>
+              )}
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+                <div className="lg:col-span-3">
+                  <div className="relative max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                    <Input
+                      placeholder="Search by title, author, or series..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="hidden lg:block">
+                  <ReadingGoals
+                    currentStreak={readingStats.currentStreak}
+                    todayMinutes={readingStats.todayMinutes}
+                    weeklyMinutes={readingStats.weeklyMinutes}
+                  />
+                </div>
               </div>
 
         {loading ? (

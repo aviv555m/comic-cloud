@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -71,13 +71,103 @@ const Reader = () => {
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
+  const startPageRef = useRef<number>(1);
+  const lastUpdateRef = useRef<Date>(new Date());
+
+  // Start reading session
+  const startReadingSession = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !bookId) return;
+
+    const { data } = await supabase
+      .from("reading_sessions")
+      .insert({
+        book_id: bookId,
+        user_id: user.id,
+        start_time: new Date().toISOString(),
+        pages_read: 0,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setSessionId(data.id);
+      sessionStartTime.current = new Date();
+      startPageRef.current = currentPage;
+      lastUpdateRef.current = new Date();
+    }
+  }, [bookId, currentPage]);
+
+  // Update session periodically
+  const updateSessionProgress = useCallback(async () => {
+    if (!sessionId) return;
+
+    const now = new Date();
+    const durationMinutes = Math.max(1, Math.round(
+      (now.getTime() - sessionStartTime.current.getTime()) / 60000
+    ));
+    const pagesRead = Math.max(1, Math.abs(currentPage - startPageRef.current));
+
+    await supabase
+      .from("reading_sessions")
+      .update({
+        end_time: now.toISOString(),
+        duration_minutes: durationMinutes,
+        pages_read: pagesRead,
+      })
+      .eq("id", sessionId);
+    
+    lastUpdateRef.current = now;
+  }, [sessionId, currentPage]);
+
+  // End reading session
+  const endReadingSession = useCallback(async () => {
+    if (!sessionId) return;
+
+    const endTime = new Date();
+    const durationMinutes = Math.max(1, Math.round(
+      (endTime.getTime() - sessionStartTime.current.getTime()) / 60000
+    ));
+    const pagesRead = Math.max(1, Math.abs(currentPage - startPageRef.current));
+
+    await supabase
+      .from("reading_sessions")
+      .update({
+        end_time: endTime.toISOString(),
+        duration_minutes: durationMinutes,
+        pages_read: pagesRead,
+      })
+      .eq("id", sessionId);
+  }, [sessionId, currentPage]);
 
   useEffect(() => {
     if (!bookId) return;
     fetchBook();
     startReadingSession();
 
+    // Periodic session updates every 30 seconds
+    const updateInterval = setInterval(() => {
+      updateSessionProgress();
+    }, 30000);
+
+    // Handle visibility change
+    const handleVisibility = () => {
+      if (document.hidden) {
+        updateSessionProgress();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Handle page unload
+    const handleUnload = () => {
+      endReadingSession();
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
     return () => {
+      clearInterval(updateInterval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", handleUnload);
       endReadingSession();
     };
   }, [bookId]);
@@ -187,44 +277,6 @@ const Reader = () => {
       }
       navigate("/");
     }
-  };
-
-  const startReadingSession = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !bookId) return;
-
-    const { data } = await supabase
-      .from("reading_sessions")
-      .insert({
-        book_id: bookId,
-        user_id: user.id,
-        start_time: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (data) {
-      setSessionId(data.id);
-      sessionStartTime.current = new Date();
-    }
-  };
-
-  const endReadingSession = async () => {
-    if (!sessionId) return;
-
-    const endTime = new Date();
-    const durationMinutes = Math.round(
-      (endTime.getTime() - sessionStartTime.current.getTime()) / 60000
-    );
-
-    await supabase
-      .from("reading_sessions")
-      .update({
-        end_time: endTime.toISOString(),
-        duration_minutes: durationMinutes,
-        pages_read: currentPage - (book?.last_page_read || 0),
-      })
-      .eq("id", sessionId);
   };
 
   const updateProgress = async (page: number, total?: number) => {
