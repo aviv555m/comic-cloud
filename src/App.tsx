@@ -12,6 +12,8 @@ import Series from "./pages/Series";
 import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
+import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
+import { useServiceWorker } from "./hooks/useServiceWorker";
 
 const queryClient = new QueryClient();
 
@@ -32,29 +34,53 @@ const applyTheme = () => {
   document.documentElement.style.setProperty("--font-size-root", `${fontSize}px`);
 };
 
-const App = () => {
+const AppContent = () => {
+  const { isUpdateAvailable, updateServiceWorker } = useServiceWorker();
+
   useEffect(() => {
     applyTheme();
   }, []);
 
   return (
+    <>
+      <Toaster />
+      <Sonner />
+      <PWAInstallPrompt />
+      {isUpdateAvailable && (
+        <div className="fixed top-4 left-4 right-4 z-50 sm:left-auto sm:right-4 sm:w-80">
+          <div className="bg-primary text-primary-foreground p-3 rounded-lg shadow-lg text-sm">
+            <p className="font-medium">Update available</p>
+            <button 
+              onClick={updateServiceWorker}
+              className="mt-2 underline text-xs"
+            >
+              Click to update
+            </button>
+          </div>
+        </div>
+      )}
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Library />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/reader/:bookId" element={<Reader />} />
+          <Route path="/public" element={<PublicLibrary />} />
+          <Route path="/series/:seriesName" element={<Series />} />
+          <Route path="/statistics" element={<Statistics />} />
+          <Route path="/settings" element={<Settings />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </>
+  );
+};
+
+const App = () => {
+  return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Library />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/reader/:bookId" element={<Reader />} />
-            <Route path="/public" element={<PublicLibrary />} />
-            <Route path="/series/:seriesName" element={<Series />} />
-            <Route path="/statistics" element={<Statistics />} />
-            <Route path="/settings" element={<Settings />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <AppContent />
       </TooltipProvider>
     </QueryClientProvider>
   );
