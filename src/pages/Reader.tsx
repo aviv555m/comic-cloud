@@ -28,6 +28,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 
 // Configure PDF.js worker
@@ -67,6 +68,7 @@ const Reader = () => {
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isReadingOffline, setIsReadingOffline] = useState(false);
+  const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
 
@@ -262,7 +264,8 @@ const Reader = () => {
     }
   };
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+  const onDocumentLoadSuccess = async (pdf: any) => {
+    const { numPages } = pdf;
     setNumPages(numPages);
     
     // Update total pages if not set
@@ -271,6 +274,48 @@ const Reader = () => {
         .from("books")
         .update({ total_pages: numPages })
         .eq("id", book.id);
+    }
+
+    // Extract PDF outline/chapters
+    try {
+      const outline = await pdf.getOutline();
+      if (outline && outline.length > 0) {
+        const extractedChapters: Chapter[] = [];
+        
+        const processOutline = async (items: any[], level = 0) => {
+          for (const item of items) {
+            let pageNum = 1;
+            if (item.dest) {
+              try {
+                const dest = typeof item.dest === 'string' 
+                  ? await pdf.getDestination(item.dest)
+                  : item.dest;
+                if (dest) {
+                  const pageIndex = await pdf.getPageIndex(dest[0]);
+                  pageNum = pageIndex + 1;
+                }
+              } catch {
+                // Skip if can't resolve destination
+              }
+            }
+            
+            extractedChapters.push({
+              id: `chapter-${extractedChapters.length}`,
+              label: level > 0 ? `${"  ".repeat(level)}${item.title}` : item.title,
+              page: pageNum,
+            });
+            
+            if (item.items && item.items.length > 0) {
+              await processOutline(item.items, level + 1);
+            }
+          }
+        };
+        
+        await processOutline(outline);
+        setPdfChapters(extractedChapters);
+      }
+    } catch (error) {
+      console.log("Could not extract PDF outline:", error);
     }
   };
 
@@ -544,30 +589,48 @@ const Reader = () => {
 
             {/* Page Navigation - only show in page mode */}
             {readingMode === "page" && (
-              <div className="flex items-center gap-2 sm:gap-4">
-                <Button
-                  onClick={() => changePage(-1)}
-                  disabled={currentPage <= 1}
-                  variant="outline"
-                  size="sm"
-                >
-                  <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Previous</span>
-                </Button>
-                
-                <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Page {currentPage} of {numPages || "..."}
-                </div>
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <Button
+                    onClick={() => changePage(-1)}
+                    disabled={currentPage <= 1}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Previous</span>
+                  </Button>
+                  
+                  <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
+                    Page {currentPage} of {numPages || "..."}
+                  </div>
 
-                <Button
-                  onClick={() => changePage(1)}
-                  disabled={!numPages || currentPage >= numPages}
-                  variant="outline"
-                  size="sm"
-                >
-                  <span className="hidden sm:inline">Next</span>
-                  <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
-                </Button>
+                  <Button
+                    onClick={() => changePage(1)}
+                    disabled={!numPages || currentPage >= numPages}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
+                  </Button>
+                </div>
+                
+                {/* Chapter Navigation for PDF */}
+                {pdfChapters.length > 0 && (
+                  <ChapterNavigation
+                    chapters={pdfChapters}
+                    currentPage={currentPage}
+                    totalPages={numPages || undefined}
+                    onChapterSelect={(chapter) => {
+                      if (chapter.page) {
+                        setCurrentPage(chapter.page);
+                        updateProgress(chapter.page, numPages || undefined);
+                      }
+                    }}
+                    fileType="pdf"
+                  />
+                )}
               </div>
             )}
           </div>
