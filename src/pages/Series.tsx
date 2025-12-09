@@ -44,29 +44,36 @@ const Series = () => {
     if (seriesName) {
       fetchSeriesBooks();
     }
-  }, [seriesName]);
+  }, [seriesName, user]);
 
   const fetchSeriesBooks = async () => {
     setLoading(true);
     try {
       const decodedSeries = decodeURIComponent(seriesName || "");
       
-      let query = supabase
-        .from("books")
-        .select("*")
-        .ilike("series", decodedSeries)
-        .order("title", { ascending: true });
-
-      // If user is logged in, show their books + public books
+      // If user is logged in, show their books in this series
       // If not logged in, only show public books
-      if (!user) {
-        query = query.eq("is_public", true);
+      if (user) {
+        const { data, error } = await supabase
+          .from("books")
+          .select("*")
+          .ilike("series", decodedSeries)
+          .eq("user_id", user.id)
+          .order("title", { ascending: true });
+
+        if (error) throw error;
+        setBooks(data || []);
+      } else {
+        const { data, error } = await supabase
+          .from("books")
+          .select("*")
+          .ilike("series", decodedSeries)
+          .eq("is_public", true)
+          .order("title", { ascending: true });
+
+        if (error) throw error;
+        setBooks(data || []);
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      setBooks(data || []);
     } catch (error: any) {
       toast({
         variant: "destructive",
