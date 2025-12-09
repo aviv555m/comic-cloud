@@ -8,15 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Navigation } from "@/components/Navigation";
-import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor } from "lucide-react";
+import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { Badge } from "@/components/ui/badge";
 
 const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isSubscribed, subscriptionEnd, isLoading: subLoading, checkSubscription } = useSubscription();
   const [loading, setLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<{
     username: string;
@@ -33,6 +36,26 @@ const Settings = () => {
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [fontSize, setFontSize] = useState(16);
   const [readingGoal, setReadingGoal] = useState(30);
+
+  const handleManageSubscription = async () => {
+    try {
+      setPortalLoading(true);
+      const { data, error } = await supabase.functions.invoke('customer-portal');
+      if (error) throw error;
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch (error) {
+      console.error('Error opening customer portal:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to open subscription management",
+      });
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   useEffect(() => {
     const getUser = async () => {
@@ -240,10 +263,14 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsList className="grid w-full grid-cols-4 mb-6">
             <TabsTrigger value="profile" className="gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
+            </TabsTrigger>
+            <TabsTrigger value="subscription" className="gap-2">
+              <CreditCard className="w-4 h-4" />
+              <span className="hidden sm:inline">Plan</span>
             </TabsTrigger>
             <TabsTrigger value="security" className="gap-2">
               <Lock className="w-4 h-4" />
@@ -251,7 +278,7 @@ const Settings = () => {
             </TabsTrigger>
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="w-4 h-4" />
-              <span className="hidden sm:inline">Appearance</span>
+              <span className="hidden sm:inline">Theme</span>
             </TabsTrigger>
           </TabsList>
 
@@ -315,6 +342,80 @@ const Settings = () => {
                     "Save Changes"
                   )}
                 </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="subscription">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  {isSubscribed ? (
+                    <>
+                      <Crown className="h-5 w-5 text-amber-500" />
+                      Premium Plan
+                    </>
+                  ) : (
+                    "Free Plan"
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {isSubscribed 
+                    ? "You have access to all premium features"
+                    : "Upgrade to unlock AI features and unlimited storage"
+                  }
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {isSubscribed ? (
+                  <>
+                    <div className="flex items-center justify-between p-4 bg-primary/5 rounded-lg border border-primary/20">
+                      <div>
+                        <p className="font-medium flex items-center gap-2">
+                          <Crown className="h-4 w-4 text-amber-500" />
+                          Premium Member
+                        </p>
+                        {subscriptionEnd && (
+                          <p className="text-sm text-muted-foreground">
+                            Renews on {new Date(subscriptionEnd).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      <Badge className="bg-primary text-primary-foreground">Active</Badge>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      onClick={handleManageSubscription}
+                      disabled={portalLoading}
+                      className="w-full"
+                    >
+                      {portalLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Manage Subscription"
+                      )}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                      <p className="font-medium mb-2">Premium includes:</p>
+                      <ul className="text-sm text-muted-foreground space-y-1">
+                        <li>• AI Book Chat Assistant</li>
+                        <li>• Text-to-Speech narration</li>
+                        <li>• AI Cover Generation</li>
+                        <li>• Unlimited book storage</li>
+                      </ul>
+                    </div>
+                    <Button onClick={() => navigate("/pricing")} className="w-full">
+                      <Crown className="mr-2 h-4 w-4" />
+                      Upgrade to Premium - $1/month
+                    </Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

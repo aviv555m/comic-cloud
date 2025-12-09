@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, User, MessageSquare, BarChart3, Settings, Home } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BookChatDialog } from "./BookChatDialog";
+import { useSubscription } from "@/contexts/SubscriptionContext";
+import { toast as sonnerToast } from "sonner";
 
 interface NavigationProps {
   userEmail?: string;
@@ -23,10 +25,25 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
+  const { isSubscribed } = useSubscription();
   const [chatOpen, setChatOpen] = useState(false);
   const [userId, setUserId] = useState<string>();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+
+  const handleChatClick = () => {
+    if (!isSubscribed) {
+      sonnerToast.error("Premium feature", {
+        description: "AI Chat requires a Premium subscription",
+        action: {
+          label: "Upgrade",
+          onClick: () => navigate("/pricing"),
+        },
+      });
+      return;
+    }
+    setChatOpen(true);
+  };
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -119,11 +136,12 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setChatOpen(true)}
+                onClick={handleChatClick}
                 className="gap-1.5 px-2 sm:px-3"
               >
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Chat</span>
+                {!isSubscribed && <Crown className="w-3 h-3 text-amber-500 ml-0.5" />}
               </Button>
 
               <DropdownMenu>
@@ -152,6 +170,10 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                   <DropdownMenuItem onClick={() => navigate("/statistics")}>
                     <BarChart3 className="mr-2 h-4 w-4" />
                     Reading Stats
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/pricing")}>
+                    <Crown className="mr-2 h-4 w-4 text-amber-500" />
+                    {isSubscribed ? "Your Plan" : "Upgrade to Premium"}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
