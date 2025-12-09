@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Upload } from "lucide-react";
+import { useExistingSeries } from "@/hooks/useExistingSeries";
+import { SeriesCombobox } from "@/components/SeriesCombobox";
 
 interface EditBookDialogProps {
   open: boolean;
@@ -16,6 +17,7 @@ interface EditBookDialogProps {
     author: string | null;
     series: string | null;
     cover_url: string | null;
+    user_id?: string;
   };
   onSuccess: () => void;
 }
@@ -27,6 +29,15 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const { toast } = useToast();
+  const { series: existingSeries } = useExistingSeries(book.user_id);
+
+  // Reset form when book changes
+  useEffect(() => {
+    setTitle(book.title);
+    setAuthor(book.author || "");
+    setSeries(book.series || "");
+    setCoverFile(null);
+  }, [book]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,11 +120,12 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
             />
           </div>
           <div>
-            <Label htmlFor="series">Series</Label>
-            <Input
-              id="series"
+            <Label>Series</Label>
+            <SeriesCombobox
               value={series}
-              onChange={(e) => setSeries(e.target.value)}
+              onChange={setSeries}
+              existingSeries={existingSeries}
+              placeholder="Select or enter series..."
             />
           </div>
           <div>

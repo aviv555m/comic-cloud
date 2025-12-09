@@ -38,6 +38,7 @@ interface Book {
   total_pages: number | null;
   file_size: number | null;
   created_at: string;
+  user_id: string;
 }
 
 const Library = () => {
