@@ -7,6 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Upload } from "lucide-react";
+import { useExistingSeries } from "@/hooks/useExistingSeries";
+import { SeriesCombobox } from "@/components/SeriesCombobox";
 
 interface UploadDialogProps {
   open: boolean;
@@ -24,6 +26,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { series: existingSeries } = useExistingSeries(userId);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -61,9 +64,14 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      // Get signed URL for private bucket (valid for 1 year)
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from("book-files")
-        .getPublicUrl(fileName);
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365);
+
+      if (signedUrlError) throw signedUrlError;
+
+      const fileUrl = signedUrlData.signedUrl;
 
       // Upload custom cover if provided
       let coverUrl = null;
@@ -98,7 +106,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           title,
           author: author || null,
           series: series || null,
-          file_url: publicUrl,
+          file_url: fileUrl,
           file_type: fileExt || "unknown",
           file_size: file.size,
           is_public: isPublic,
@@ -195,12 +203,12 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="series">Series</Label>
-            <Input
-              id="series"
+            <Label>Series</Label>
+            <SeriesCombobox
               value={series}
-              onChange={(e) => setSeries(e.target.value)}
-              placeholder="Series name"
+              onChange={setSeries}
+              existingSeries={existingSeries}
+              placeholder="Select or enter series..."
             />
           </div>
 
