@@ -64,17 +64,28 @@ serve(async (req) => {
       metadata = extractFromFilename(filename);
     }
 
-    // Update book with extracted metadata
-    const { error: updateError } = await supabaseClient
-      .from('books')
-      .update({
-        title: metadata.title || book.title,
-        author: metadata.author || book.author,
-        series: metadata.series || book.series,
-      })
-      .eq('id', bookId);
+    // Only update metadata if the user didn't provide values
+    // Preserve user-provided title, author, and series
+    const updateData: any = {};
+    
+    // Only update if the current value is the auto-generated filename title
+    // and the extracted metadata has a better value
+    if (metadata.author && !book.author) {
+      updateData.author = metadata.author;
+    }
+    if (metadata.series && !book.series) {
+      updateData.series = metadata.series;
+    }
+    
+    // Only update if there's something to update
+    if (Object.keys(updateData).length > 0) {
+      const { error: updateError } = await supabaseClient
+        .from('books')
+        .update(updateData)
+        .eq('id', bookId);
 
-    if (updateError) throw updateError;
+      if (updateError) throw updateError;
+    }
 
     return new Response(
       JSON.stringify({ success: true, metadata }),
