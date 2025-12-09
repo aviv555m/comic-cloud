@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Badge } from "@/components/ui/badge";
-import { AdminPremiumToggle } from "@/components/AdminPremiumToggle";
+// AdminPremiumToggle removed for security - premium status managed via secure user_subscriptions table
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -417,11 +417,6 @@ const Settings = () => {
                     </Button>
                   </>
                 )}
-                
-                <div className="border-t pt-4 mt-4">
-                  <p className="text-sm text-muted-foreground mb-3">Developer Options</p>
-                  <AdminPremiumToggle />
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
