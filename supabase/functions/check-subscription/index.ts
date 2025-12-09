@@ -41,6 +41,25 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
+    // Check for manual premium override in profiles table
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('is_premium_override')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profile?.is_premium_override) {
+      logStep("User has manual premium override");
+      return new Response(JSON.stringify({
+        subscribed: true,
+        product_id: "manual_override",
+        subscription_end: null
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
 
@@ -67,8 +86,30 @@ serve(async (req) => {
 
     if (hasActiveSub) {
       const subscription = subscriptions.data[0];
-      subscriptionEnd = new Date(subscription.current_period_end * 1000).toISOString();
-      productId = subscription.items.data[0].price.product;
+      
+      // Safely handle the current_period_end
+      if (subscription.current_period_end) {
+        try {
+          const endTimestamp = typeof subscription.current_period_end === 'number' 
+            ? subscription.current_period_end 
+            : parseInt(subscription.current_period_end as unknown as string, 10);
+          
+          if (!isNaN(endTimestamp)) {
+            subscriptionEnd = new Date(endTimestamp * 1000).toISOString();
+          }
+        } catch (e) {
+          logStep("Could not parse subscription end date", { error: e });
+        }
+      }
+      
+      // Safely get product ID
+      const priceData = subscription.items?.data?.[0]?.price;
+      if (priceData) {
+        productId = typeof priceData.product === 'string' 
+          ? priceData.product 
+          : priceData.product?.id;
+      }
+      
       logStep("Active subscription found", { subscriptionId: subscription.id, productId });
     } else {
       logStep("No active subscription");
