@@ -442,10 +442,11 @@ export const PublicLibrarySearch = ({ onSuccess }: PublicLibrarySearchProps) => 
 
       console.log("Downloading from URL:", url);
 
+      // Download book via edge function (userId extracted from auth token server-side)
       const { data: downloadData, error: downloadError } = await supabase.functions.invoke(
         "download-book",
         {
-          body: { url, userId: user.id },
+          body: { url },
         }
       );
 

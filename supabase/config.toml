@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.download-book]
-verify_jwt = false
+verify_jwt = true
 
 [functions.public-library-proxy]
 verify_jwt = false

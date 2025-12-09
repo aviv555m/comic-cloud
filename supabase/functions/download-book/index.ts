@@ -12,10 +12,32 @@ serve(async (req) => {
   }
 
   try {
-    const { url, userId } = await req.json();
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // SECURITY FIX: Extract userId from authenticated session, not request body
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error("Authorization header is required");
+    }
     
-    if (!url || !userId) {
-      throw new Error("URL and userId are required");
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      console.error("Auth error:", authError);
+      throw new Error("Authentication failed");
+    }
+    
+    const userId = user.id;
+    console.log("Authenticated user:", userId);
+
+    const { url } = await req.json();
+    
+    if (!url) {
+      throw new Error("URL is required");
     }
 
     console.log("Downloading book from URL:", url);
@@ -150,7 +172,6 @@ serve(async (req) => {
 
     // Check magic bytes for file type detection
     const header = new Uint8Array(arrayBuffer.slice(0, 8));
-    const magicString = String.fromCharCode(...header.slice(0, 4));
     
     let detectedType = "";
     if (header[0] === 0x50 && header[1] === 0x4B) {
@@ -225,11 +246,6 @@ serve(async (req) => {
     const fileName = `${timestamp}.${extension}`;
     const filePath = `${userId}/${fileName}`;
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     // Upload to Supabase Storage
     console.log("Uploading to storage:", filePath, "type:", fileType, "size:", arrayBuffer.byteLength);
     const { error: uploadError } = await supabase.storage
@@ -244,10 +260,15 @@ serve(async (req) => {
       throw uploadError;
     }
 
-    // Get file URL
-    const { data: { publicUrl } } = supabase.storage
+    // Get signed URL for the file (since bucket is now private)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('book-files')
-      .getPublicUrl(filePath);
+      .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
+
+    if (signedUrlError) {
+      console.error("Signed URL error:", signedUrlError);
+      throw signedUrlError;
+    }
 
     // Extract title from URL
     const urlParts = url.split('/');
@@ -259,7 +280,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        fileUrl: publicUrl,
+        fileUrl: signedUrlData.signedUrl,
         fileName,
         fileType,
         title: titleFromUrl,
