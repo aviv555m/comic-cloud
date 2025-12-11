@@ -13,6 +13,8 @@ import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import ReadingLists from "./pages/ReadingLists";
+import Challenges from "./pages/Challenges";
 import NotFound from "./pages/NotFound";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { useServiceWorker } from "./hooks/useServiceWorker";
@@ -72,6 +74,8 @@ const AppContent = () => {
           <Route path="/settings" element={<Settings />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/lists" element={<ReadingLists />} />
+          <Route path="/challenges" element={<Challenges />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

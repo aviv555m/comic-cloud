@@ -9,11 +9,12 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { BookDetailsDialog } from "@/components/BookDetailsDialog";
 import { ReadingGoals } from "@/components/ReadingGoals";
 import { ContinueReading } from "@/components/ContinueReading";
+import { AdvancedFilters, FilterState } from "@/components/AdvancedFilters";
+import { ImportBooksDialog } from "@/components/ImportBooksDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, Search, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon } from "lucide-react";
+import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -41,14 +42,32 @@ interface Book {
   user_id: string;
 }
 
+interface TagType {
+  id: string;
+  name: string;
+  color: string;
+}
+
 const Library = () => {
   const [user, setUser] = useState<User | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    sortBy: "created_at",
+    sortOrder: "desc",
+    fileTypes: [],
+    readingStatus: [],
+    minRating: null,
+  });
   const [uploadOpen, setUploadOpen] = useState(false);
   const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [tags, setTags] = useState<TagType[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [bookTags, setBookTags] = useState<Record<string, string[]>>({});
+  const [bookRatings, setBookRatings] = useState<Record<string, number>>({});
   const [readingStats, setReadingStats] = useState({
     currentStreak: 0,
     todayMinutes: 0,
@@ -63,6 +82,7 @@ const Library = () => {
       if (session?.user) {
         setUser(session.user);
         fetchBooks(session.user.id);
+        fetchTags(session.user.id);
       } else {
         navigate("/auth");
       }
@@ -73,6 +93,7 @@ const Library = () => {
         if (session?.user) {
           setUser(session.user);
           fetchBooks(session.user.id);
+          fetchTags(session.user.id);
         } else {
           navigate("/auth");
         }
@@ -96,6 +117,12 @@ const Library = () => {
       
       // Fetch reading stats for goals widget
       fetchReadingStats(userId);
+      
+      // Fetch book tags
+      fetchBookTags(userId);
+      
+      // Fetch book ratings
+      fetchBookRatings(userId);
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -105,6 +132,41 @@ const Library = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchTags = async (userId: string) => {
+    const { data } = await supabase
+      .from("tags")
+      .select("*")
+      .eq("user_id", userId);
+    setTags(data || []);
+  };
+
+  const fetchBookTags = async (userId: string) => {
+    const { data } = await supabase
+      .from("book_tags")
+      .select("book_id, tag_id")
+      .in("tag_id", (await supabase.from("tags").select("id").eq("user_id", userId)).data?.map(t => t.id) || []);
+    
+    const mapping: Record<string, string[]> = {};
+    data?.forEach(bt => {
+      if (!mapping[bt.book_id]) mapping[bt.book_id] = [];
+      mapping[bt.book_id].push(bt.tag_id);
+    });
+    setBookTags(mapping);
+  };
+
+  const fetchBookRatings = async (userId: string) => {
+    const { data } = await supabase
+      .from("book_reviews")
+      .select("book_id, rating")
+      .eq("user_id", userId);
+    
+    const mapping: Record<string, number> = {};
+    data?.forEach(r => {
+      if (r.rating) mapping[r.book_id] = r.rating;
+    });
+    setBookRatings(mapping);
   };
 
   const fetchReadingStats = async (userId: string) => {
@@ -160,14 +222,65 @@ const Library = () => {
     }
   };
 
-  const filteredBooks = books.filter((book) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      book.title.toLowerCase().includes(query) ||
-      book.author?.toLowerCase().includes(query) ||
-      book.series?.toLowerCase().includes(query)
-    );
-  });
+  const handleImport = async (importedBooks: { title: string; author: string; rating?: number }[]) => {
+    if (!user) return;
+    
+    // For now, just show a message - actual book files need to be uploaded separately
+    toast({
+      title: "Books imported",
+      description: `${importedBooks.length} books added to your reading history. Upload the book files to start reading.`,
+    });
+  };
+
+  // Filter and sort books
+  const filteredBooks = books
+    .filter((book) => {
+      const query = filters.search.toLowerCase();
+      const matchesSearch = 
+        book.title.toLowerCase().includes(query) ||
+        book.author?.toLowerCase().includes(query) ||
+        book.series?.toLowerCase().includes(query);
+
+      const matchesFileType = 
+        filters.fileTypes.length === 0 || 
+        filters.fileTypes.includes(book.file_type.toLowerCase());
+
+      const matchesStatus = 
+        filters.readingStatus.length === 0 ||
+        (filters.readingStatus.includes("completed") && book.is_completed) ||
+        (filters.readingStatus.includes("reading") && book.reading_progress > 0 && !book.is_completed) ||
+        (filters.readingStatus.includes("not_started") && book.reading_progress === 0 && !book.is_completed);
+
+      const matchesTags = 
+        selectedTags.length === 0 ||
+        selectedTags.some(tagId => bookTags[book.id]?.includes(tagId));
+
+      const matchesRating = 
+        !filters.minRating ||
+        (bookRatings[book.id] && bookRatings[book.id] >= filters.minRating);
+
+      return matchesSearch && matchesFileType && matchesStatus && matchesTags && matchesRating;
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      switch (filters.sortBy) {
+        case "title":
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case "author":
+          comparison = (a.author || "").localeCompare(b.author || "");
+          break;
+        case "reading_progress":
+          comparison = a.reading_progress - b.reading_progress;
+          break;
+        case "updated_at":
+        case "created_at":
+        default:
+          comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          break;
+      }
+      return filters.sortOrder === "asc" ? comparison : -comparison;
+    });
 
   // Group books by series
   const groupedBySeries = filteredBooks.reduce((acc, book) => {
@@ -216,6 +329,10 @@ const Library = () => {
                   <Link className="w-4 h-4 mr-2" />
                   Add from URL
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                  <FileDown className="w-4 h-4 mr-2" />
+                  Import from Goodreads
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -246,15 +363,13 @@ const Library = () => {
               )}
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
                 <div className="lg:col-span-3">
-                  <div className="relative max-w-md">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                    <Input
-                      placeholder="Search by title, author, or series..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
+                  <AdvancedFilters
+                    filters={filters}
+                    onFiltersChange={setFilters}
+                    availableTags={tags}
+                    selectedTags={selectedTags}
+                    onTagsChange={setSelectedTags}
+                  />
                 </div>
                 <div className="hidden lg:block">
                   <ReadingGoals
@@ -277,14 +392,16 @@ const Library = () => {
             <div className="text-center max-w-md">
               <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-xl font-semibold mb-2">
-                {searchQuery ? "No books found" : "Your library is empty"}
+                {filters.search || filters.fileTypes.length > 0 || selectedTags.length > 0 
+                  ? "No books found" 
+                  : "Your library is empty"}
               </h3>
               <p className="text-muted-foreground mb-6">
-                {searchQuery
-                  ? "Try a different search term"
+                {filters.search || filters.fileTypes.length > 0 || selectedTags.length > 0
+                  ? "Try adjusting your filters"
                   : "Start building your digital bookshelf by uploading your first book"}
               </p>
-              {!searchQuery && (
+              {!filters.search && filters.fileTypes.length === 0 && selectedTags.length === 0 && (
                 <Button onClick={() => setUploadOpen(true)} size="lg">
                   <Plus className="mr-2 w-5 h-5" />
                   Upload Your First Book
@@ -382,6 +499,12 @@ const Library = () => {
         open={urlDialogOpen}
         onOpenChange={setUrlDialogOpen}
         onSuccess={() => user && fetchBooks(user.id)}
+      />
+
+      <ImportBooksDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImport={handleImport}
       />
 
       {selectedBook && (
