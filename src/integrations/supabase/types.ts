@@ -61,6 +61,83 @@ export type Database = {
           },
         ]
       }
+      book_reviews: {
+        Row: {
+          book_id: string
+          created_at: string | null
+          id: string
+          is_public: boolean | null
+          rating: number | null
+          review: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          rating?: number | null
+          review?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          rating?: number | null
+          review?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_reviews_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      book_tags: {
+        Row: {
+          book_id: string
+          created_at: string | null
+          id: string
+          tag_id: string
+        }
+        Insert: {
+          book_id: string
+          created_at?: string | null
+          id?: string
+          tag_id: string
+        }
+        Update: {
+          book_id?: string
+          created_at?: string | null
+          id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_tags_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "book_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       books: {
         Row: {
           author: string | null
@@ -69,6 +146,7 @@ export type Database = {
           file_size: number | null
           file_type: string
           file_url: string
+          finished_reading_at: string | null
           id: string
           is_completed: boolean | null
           is_public: boolean | null
@@ -76,6 +154,7 @@ export type Database = {
           reading_mode: string | null
           reading_progress: number | null
           series: string | null
+          started_reading_at: string | null
           title: string
           total_pages: number | null
           updated_at: string
@@ -88,6 +167,7 @@ export type Database = {
           file_size?: number | null
           file_type: string
           file_url: string
+          finished_reading_at?: string | null
           id?: string
           is_completed?: boolean | null
           is_public?: boolean | null
@@ -95,6 +175,7 @@ export type Database = {
           reading_mode?: string | null
           reading_progress?: number | null
           series?: string | null
+          started_reading_at?: string | null
           title: string
           total_pages?: number | null
           updated_at?: string
@@ -107,6 +188,7 @@ export type Database = {
           file_size?: number | null
           file_type?: string
           file_url?: string
+          finished_reading_at?: string | null
           id?: string
           is_completed?: boolean | null
           is_public?: boolean | null
@@ -114,6 +196,7 @@ export type Database = {
           reading_mode?: string | null
           reading_progress?: number | null
           series?: string | null
+          started_reading_at?: string | null
           title?: string
           total_pages?: number | null
           updated_at?: string
@@ -145,6 +228,126 @@ export type Database = {
           is_premium_override?: boolean | null
           updated_at?: string
           username?: string | null
+        }
+        Relationships: []
+      }
+      reading_challenges: {
+        Row: {
+          created_at: string | null
+          current_value: number | null
+          end_date: string
+          goal_type: string
+          goal_value: number
+          id: string
+          is_active: boolean | null
+          is_completed: boolean | null
+          name: string
+          start_date: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          current_value?: number | null
+          end_date: string
+          goal_type: string
+          goal_value: number
+          id?: string
+          is_active?: boolean | null
+          is_completed?: boolean | null
+          name: string
+          start_date: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          current_value?: number | null
+          end_date?: string
+          goal_type?: string
+          goal_value?: number
+          id?: string
+          is_active?: boolean | null
+          is_completed?: boolean | null
+          name?: string
+          start_date?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reading_list_books: {
+        Row: {
+          added_at: string | null
+          book_id: string
+          id: string
+          list_id: string
+          position: number | null
+        }
+        Insert: {
+          added_at?: string | null
+          book_id: string
+          id?: string
+          list_id: string
+          position?: number | null
+        }
+        Update: {
+          added_at?: string | null
+          book_id?: string
+          id?: string
+          list_id?: string
+          position?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_list_books_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_list_books_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "reading_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reading_lists: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          position: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          position?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          position?: number | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -188,6 +391,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tags: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
