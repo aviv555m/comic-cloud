@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -124,13 +124,23 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               </Button>
 
               <Button
-                variant={isActive("/statistics") ? "secondary" : "ghost"}
+                variant={isActive("/lists") ? "secondary" : "ghost"}
                 size="sm"
-                onClick={() => navigate("/statistics")}
+                onClick={() => navigate("/lists")}
                 className="gap-1.5 px-2 sm:px-3"
               >
-                <BarChart3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Stats</span>
+                <List className="w-4 h-4" />
+                <span className="hidden sm:inline">Lists</span>
+              </Button>
+
+              <Button
+                variant={isActive("/challenges") ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => navigate("/challenges")}
+                className="gap-1.5 px-2 sm:px-3"
+              >
+                <Trophy className="w-4 h-4" />
+                <span className="hidden sm:inline">Goals</span>
               </Button>
 
               <Button
@@ -163,13 +173,22 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/settings")}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
+                  <DropdownMenuItem onClick={() => navigate("/lists")}>
+                    <List className="mr-2 h-4 w-4" />
+                    Reading Lists
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/challenges")}>
+                    <Trophy className="mr-2 h-4 w-4" />
+                    Challenges
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/statistics")}>
                     <BarChart3 className="mr-2 h-4 w-4" />
                     Reading Stats
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/pricing")}>
                     <Crown className="mr-2 h-4 w-4 text-amber-500" />
