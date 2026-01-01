@@ -13,9 +13,6 @@ import {
   Minimize,
   ArrowLeft,
   BookOpen,
-  Volume2,
-  VolumeX,
-  Highlighter,
   StickyNote,
   CloudOff
 } from "lucide-react";
@@ -30,6 +27,8 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
+import { NarrationControls } from "@/components/NarrationControls";
+import { ScrollModePDF } from "@/components/ScrollModePDF";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -506,15 +505,13 @@ const Reader = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={toggleAudio}
-                className="h-9 px-3"
-                title={isPlaying ? "Stop narration" : "Play narration"}
-              >
-                {isPlaying ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </Button>
+              {/* Narration Controls */}
+              {(isTXT || isPDF) && (
+                <NarrationControls 
+                  text={textContent || ""}
+                  onPlayingChange={setIsPlaying}
+                />
+              )}
               
               <Button
                 variant="outline"
@@ -623,19 +620,14 @@ const Reader = () => {
                   />
                 </div>
               ) : (
-                <div className="space-y-6 w-full mx-auto" style={{ maxWidth: '100%' }}>
-                  {Array.from({ length: Math.min(numPages || 0, 10) }, (_, i) => currentPage + i).filter(p => p <= (numPages || 0)).map((pageNum) => (
-                    <div key={pageNum} className="shadow-lg rounded overflow-hidden">
-                      <Page
-                        pageNumber={pageNum}
-                        scale={scale}
-                        renderTextLayer={false}
-                        renderAnnotationLayer={false}
-                        className="mx-auto"
-                      />
-                    </div>
-                  ))}
-                </div>
+                <ScrollModePDF 
+                  numPages={numPages || 0}
+                  scale={scale}
+                  onPageChange={(page) => {
+                    setCurrentPage(page);
+                    updateProgress(page, numPages || undefined);
+                  }}
+                />
               )}
             </Document>
 
