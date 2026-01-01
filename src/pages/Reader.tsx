@@ -58,6 +58,7 @@ const Reader = () => {
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
+  const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -327,6 +328,9 @@ const Reader = () => {
         .eq("id", book.id);
     }
 
+    // Extract text from current page for narration
+    extractPdfPageText(pdf, currentPage);
+
     // Extract PDF outline/chapters
     try {
       const outline = await pdf.getOutline();
@@ -369,6 +373,38 @@ const Reader = () => {
       console.log("Could not extract PDF outline:", error);
     }
   };
+
+  // Extract text from PDF page for narration
+  const extractPdfPageText = async (pdf: any, pageNum: number) => {
+    try {
+      const page = await pdf.getPage(pageNum);
+      const textContentResult = await page.getTextContent();
+      const text = textContentResult.items
+        .map((item: any) => item.str)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
+      setPdfTextContent(text);
+    } catch (error) {
+      console.log("Could not extract page text:", error);
+      setPdfTextContent("");
+    }
+  };
+
+  // Store pdf reference for text extraction
+  const pdfDocRef = useRef<any>(null);
+
+  const onDocumentLoadSuccessWrapper = async (pdf: any) => {
+    pdfDocRef.current = pdf;
+    await onDocumentLoadSuccess(pdf);
+  };
+
+  // Update text when page changes
+  useEffect(() => {
+    if (pdfDocRef.current && book?.file_type === 'pdf') {
+      extractPdfPageText(pdfDocRef.current, currentPage);
+    }
+  }, [currentPage, book?.file_type]);
 
   const changePage = (delta: number) => {
     const newPage = currentPage + delta;
@@ -475,40 +511,41 @@ const Reader = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-3">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
-            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+        <div className="container mx-auto px-2 sm:px-4 py-2">
+          <div className="flex flex-col gap-2">
+            {/* Top row: back button and title */}
+            <div className="flex items-center gap-2 w-full">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/")}
-                className="shrink-0"
+                className="shrink-0 h-8 px-2 sm:px-3"
               >
-                <ArrowLeft className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Back to Library</span>
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline ml-2">Back</span>
               </Button>
-              <div className="border-l h-6 mx-1 sm:mx-2 hidden sm:block" />
               <div className="min-w-0 flex-1 flex items-center gap-2">
-                <div>
-                  <h1 className="font-semibold truncate text-sm sm:text-base">{book.title}</h1>
+                <div className="min-w-0">
+                  <h1 className="font-semibold truncate text-sm">{book.title}</h1>
                   {book.author && (
-                    <p className="text-xs sm:text-sm text-muted-foreground truncate">{book.author}</p>
+                    <p className="text-xs text-muted-foreground truncate">{book.author}</p>
                   )}
                 </div>
                 {isReadingOffline && (
-                  <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0">
-                    <CloudOff className="w-3 h-3 mr-1" />
-                    Offline
+                  <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0 text-xs">
+                    <CloudOff className="w-3 h-3" />
                   </Badge>
                 )}
               </div>
             </div>
+            
+            {/* Bottom row: controls */}
 
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-end">
+            <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
               {/* Narration Controls */}
               {(isTXT || isPDF) && (
                 <NarrationControls 
-                  text={textContent || ""}
+                  text={isTXT ? textContent : pdfTextContent}
                   onPlayingChange={setIsPlaying}
                 />
               )}
@@ -528,11 +565,11 @@ const Reader = () => {
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
-                      placeholder="Page"
+                      placeholder="Pg"
                       value={pageInput}
                       onChange={(e) => setPageInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
-                      className="w-16 sm:w-20 h-9 text-sm"
+                      className="w-12 sm:w-16 h-8 text-xs sm:text-sm"
                       min={1}
                       max={numPages || 1}
                     />
@@ -540,7 +577,7 @@ const Reader = () => {
                       variant="outline"
                       size="sm"
                       onClick={jumpToPage}
-                      className="h-9 px-3 text-sm"
+                      className="h-8 px-2 text-xs"
                     >
                       Go
                     </Button>
@@ -549,39 +586,41 @@ const Reader = () => {
                     variant="outline"
                     size="sm"
                     onClick={toggleReadingMode}
-                    className="text-sm h-9 px-3"
+                    className="text-xs h-8 px-2"
                   >
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => changeScale(-0.2)}
-                    className="h-9 px-3"
-                  >
-                    <ZoomOut className="w-4 h-4" />
-                  </Button>
-                  <span className="text-sm font-medium min-w-[50px] text-center">
-                    {Math.round(scale * 100)}%
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => changeScale(0.2)}
-                    className="h-9 px-3"
-                  >
-                    <ZoomIn className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => changeScale(-0.2)}
+                      className="h-8 px-2 rounded-r-none"
+                    >
+                      <ZoomOut className="w-3 h-3" />
+                    </Button>
+                    <span className="text-xs font-medium px-2 bg-muted h-8 flex items-center border-y">
+                      {Math.round(scale * 100)}%
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => changeScale(0.2)}
+                      className="h-8 px-2 rounded-l-none"
+                    >
+                      <ZoomIn className="w-3 h-3" />
+                    </Button>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleFullscreen}
-                    className="h-9 px-3 hidden sm:flex"
+                    className="h-8 px-2 hidden sm:flex"
                   >
                     {isFullscreen ? (
-                      <Minimize className="w-4 h-4" />
+                      <Minimize className="w-3 h-3" />
                     ) : (
-                      <Maximize className="w-4 h-4" />
+                      <Maximize className="w-3 h-3" />
                     )}
                   </Button>
                 </>
@@ -592,12 +631,12 @@ const Reader = () => {
       </div>
 
       {/* Reader Content */}
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+      <div className="container mx-auto px-1 sm:px-4 py-2 sm:py-8 overflow-x-hidden">
         {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-4 sm:gap-6">
             <Document
               file={signedUrl}
-              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadSuccess={onDocumentLoadSuccessWrapper}
               loading={
                 <div className="flex items-center justify-center py-20">
                   <p className="text-muted-foreground text-sm">Loading PDF...</p>
@@ -616,13 +655,14 @@ const Reader = () => {
                     scale={scale}
                     renderTextLayer={true}
                     renderAnnotationLayer={true}
-                    className="mx-auto"
+                    className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
                   />
                 </div>
               ) : (
                 <ScrollModePDF 
                   numPages={numPages || 0}
                   scale={scale}
+                  initialPage={currentPage}
                   onPageChange={(page) => {
                     setCurrentPage(page);
                     updateProgress(page, numPages || undefined);
