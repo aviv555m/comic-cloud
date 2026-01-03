@@ -16,6 +16,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BookChatDialog } from "./BookChatDialog";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { toast as sonnerToast } from "sonner";
+import { MobileNavDrawer } from "./MobileNavDrawer";
 
 interface NavigationProps {
   userEmail?: string;
@@ -92,17 +93,26 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
       <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <button
-              onClick={() => navigate("/")}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <div className="flex items-center justify-center w-10 h-10 gradient-warm rounded-lg shadow-md">
-                <BookOpen className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold hidden sm:block">Bookshelf</span>
-            </button>
+            {/* Left side: hamburger + logo */}
+            <div className="flex items-center gap-2">
+              <MobileNavDrawer 
+                userEmail={userEmail} 
+                username={username} 
+                avatarUrl={avatarUrl} 
+              />
+              <button
+                onClick={() => navigate("/")}
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+              >
+                <div className="flex items-center justify-center w-10 h-10 gradient-warm rounded-lg shadow-md">
+                  <BookOpen className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold hidden sm:block">Bookshelf</span>
+              </button>
+            </div>
 
-            <div className="flex items-center gap-1 sm:gap-2">
+            {/* Desktop nav items - hidden on mobile */}
+            <div className="hidden md:flex items-center gap-1 sm:gap-2">
               <Button
                 variant={isActive("/") ? "secondary" : "ghost"}
                 size="sm"
@@ -195,6 +205,39 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     {isSubscribed ? "Your Plan" : "Upgrade to Premium"}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Mobile: just avatar */}
+            <div className="md:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={avatarUrl || undefined} />
+                      <AvatarFallback className="gradient-warm text-white text-sm">
+                        {userInitial}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium">{username || "My Account"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
