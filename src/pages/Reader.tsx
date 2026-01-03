@@ -28,7 +28,7 @@ import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
-import { ScrollModePDF } from "@/components/ScrollModePDF";
+import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -73,6 +73,7 @@ const Reader = () => {
   const sessionStartTime = useRef<Date>(new Date());
   const startPageRef = useRef<number>(1);
   const lastUpdateRef = useRef<Date>(new Date());
+  const scrollModePDFRef = useRef<ScrollModePDFHandle>(null);
 
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -325,7 +326,11 @@ const Reader = () => {
   const jumpToPage = () => {
     const page = parseInt(pageInput);
     if (page >= 1 && numPages && page <= numPages) {
-      setCurrentPage(page);
+      if (readingMode === "scroll" && scrollModePDFRef.current) {
+        scrollModePDFRef.current.scrollToPage(page);
+      } else {
+        setCurrentPage(page);
+      }
       updateProgress(page, numPages);
       setPageInput("");
     }
@@ -675,6 +680,7 @@ const Reader = () => {
                 </div>
               ) : (
                 <ScrollModePDF 
+                  ref={scrollModePDFRef}
                   numPages={numPages || 0}
                   scale={scale}
                   initialPage={currentPage}

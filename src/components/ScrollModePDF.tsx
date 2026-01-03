@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Page } from "react-pdf";
+import { Progress } from "@/components/ui/progress";
 
 interface ScrollModePDFProps {
   numPages: number;
@@ -15,18 +16,21 @@ type IntersectionState = {
   top: number;
 };
 
-export const ScrollModePDF = ({
+export interface ScrollModePDFHandle {
+  scrollToPage: (page: number) => void;
+}
+
+export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>(({
   numPages,
   scale,
   initialPage = 1,
   topOffset = 96,
   onPageChange,
-}: ScrollModePDFProps) => {
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // IMPORTANT: capture the initial page only once per mount.
-  // (In scroll mode, parent updates currentPage which would otherwise overwrite our target.)
   const initialPageRef = useRef<number>(initialPage);
   const hasScrolledToInitial = useRef(false);
   const isInitializingRef = useRef<boolean>(initialPageRef.current > 1);
@@ -36,15 +40,36 @@ export const ScrollModePDF = ({
 
   const [visiblePage, setVisiblePage] = useState(initialPageRef.current);
 
-  const scrollToPageWithOffset = useCallback((page: number) => {
+  const scrollToPageWithOffset = useCallback((page: number, behavior: ScrollBehavior = "auto") => {
     const el = pageRefs.current.get(page);
     if (!el) return false;
 
     const rect = el.getBoundingClientRect();
     const targetTop = rect.top + window.scrollY - Math.max(0, topOffset) - 8;
-    window.scrollTo({ top: Math.max(0, targetTop), behavior: "auto" });
+    window.scrollTo({ top: Math.max(0, targetTop), behavior });
     return true;
   }, [topOffset]);
+
+  // Expose scrollToPage method for parent to use
+  useImperativeHandle(ref, () => ({
+    scrollToPage: (page: number) => {
+      const clampedPage = Math.min(Math.max(1, page), numPages);
+      
+      // Try to scroll immediately if page is rendered
+      const didScroll = scrollToPageWithOffset(clampedPage, "smooth");
+      
+      if (!didScroll) {
+        // Page not yet in DOM, retry a few times
+        let attempts = 0;
+        const tryScroll = () => {
+          if (scrollToPageWithOffset(clampedPage, "smooth")) return;
+          attempts++;
+          if (attempts < 20) setTimeout(tryScroll, 100);
+        };
+        setTimeout(tryScroll, 50);
+      }
+    }
+  }), [numPages, scrollToPageWithOffset]);
 
   // Scroll to initial page on mount / after pages appear
   useEffect(() => {
@@ -182,11 +207,23 @@ export const ScrollModePDF = ({
     }
   }, []);
 
+  const progressPercent = numPages > 0 ? (visiblePage / numPages) * 100 : 0;
+
   return (
     <div
       ref={containerRef}
       className="space-y-4 w-full max-w-4xl mx-auto pb-20 px-2 sm:px-0"
     >
+      {/* Fixed progress bar at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-sm border-t px-4 py-2">
+        <div className="max-w-4xl mx-auto flex items-center gap-3">
+          <Progress value={progressPercent} className="flex-1 h-2" />
+          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+            {visiblePage} / {numPages}
+          </span>
+        </div>
+      </div>
+
       {/* Current page indicator - sticky */}
       <div className="sticky z-40 flex justify-center pointer-events-none" style={{ top: topOffset }}>
         <div className="bg-background/95 backdrop-blur-sm border rounded-full px-4 py-1.5 shadow-sm pointer-events-auto">
@@ -221,5 +258,5 @@ export const ScrollModePDF = ({
       ))}
     </div>
   );
-};
+});
 
