@@ -1,10 +1,9 @@
-import { Download, Trash2, Loader2, Check, Cloud, CloudOff } from "lucide-react";
+import { Download, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
@@ -65,24 +64,22 @@ export const OfflineBookButton = ({
       : Download;
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={isOffline ? "secondary" : variant}
-            size={size}
-            onClick={handleClick}
-            disabled={isDownloading}
-            className={isOffline ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" : ""}
-          >
-            <Icon className={`w-4 h-4 ${isDownloading ? "animate-spin" : ""} ${showLabel ? "mr-2" : ""}`} />
-            {showLabel && label}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{label}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={isOffline ? "secondary" : variant}
+          size={size}
+          onClick={handleClick}
+          disabled={isDownloading}
+          className={isOffline ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" : ""}
+        >
+          <Icon className={`w-4 h-4 ${isDownloading ? "animate-spin" : ""} ${showLabel ? "mr-2" : ""}`} />
+          {showLabel && label}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{label}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 };
