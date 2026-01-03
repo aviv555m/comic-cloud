@@ -74,6 +74,21 @@ const Reader = () => {
   const startPageRef = useRef<number>(1);
   const lastUpdateRef = useRef<Date>(new Date());
 
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  useEffect(() => {
+    const measure = () => {
+      const h = headerRef.current?.getBoundingClientRect().height ?? 0;
+      setHeaderHeight(h);
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
+
   // Start reading session
   const startReadingSession = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -510,7 +525,7 @@ const Reader = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <div ref={headerRef} className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-2 sm:px-4 py-2">
           <div className="flex flex-col gap-2">
             {/* Top row: back button and title */}
@@ -663,6 +678,7 @@ const Reader = () => {
                   numPages={numPages || 0}
                   scale={scale}
                   initialPage={currentPage}
+                  topOffset={Math.max(80, Math.round(headerHeight) + 8)}
                   onPageChange={(page) => {
                     setCurrentPage(page);
                     updateProgress(page, numPages || undefined);
