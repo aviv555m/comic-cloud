@@ -21,6 +21,7 @@ export function useOfflineBooks() {
   const [offlineBooks, setOfflineBooks] = useState<OfflineBook[]>([]);
   const [downloadingBooks, setDownloadingBooks] = useState<Set<string>>(new Set());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isReady, setIsReady] = useState(false);
   const { toast } = useToast();
 
   // Monitor online status
@@ -70,15 +71,36 @@ export function useOfflineBooks() {
       
       request.onsuccess = () => {
         setOfflineBooks(request.result || []);
+        setIsReady(true);
       };
     } catch (error) {
       console.error('Failed to load offline books:', error);
+      setIsReady(true);
     }
   }, [openDB]);
 
   useEffect(() => {
     loadOfflineBooks();
   }, [loadOfflineBooks]);
+
+  // Async check if book exists in IndexedDB (doesn't depend on state)
+  const checkBookOfflineAsync = useCallback(async (bookId: string): Promise<boolean> => {
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(BOOKS_STORE, 'readonly');
+      const store = transaction.objectStore(BOOKS_STORE);
+      
+      return new Promise((resolve) => {
+        const request = store.get(bookId);
+        request.onsuccess = () => {
+          resolve(!!request.result);
+        };
+        request.onerror = () => resolve(false);
+      });
+    } catch {
+      return false;
+    }
+  }, [openDB]);
 
   // Save book for offline reading
   const saveBookOffline = useCallback(async (book: {
@@ -262,10 +284,12 @@ export function useOfflineBooks() {
   return {
     offlineBooks,
     isOnline,
+    isReady,
     saveBookOffline,
     removeBookOffline,
     getOfflineFile,
     isBookOffline,
+    checkBookOfflineAsync,
     isBookDownloading,
     getTotalStorageUsed,
     clearAllOfflineData,

@@ -48,7 +48,7 @@ const Reader = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isOnline, getOfflineFile, isBookOffline } = useOfflineBooks();
+  const { isOnline, getOfflineFile, checkBookOfflineAsync } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -215,8 +215,9 @@ const Reader = () => {
 
   const fetchBook = async () => {
     try {
-      // First check if book is available offline
-      if (bookId && isBookOffline(bookId)) {
+      // First check if book is available offline (async check directly to IndexedDB)
+      const isOffline = bookId ? await checkBookOfflineAsync(bookId) : false;
+      if (bookId && isOffline) {
         const offlineFile = await getOfflineFile(bookId);
         if (offlineFile) {
           // Get book metadata from database (may fail if offline)
