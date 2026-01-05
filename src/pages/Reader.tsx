@@ -14,7 +14,8 @@ import {
   ArrowLeft,
   BookOpen,
   StickyNote,
-  CloudOff
+  CloudOff,
+  Loader2
 } from "lucide-react";
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -68,6 +69,7 @@ const Reader = () => {
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isReadingOffline, setIsReadingOffline] = useState(false);
+  const [checkingOffline, setCheckingOffline] = useState(true);
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
@@ -214,44 +216,63 @@ const Reader = () => {
   }, [book]);
 
   const fetchBook = async () => {
+    setCheckingOffline(true);
+    
     try {
-      // First check if book is available offline (async check directly to IndexedDB)
-      const isOffline = bookId ? await checkBookOfflineAsync(bookId) : false;
-      if (bookId && isOffline) {
-        const offlineFile = await getOfflineFile(bookId);
-        if (offlineFile) {
-          // Get book metadata from database (may fail if offline)
-          try {
-            const { data } = await supabase
-              .from("books")
-              .select("*")
-              .eq("id", bookId)
-              .maybeSingle();
-              
-            if (data) {
-              setBook(data);
-              setCurrentPage(data.last_page_read || 1);
-              setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+      // Check if we're offline first
+      const currentlyOnline = navigator.onLine;
+      
+      // Check if book is available in offline storage
+      const hasOfflineCopy = bookId ? await checkBookOfflineAsync(bookId) : false;
+      setCheckingOffline(false);
+      
+      // If offline, we MUST use offline copy
+      if (!currentlyOnline) {
+        if (hasOfflineCopy && bookId) {
+          const offlineFile = await getOfflineFile(bookId);
+          if (offlineFile) {
+            // Try to get metadata from IndexedDB offline books list
+            const url = URL.createObjectURL(offlineFile);
+            setSignedUrl(url);
+            setIsReadingOffline(true);
+            setLoading(false);
+            
+            // Try to get book metadata from database (may fail if offline)
+            try {
+              const { data } = await supabase
+                .from("books")
+                .select("*")
+                .eq("id", bookId)
+                .maybeSingle();
+                
+              if (data) {
+                setBook(data);
+                setCurrentPage(data.last_page_read || 1);
+                setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+              }
+            } catch {
+              // If we can't fetch from DB, that's okay for offline mode
             }
-          } catch {
-            // If we can't fetch from DB, continue with offline data
+            
+            toast({
+              title: "Reading offline",
+              description: "Book loaded from offline storage",
+            });
+            return;
           }
-          
-          // Create URL from offline blob
-          const url = URL.createObjectURL(offlineFile);
-          setSignedUrl(url);
-          setIsReadingOffline(true);
-          setLoading(false);
-          
-          toast({
-            title: "Reading offline",
-            description: "Book loaded from offline storage",
-          });
-          return;
         }
+        
+        // Offline but no cached copy - show error and navigate away
+        toast({
+          variant: "destructive",
+          title: "Offline",
+          description: "This book is not available offline. Save it for offline reading first.",
+        });
+        navigate("/");
+        return;
       }
       
-      // Online fetch
+      // Online - fetch from database
       const { data, error } = await supabase
         .from("books")
         .select("*")
@@ -263,6 +284,7 @@ const Reader = () => {
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+      setIsReadingOffline(false); // Explicitly set to false for online reads
       
       // Use public URL for files (bucket is public)
       if (data.file_type === 'pdf' || data.file_type === 'epub') {
@@ -278,20 +300,12 @@ const Reader = () => {
       
       setLoading(false);
     } catch (error: any) {
-      // If offline and no cached book, show error
-      if (!isOnline) {
-        toast({
-          variant: "destructive",
-          title: "Offline",
-          description: "This book is not available offline. Save it for offline reading first.",
-        });
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load book",
-        });
-      }
+      setCheckingOffline(false);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load book",
+      });
       navigate("/");
     }
   };
@@ -509,6 +523,17 @@ const Reader = () => {
       }
     }
   };
+
+  if (checkingOffline) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-muted-foreground mx-auto mb-4 animate-spin" />
+          <p className="text-muted-foreground">Checking offline storage...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !book) {
     return (
