@@ -43,7 +43,7 @@ export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: Rea
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 px-3 sm:px-6 pt-3 sm:pt-6">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Target className="w-4 h-4" />
@@ -51,11 +51,11 @@ export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: Rea
           </CardTitle>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 text-xs">
+              <Button variant="ghost" size="sm" className="h-8 text-xs">
                 Edit
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>Set Reading Goals</DialogTitle>
               </DialogHeader>
@@ -69,6 +69,7 @@ export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: Rea
                     onChange={(e) => setTempDaily(parseInt(e.target.value) || 15)}
                     min={5}
                     max={240}
+                    className="h-11 sm:h-10 text-base sm:text-sm"
                   />
                 </div>
                 <div className="space-y-2">
@@ -80,9 +81,10 @@ export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: Rea
                     onChange={(e) => setTempWeekly(parseInt(e.target.value) || 3)}
                     min={1}
                     max={7}
+                    className="h-11 sm:h-10 text-base sm:text-sm"
                   />
                 </div>
-                <Button onClick={saveGoals} className="w-full">
+                <Button onClick={saveGoals} className="w-full h-11 sm:h-10">
                   Save Goals
                 </Button>
               </div>
@@ -90,7 +92,7 @@ export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: Rea
           </Dialog>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6 pb-3 sm:pb-6">
         <div>
           <div className="flex justify-between items-center mb-1">
             <span className="text-xs text-muted-foreground">Today</span>

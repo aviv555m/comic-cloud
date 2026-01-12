@@ -106,181 +106,185 @@ export const AdvancedFilters = ({
     selectedTags.length;
 
   return (
-    <div className="flex flex-col sm:flex-row gap-3">
-      <div className="relative flex-1 max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-        <Input
-          placeholder="Search by title, author, or series..."
-          value={filters.search}
-          onChange={(e) => updateFilter("search", e.target.value)}
-          className="pl-10"
-        />
-      </div>
+    <div className="flex flex-col gap-3">
+      {/* Search and controls row */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Input
+            placeholder="Search books..."
+            value={filters.search}
+            onChange={(e) => updateFilter("search", e.target.value)}
+            className="pl-10 h-11 sm:h-10 text-base sm:text-sm"
+          />
+        </div>
 
-      <div className="flex gap-2">
-        <Select
-          value={`${filters.sortBy}-${filters.sortOrder}`}
-          onValueChange={(value) => {
-            const [sortBy, sortOrder] = value.split("-") as [string, "asc" | "desc"];
-            onFiltersChange({ ...filters, sortBy, sortOrder });
-          }}
-        >
-          <SelectTrigger className="w-[180px]">
-            <ArrowUpDown className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={`${option.value}-desc`} value={`${option.value}-desc`}>
-                {option.label} (Newest)
-              </SelectItem>
-            ))}
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={`${option.value}-asc`} value={`${option.value}-asc`}>
-                {option.label} (Oldest)
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select
+            value={`${filters.sortBy}-${filters.sortOrder}`}
+            onValueChange={(value) => {
+              const [sortBy, sortOrder] = value.split("-") as [string, "asc" | "desc"];
+              onFiltersChange({ ...filters, sortBy, sortOrder });
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-[180px] h-11 sm:h-10">
+              <ArrowUpDown className="w-4 h-4 mr-2 shrink-0" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem key={`${option.value}-desc`} value={`${option.value}-desc`} className="py-3 sm:py-2">
+                  {option.label} (Newest)
+                </SelectItem>
+              ))}
+              {SORT_OPTIONS.map((option) => (
+                <SelectItem key={`${option.value}-asc`} value={`${option.value}-asc`} className="py-3 sm:py-2">
+                  {option.label} (Oldest)
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <SlidersHorizontal className="w-4 h-4" />
-              Filters
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-80" align="end">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">Filters</h4>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2 h-11 sm:h-10 px-3 sm:px-4 shrink-0">
+                <SlidersHorizontal className="w-4 h-4" />
+                <span className="hidden sm:inline">Filters</span>
                 {activeFilterCount > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="h-auto p-1 text-xs"
-                  >
-                    Clear all
-                  </Button>
+                  <Badge variant="secondary" className="ml-0 sm:ml-1 h-5 w-5 sm:h-auto sm:w-auto p-0 sm:px-1.5 justify-center">
+                    {activeFilterCount}
+                  </Badge>
                 )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">File Type</Label>
-                <div className="flex flex-wrap gap-2">
-                  {FILE_TYPES.map((type) => (
-                    <Badge
-                      key={type}
-                      variant={filters.fileTypes.includes(type) ? "default" : "outline"}
-                      className="cursor-pointer"
-                      onClick={() => toggleFileType(type)}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[calc(100vw-2rem)] sm:w-80 max-w-sm" align="end">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-base">Filters</h4>
+                  {activeFilterCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="h-8 text-sm"
                     >
-                      {type.toUpperCase()}
-                    </Badge>
-                  ))}
+                      Clear all
+                    </Button>
+                  )}
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Reading Status</Label>
                 <div className="space-y-2">
-                  {READING_STATUSES.map((status) => (
-                    <div key={status.value} className="flex items-center gap-2">
-                      <Checkbox
-                        id={status.value}
-                        checked={filters.readingStatus.includes(status.value)}
-                        onCheckedChange={() => toggleReadingStatus(status.value)}
-                      />
-                      <Label htmlFor={status.value} className="text-sm cursor-pointer">
-                        {status.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {availableTags.length > 0 && (
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Tags</Label>
-                  <div className="flex flex-wrap gap-1">
-                    {availableTags.map((tag) => (
+                  <Label className="text-sm font-medium">File Type</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {FILE_TYPES.map((type) => (
                       <Badge
-                        key={tag.id}
-                        style={{
-                          backgroundColor: selectedTags.includes(tag.id)
-                            ? tag.color
-                            : undefined,
-                          color: selectedTags.includes(tag.id) ? "white" : undefined,
-                        }}
-                        variant={selectedTags.includes(tag.id) ? "default" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => toggleTag(tag.id)}
+                        key={type}
+                        variant={filters.fileTypes.includes(type) ? "default" : "outline"}
+                        className="cursor-pointer py-1.5 px-3 text-sm"
+                        onClick={() => toggleFileType(type)}
                       >
-                        {tag.name}
+                        {type.toUpperCase()}
                       </Badge>
                     ))}
                   </div>
                 </div>
-              )}
 
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Minimum Rating</Label>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((rating) => (
-                    <Button
-                      key={rating}
-                      variant={filters.minRating === rating ? "default" : "outline"}
-                      size="sm"
-                      className="w-8 h-8 p-0"
-                      onClick={() =>
-                        updateFilter(
-                          "minRating",
-                          filters.minRating === rating ? null : rating
-                        )
-                      }
-                    >
-                      {rating}+
-                    </Button>
-                  ))}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Reading Status</Label>
+                  <div className="space-y-3">
+                    {READING_STATUSES.map((status) => (
+                      <div key={status.value} className="flex items-center gap-3">
+                        <Checkbox
+                          id={status.value}
+                          checked={filters.readingStatus.includes(status.value)}
+                          onCheckedChange={() => toggleReadingStatus(status.value)}
+                          className="h-5 w-5"
+                        />
+                        <Label htmlFor={status.value} className="text-sm cursor-pointer flex-1 py-1">
+                          {status.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {availableTags.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Tags</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {availableTags.map((tag) => (
+                        <Badge
+                          key={tag.id}
+                          style={{
+                            backgroundColor: selectedTags.includes(tag.id)
+                              ? tag.color
+                              : undefined,
+                            color: selectedTags.includes(tag.id) ? "white" : undefined,
+                          }}
+                          variant={selectedTags.includes(tag.id) ? "default" : "outline"}
+                          className="cursor-pointer py-1.5 px-3"
+                          onClick={() => toggleTag(tag.id)}
+                        >
+                          {tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Minimum Rating</Label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <Button
+                        key={rating}
+                        variant={filters.minRating === rating ? "default" : "outline"}
+                        size="sm"
+                        className="w-10 h-10 p-0"
+                        onClick={() =>
+                          updateFilter(
+                            "minRating",
+                            filters.minRating === rating ? null : rating
+                          )
+                        }
+                      >
+                        {rating}+
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
-      {/* Active filter badges */}
+      {/* Active filter badges - scrollable on mobile */}
       {activeFilterCount > 0 && (
-        <div className="flex flex-wrap gap-1 items-center">
+        <div className="flex flex-wrap gap-2 items-center overflow-x-auto hide-scrollbar-mobile pb-1">
           {filters.fileTypes.map((type) => (
-            <Badge key={type} variant="secondary" className="gap-1">
+            <Badge key={type} variant="secondary" className="gap-1.5 py-1 px-2 shrink-0">
               {type.toUpperCase()}
               <X
-                className="w-3 h-3 cursor-pointer"
+                className="w-3.5 h-3.5 cursor-pointer"
                 onClick={() => toggleFileType(type)}
               />
             </Badge>
           ))}
           {filters.readingStatus.map((status) => (
-            <Badge key={status} variant="secondary" className="gap-1">
+            <Badge key={status} variant="secondary" className="gap-1.5 py-1 px-2 shrink-0">
               {READING_STATUSES.find((s) => s.value === status)?.label}
               <X
-                className="w-3 h-3 cursor-pointer"
+                className="w-3.5 h-3.5 cursor-pointer"
                 onClick={() => toggleReadingStatus(status)}
               />
             </Badge>
           ))}
           {filters.minRating && (
-            <Badge variant="secondary" className="gap-1">
+            <Badge variant="secondary" className="gap-1.5 py-1 px-2 shrink-0">
               {filters.minRating}+ stars
               <X
-                className="w-3 h-3 cursor-pointer"
+                className="w-3.5 h-3.5 cursor-pointer"
                 onClick={() => updateFilter("minRating", null)}
               />
             </Badge>
@@ -291,11 +295,11 @@ export const AdvancedFilters = ({
               <Badge
                 key={tagId}
                 style={{ backgroundColor: tag.color }}
-                className="gap-1 text-white"
+                className="gap-1.5 text-white py-1 px-2 shrink-0"
               >
                 {tag.name}
                 <X
-                  className="w-3 h-3 cursor-pointer"
+                  className="w-3.5 h-3.5 cursor-pointer"
                   onClick={() => toggleTag(tagId)}
                 />
               </Badge>

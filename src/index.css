@@ -129,15 +129,72 @@ All colors MUST be HSL.
   .transition-smooth {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
+
+  /* Safe area utilities for mobile devices with notches/home indicators */
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-area-inset-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  .safe-area-inset-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Touch-friendly tap targets */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Improved scrolling on mobile */
+  .scroll-smooth-mobile {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
 }
 
 /* Responsive root font size */
 @media (max-width: 767px) {
   :root {
-    --font-size-root: 17px;
+    --font-size-root: 16px;
   }
-  /* Prevent iOS zoom on form controls */
-  input, textarea, select, button {
-    font-size: 16px;
+  /* Prevent iOS zoom on form controls - must be 16px minimum */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* Improved touch behavior */
+@media (hover: none) and (pointer: coarse) {
+  /* Remove hover effects on touch devices for better UX */
+  .hover\:scale-110:hover {
+    transform: none;
+  }
+  
+  /* Add active states for touch feedback */
+  button:active,
+  a:active,
+  [role="button"]:active {
+    opacity: 0.8;
+    transform: scale(0.98);
+  }
+}
+
+/* Hide scrollbar on mobile but keep functionality */
+@media (max-width: 767px) {
+  .hide-scrollbar-mobile {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .hide-scrollbar-mobile::-webkit-scrollbar {
+    display: none;
   }
 }
