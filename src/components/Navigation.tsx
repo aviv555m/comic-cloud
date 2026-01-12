@@ -13,9 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BookChatDialog } from "./BookChatDialog";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { toast as sonnerToast } from "sonner";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 
 interface NavigationProps {
@@ -27,31 +25,13 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
   const location = useLocation();
   const { toast } = useToast();
   const { isSubscribed } = useSubscription();
-  const [chatOpen, setChatOpen] = useState(false);
-  const [userId, setUserId] = useState<string>();
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
-
-  const handleChatClick = () => {
-    if (!isSubscribed) {
-      sonnerToast.error("Premium feature", {
-        description: "AI Chat requires a Premium subscription",
-        action: {
-          label: "Upgrade",
-          onClick: () => navigate("/pricing"),
-        },
-      });
-      return;
-    }
-    setChatOpen(true);
-  };
 
   useEffect(() => {
     const fetchUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        setUserId(user.id);
-        
         // Fetch profile for avatar
         const { data: profile } = await supabase
           .from("profiles")
@@ -154,9 +134,9 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               </Button>
 
               <Button
-                variant="ghost"
+                variant={isActive("/chat") ? "secondary" : "ghost"}
                 size="sm"
-                onClick={handleChatClick}
+                onClick={() => navigate("/chat")}
                 className="gap-1.5 px-2 sm:px-3"
               >
                 <MessageSquare className="w-4 h-4" />
@@ -248,12 +228,6 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
           </div>
         </div>
       </nav>
-      
-      <BookChatDialog 
-        open={chatOpen} 
-        onOpenChange={setChatOpen}
-        userId={userId}
-      />
     </>
   );
 };

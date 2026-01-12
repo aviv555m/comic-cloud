@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Menu, X, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut } from "lucide-react";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useSubscription } from "@/contexts/SubscriptionContext";
-import { toast as sonnerToast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 
 interface MobileNavDrawerProps {
@@ -34,24 +33,6 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
   const handleNavigation = (path: string) => {
     navigate(path);
     setOpen(false);
-  };
-
-  const handleChatClick = () => {
-    if (!isSubscribed) {
-      sonnerToast.error("Premium feature", {
-        description: "AI Chat requires a Premium subscription",
-        action: {
-          label: "Upgrade",
-          onClick: () => {
-            navigate("/pricing");
-            setOpen(false);
-          },
-        },
-      });
-      return;
-    }
-    setOpen(false);
-    // Chat will be opened from parent via state
   };
 
   const handleSignOut = async () => {
@@ -130,8 +111,12 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
               
               {/* Chat item with premium badge */}
               <button
-                onClick={handleChatClick}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-muted transition-colors"
+                onClick={() => handleNavigation("/chat")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  isActive("/chat")
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
               >
                 <MessageSquare className="w-5 h-5 shrink-0" />
                 <span>AI Chat</span>

@@ -15,8 +15,10 @@ import Pricing from "./pages/Pricing";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import ReadingLists from "./pages/ReadingLists";
 import Challenges from "./pages/Challenges";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
+import { FloatingChatBubble } from "./components/FloatingChatBubble";
 import { useServiceWorker } from "./hooks/useServiceWorker";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 const queryClient = new QueryClient();
@@ -76,9 +78,11 @@ const AppContent = () => {
           <Route path="/payment-success" element={<PaymentSuccess />} />
           <Route path="/lists" element={<ReadingLists />} />
           <Route path="/challenges" element={<Challenges />} />
+          <Route path="/chat" element={<Chat />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
+        <FloatingChatBubble />
       </BrowserRouter>
     </>
   );
