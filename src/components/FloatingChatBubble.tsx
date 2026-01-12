@@ -76,33 +76,36 @@ export const FloatingChatBubble = () => {
         <button
           onClick={handleBubbleClick}
           className={cn(
-            "fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg",
+            "fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-12 h-12 sm:w-14 sm:h-14 rounded-full shadow-lg",
             "gradient-warm flex items-center justify-center",
-            "hover:scale-110 transition-transform duration-200",
+            "hover:scale-110 active:scale-95 transition-transform duration-200",
             "animate-in fade-in slide-in-from-bottom-4"
           )}
           aria-label="Open chat"
         >
-          <MessageSquare className="w-6 h-6 text-white" />
+          <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           {!isSubscribed && (
-            <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center">
-              <Crown className="w-3 h-3 text-white" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-amber-500 rounded-full flex items-center justify-center">
+              <Crown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
             </div>
           )}
         </button>
       )}
 
-      {/* Chat popup */}
+      {/* Chat popup - fullscreen on mobile, popup on desktop */}
       {isOpen && (
         <div
           className={cn(
-            "fixed bottom-6 right-6 z-50 w-[360px] h-[480px]",
-            "bg-card border rounded-xl shadow-2xl flex flex-col overflow-hidden",
-            "animate-in fade-in slide-in-from-bottom-4 duration-200"
+            "fixed z-50 bg-card border shadow-2xl flex flex-col overflow-hidden",
+            "animate-in fade-in duration-200",
+            // Mobile: fullscreen
+            "inset-0 rounded-none",
+            // Desktop: popup in corner
+            "sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[360px] sm:h-[480px] sm:rounded-xl sm:slide-in-from-bottom-4"
           )}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 safe-area-inset-top">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full gradient-warm flex items-center justify-center">
                 <MessageSquare className="w-4 h-4 text-white" />
@@ -113,7 +116,7 @@ export const FloatingChatBubble = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-9 w-9 sm:h-8 sm:w-8"
                 onClick={() => {
                   setIsOpen(false);
                   navigate("/chat");
@@ -125,7 +128,7 @@ export const FloatingChatBubble = () => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-9 w-9 sm:h-8 sm:w-8"
                 onClick={() => setIsOpen(false)}
               >
                 <X className="w-4 h-4" />
@@ -134,13 +137,13 @@ export const FloatingChatBubble = () => {
           </div>
 
           {/* Messages */}
-          <ScrollArea className="flex-1 p-3" ref={scrollRef}>
+          <ScrollArea className="flex-1 p-3 sm:p-3" ref={scrollRef}>
             <div className="space-y-3">
               {messages.length === 0 && (
-                <div className="text-center text-muted-foreground py-8">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm mb-1">Ask me about books!</p>
-                  <p className="text-xs">Recommendations, summaries & more</p>
+                <div className="text-center text-muted-foreground py-8 sm:py-8">
+                  <MessageSquare className="w-10 h-10 sm:w-8 sm:h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-base sm:text-sm mb-1">Ask me about books!</p>
+                  <p className="text-sm sm:text-xs">Recommendations, summaries & more</p>
                 </div>
               )}
               {messages.map((message, index) => (
@@ -155,7 +158,7 @@ export const FloatingChatBubble = () => {
                         : "bg-muted"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-base sm:text-sm whitespace-pre-wrap">{message.content}</p>
                   </div>
                 </div>
               ))}
@@ -169,8 +172,8 @@ export const FloatingChatBubble = () => {
             </div>
           </ScrollArea>
 
-          {/* Input */}
-          <div className="p-3 border-t">
+          {/* Input - with safe area for mobile */}
+          <div className="p-3 border-t safe-area-inset-bottom">
             <div className="flex gap-2">
               <Input
                 placeholder="Ask about books..."
@@ -178,9 +181,14 @@ export const FloatingChatBubble = () => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
                 disabled={isLoading}
-                className="h-9 text-sm"
+                className="h-11 sm:h-9 text-base sm:text-sm"
               />
-              <Button size="sm" onClick={handleSend} disabled={isLoading || !input.trim()} className="h-9 px-3">
+              <Button 
+                size="sm" 
+                onClick={handleSend} 
+                disabled={isLoading || !input.trim()} 
+                className="h-11 sm:h-9 px-4 sm:px-3"
+              >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>

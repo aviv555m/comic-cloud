@@ -304,32 +304,32 @@ const Library = () => {
       
       <OfflineIndicator />
       
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex flex-col gap-6 mb-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
+        <div className="flex flex-col gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold mb-2">My Library</h1>
-              <p className="text-sm sm:text-base text-muted-foreground">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">My Library</h1>
+              <p className="text-sm text-muted-foreground">
                 {books.length} {books.length === 1 ? "book" : "books"} in your collection
               </p>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="lg" className="gap-2 w-full sm:w-auto">
+                <Button size="lg" className="gap-2 w-full sm:w-auto h-11 sm:h-10">
                   <Plus className="w-5 h-5" />
                   Add Book
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setUploadOpen(true)}>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => setUploadOpen(true)} className="py-3 sm:py-2">
                   <Upload className="w-4 h-4 mr-2" />
                   Upload from Device
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setUrlDialogOpen(true)}>
+                <DropdownMenuItem onClick={() => setUrlDialogOpen(true)} className="py-3 sm:py-2">
                   <Link className="w-4 h-4 mr-2" />
                   Add from URL
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="py-3 sm:py-2">
                   <FileDown className="w-4 h-4 mr-2" />
                   Import from Goodreads
                 </DropdownMenuItem>
@@ -338,14 +338,14 @@ const Library = () => {
           </div>
 
           <Tabs defaultValue="library" className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="library" className="gap-2">
+            <TabsList className="mb-3 sm:mb-4 w-full sm:w-auto grid grid-cols-2 sm:inline-flex">
+              <TabsTrigger value="library" className="gap-2 h-10 sm:h-9">
                 <LibraryIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Library</span>
+                <span>Library</span>
               </TabsTrigger>
-              <TabsTrigger value="offline" className="gap-2">
+              <TabsTrigger value="offline" className="gap-2 h-10 sm:h-9">
                 <CloudOff className="w-4 h-4" />
-                <span className="hidden sm:inline">Offline</span>
+                <span>Offline</span>
               </TabsTrigger>
             </TabsList>
 
@@ -361,7 +361,16 @@ const Library = () => {
                   />
                 </div>
               )}
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-6">
+              {/* Reading Goals - Mobile (collapsible) */}
+              <div className="lg:hidden mb-4">
+                <ReadingGoals
+                  currentStreak={readingStats.currentStreak}
+                  todayMinutes={readingStats.todayMinutes}
+                  weeklyMinutes={readingStats.weeklyMinutes}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6 mb-6">
                 <div className="lg:col-span-3">
                   <AdvancedFilters
                     filters={filters}
@@ -371,6 +380,7 @@ const Library = () => {
                     onTagsChange={setSelectedTags}
                   />
                 </div>
+                {/* Reading Goals - Desktop */}
                 <div className="hidden lg:block">
                   <ReadingGoals
                     currentStreak={readingStats.currentStreak}

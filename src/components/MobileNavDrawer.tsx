@@ -58,68 +58,68 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden h-9 w-9">
+        <Button variant="ghost" size="icon" className="md:hidden h-10 w-10 -ml-1">
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[280px] sm:w-[320px] p-0">
+      <SheetContent side="left" className="w-[85vw] max-w-[320px] p-0">
         <SheetHeader className="p-4 pb-2 border-b">
           <SheetTitle className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg">
+            <div className="flex items-center justify-center w-9 h-9 gradient-warm rounded-lg">
               <BookOpen className="w-4 h-4 text-white" />
             </div>
-            <span>Bookshelf</span>
+            <span className="text-lg">Bookshelf</span>
           </SheetTitle>
         </SheetHeader>
         
-        <div className="flex flex-col h-[calc(100%-60px)]">
+        <div className="flex flex-col h-[calc(100%-68px)]">
           {/* User info */}
           <div className="p-4 border-b bg-muted/30">
             <div className="flex items-center gap-3">
               {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
+                <img src={avatarUrl} alt="" className="w-11 h-11 rounded-full object-cover" />
               ) : (
-                <div className="w-10 h-10 rounded-full gradient-warm flex items-center justify-center text-white font-medium">
+                <div className="w-11 h-11 rounded-full gradient-warm flex items-center justify-center text-white font-medium text-lg">
                   {(username || userEmail || "U").charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="font-medium truncate">{username || "User"}</p>
-                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+                <p className="font-medium truncate text-base">{username || "User"}</p>
+                <p className="text-sm text-muted-foreground truncate">{userEmail}</p>
               </div>
             </div>
           </div>
 
-          {/* Navigation items */}
+          {/* Navigation items - larger touch targets */}
           <nav className="flex-1 overflow-y-auto p-2">
             <div className="space-y-1">
               {navItems.map((item) => (
                 <button
                   key={item.path}
                   onClick={() => handleNavigation(item.path)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left transition-colors ${
                     isActive(item.path)
                       ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
+                      : "hover:bg-muted active:bg-muted"
                   }`}
                 >
                   <item.icon className="w-5 h-5 shrink-0" />
-                  <span>{item.label}</span>
+                  <span className="text-base">{item.label}</span>
                 </button>
               ))}
               
               {/* Chat item with premium badge */}
               <button
                 onClick={() => handleNavigation("/chat")}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left transition-colors ${
                   isActive("/chat")
                     ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted"
+                    : "hover:bg-muted active:bg-muted"
                 }`}
               >
                 <MessageSquare className="w-5 h-5 shrink-0" />
-                <span>AI Chat</span>
+                <span className="text-base">AI Chat</span>
                 {!isSubscribed && <Crown className="w-4 h-4 text-amber-500 ml-auto" />}
               </button>
             </div>
@@ -129,21 +129,21 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
             {/* Premium/Plan */}
             <button
               onClick={() => handleNavigation("/pricing")}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-muted transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left hover:bg-muted active:bg-muted transition-colors"
             >
               <Crown className="w-5 h-5 shrink-0 text-amber-500" />
-              <span>{isSubscribed ? "Your Plan" : "Upgrade to Premium"}</span>
+              <span className="text-base">{isSubscribed ? "Your Plan" : "Upgrade to Premium"}</span>
             </button>
           </nav>
 
-          {/* Sign out */}
+          {/* Sign out - larger touch target */}
           <div className="p-2 border-t">
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-destructive hover:bg-destructive/10 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left text-destructive hover:bg-destructive/10 active:bg-destructive/10 transition-colors"
             >
               <LogOut className="w-5 h-5 shrink-0" />
-              <span>Sign out</span>
+              <span className="text-base">Sign out</span>
             </button>
           </div>
         </div>

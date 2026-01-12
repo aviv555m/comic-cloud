@@ -70,11 +70,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
 
   return (
     <>
-      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3">
+      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50 safe-area-inset-top">
+        <div className="container mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
           <div className="flex items-center justify-between">
             {/* Left side: hamburger + logo */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <MobileNavDrawer 
                 userEmail={userEmail} 
                 username={username} 
@@ -82,12 +82,12 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               />
               <button
                 onClick={() => navigate("/")}
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                className="flex items-center gap-2 hover:opacity-80 active:opacity-70 transition-opacity"
               >
-                <div className="flex items-center justify-center w-10 h-10 gradient-warm rounded-lg shadow-md">
-                  <BookOpen className="w-5 h-5 text-white" />
+                <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 gradient-warm rounded-lg shadow-md">
+                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold hidden sm:block">Bookshelf</span>
+                <span className="text-lg sm:text-xl font-bold hidden sm:block">Bookshelf</span>
               </button>
             </div>
 
@@ -193,11 +193,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               </DropdownMenu>
             </div>
 
-            {/* Mobile: just avatar */}
+            {/* Mobile: just avatar with larger touch target */}
             <div className="md:hidden">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={avatarUrl || undefined} />
                       <AvatarFallback className="gradient-warm text-white text-sm">
@@ -214,11 +214,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">
                     <Settings className="mr-2 h-4 w-4" />
                     Settings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive py-3">
                     <LogOut className="mr-2 h-4 w-4" />
                     Sign out
                   </DropdownMenuItem>
