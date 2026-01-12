@@ -50,7 +50,7 @@ const PublicLibrary = () => {
     try {
       const { data, error } = await supabase
         .from("books")
-        .select("*")
+        .select("id, title, author, series, cover_url, file_url, file_type, total_pages, is_public, created_at")
         .eq("is_public", true)
         .order("created_at", { ascending: false });
 
