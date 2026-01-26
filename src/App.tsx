@@ -17,12 +17,6 @@ import ReadingLists from "./pages/ReadingLists";
 import Challenges from "./pages/Challenges";
 import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
-import Achievements from "./pages/Achievements";
-import Vocabulary from "./pages/Vocabulary";
-import Clubs from "./pages/Clubs";
-import ClubDetail from "./pages/ClubDetail";
-import Discover from "./pages/Discover";
-import Reminders from "./pages/Reminders";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { FloatingChatBubble } from "./components/FloatingChatBubble";
 import { useServiceWorker } from "./hooks/useServiceWorker";
@@ -85,12 +79,6 @@ const AppContent = () => {
           <Route path="/lists" element={<ReadingLists />} />
           <Route path="/challenges" element={<Challenges />} />
           <Route path="/chat" element={<Chat />} />
-          <Route path="/achievements" element={<Achievements />} />
-          <Route path="/vocabulary" element={<Vocabulary />} />
-          <Route path="/clubs" element={<Clubs />} />
-          <Route path="/clubs/:clubId" element={<ClubDetail />} />
-          <Route path="/discover" element={<Discover />} />
-          <Route path="/reminders" element={<Reminders />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
