@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Navigation } from "@/components/Navigation";
-import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard } from "lucide-react";
+import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download } from "lucide-react";
+import { ExportDialog } from "@/components/ExportDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -37,6 +38,7 @@ const Settings = () => {
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [fontSize, setFontSize] = useState(16);
   const [readingGoal, setReadingGoal] = useState(30);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   const handleManageSubscription = async () => {
     try {
@@ -264,7 +266,7 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
             <TabsTrigger value="profile" className="gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
@@ -280,6 +282,10 @@ const Settings = () => {
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="w-4 h-4" />
               <span className="hidden sm:inline">Theme</span>
+            </TabsTrigger>
+            <TabsTrigger value="data" className="gap-2">
+              <Download className="w-4 h-4" />
+              <span className="hidden sm:inline">Data</span>
             </TabsTrigger>
           </TabsList>
 
@@ -547,7 +553,27 @@ const Settings = () => {
               </Card>
             </div>
           </TabsContent>
+
+          <TabsContent value="data">
+            <Card>
+              <CardHeader>
+                <CardTitle>Export & Backup</CardTitle>
+                <CardDescription>Download your library data and reading history</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Export your books, annotations, reading progress, and more in various formats.
+                </p>
+                <Button onClick={() => setShowExportDialog(true)} className="w-full">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Library
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
+
+        <ExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} />
       </div>
     </div>
   );

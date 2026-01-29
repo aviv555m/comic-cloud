@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Award, BookText, Users, Compass, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -170,6 +170,22 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                   <DropdownMenuItem onClick={() => navigate("/challenges")}>
                     <Trophy className="mr-2 h-4 w-4" />
                     Challenges
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/achievements")}>
+                    <Award className="mr-2 h-4 w-4" />
+                    Achievements
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/vocabulary")}>
+                    <BookText className="mr-2 h-4 w-4" />
+                    Vocabulary
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/clubs")}>
+                    <Users className="mr-2 h-4 w-4" />
+                    Book Clubs
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/discover")}>
+                    <Compass className="mr-2 h-4 w-4" />
+                    Discover
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/statistics")}>
                     <BarChart3 className="mr-2 h-4 w-4" />
