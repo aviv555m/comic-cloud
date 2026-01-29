@@ -30,6 +30,7 @@ import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
 import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
+import { ReadingTimer } from "@/components/ReadingTimer";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -868,6 +869,11 @@ const Reader = () => {
           }}
         />
       )}
+
+      {/* Reading Timer / Pomodoro */}
+      <div className="fixed bottom-4 right-4 z-40">
+        <ReadingTimer />
+      </div>
     </div>
   );
 };
