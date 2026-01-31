@@ -14,7 +14,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    // Fix for duplicate React instances causing "Invalid hook call" errors
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+  },
+  optimizeDeps: {
+    include: ["react", "react-dom", "@tanstack/react-query"],
+    force: true,
   },
 }));
