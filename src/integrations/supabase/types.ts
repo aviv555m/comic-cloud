@@ -867,9 +867,38 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      public_book_reviews: {
+        Row: {
+          book_id: string | null
+          created_at: string | null
+          id: string | null
+          rating: number | null
+          review: string | null
+          reviewer_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "book_reviews_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      get_public_reviews: {
+        Args: { book_uuid: string }
+        Returns: {
+          book_id: string
+          created_at: string
+          id: string
+          rating: number
+          review: string
+          reviewer_name: string
+        }[]
+      }
       is_club_member: {
         Args: { _club_id: string; _user_id: string }
         Returns: boolean
