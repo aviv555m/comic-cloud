@@ -187,6 +187,26 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     <Compass className="mr-2 h-4 w-4" />
                     Discover
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/journal")}>
+                    <PenLine className="mr-2 h-4 w-4" />
+                    Journal
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/quotes")}>
+                    <Quote className="mr-2 h-4 w-4" />
+                    Quotes
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/bookshelf")}>
+                    <BookCopy className="mr-2 h-4 w-4" />
+                    3D Bookshelf
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/feed")}>
+                    <Activity className="mr-2 h-4 w-4" />
+                    Activity Feed
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/year-in-review")}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Year in Review
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/statistics")}>
                     <BarChart3 className="mr-2 h-4 w-4" />
                     Reading Stats

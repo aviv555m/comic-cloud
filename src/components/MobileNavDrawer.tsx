@@ -24,6 +24,11 @@ const navItems = [
   { path: "/clubs", label: "Book Clubs", icon: Users },
   { path: "/discover", label: "Discover", icon: Sparkles },
   { path: "/reminders", label: "Reminders", icon: Bell },
+  { path: "/journal", label: "Journal", icon: PenLine },
+  { path: "/quotes", label: "Quotes", icon: Quote },
+  { path: "/bookshelf", label: "3D Bookshelf", icon: BookCopy },
+  { path: "/feed", label: "Activity Feed", icon: Activity },
+  { path: "/year-in-review", label: "Year in Review", icon: Sparkles },
   { path: "/statistics", label: "Statistics", icon: BarChart3 },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
