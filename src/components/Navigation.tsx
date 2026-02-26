@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Award, BookText, Users, Compass, Bell } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Award, BookText, Users, Compass, Bell, PenLine, Quote, Activity, BookCopy, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
