@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell } from "lucide-react";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -24,6 +24,11 @@ const navItems = [
   { path: "/clubs", label: "Book Clubs", icon: Users },
   { path: "/discover", label: "Discover", icon: Sparkles },
   { path: "/reminders", label: "Reminders", icon: Bell },
+  { path: "/journal", label: "Journal", icon: PenLine },
+  { path: "/quotes", label: "Quotes", icon: Quote },
+  { path: "/bookshelf", label: "3D Bookshelf", icon: BookCopy },
+  { path: "/feed", label: "Activity Feed", icon: Activity },
+  { path: "/year-in-review", label: "Year in Review", icon: Sparkles },
   { path: "/statistics", label: "Statistics", icon: BarChart3 },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
