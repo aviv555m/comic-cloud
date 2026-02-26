@@ -53,6 +53,33 @@ export type Database = {
         }
         Relationships: []
       }
+      activity_feed: {
+        Row: {
+          activity_data: Json | null
+          activity_type: string
+          created_at: string | null
+          id: string
+          is_public: boolean | null
+          user_id: string
+        }
+        Insert: {
+          activity_data?: Json | null
+          activity_type: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          user_id: string
+        }
+        Update: {
+          activity_data?: Json | null
+          activity_type?: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       annotations: {
         Row: {
           annotation_type: string | null
@@ -466,6 +493,50 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      journal_entries: {
+        Row: {
+          book_id: string | null
+          content: string
+          created_at: string | null
+          entry_date: string
+          id: string
+          mood: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          book_id?: string | null
+          content: string
+          created_at?: string | null
+          entry_date?: string
+          id?: string
+          mood?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          book_id?: string | null
+          content?: string
+          created_at?: string | null
+          entry_date?: string
+          id?: string
+          mood?: string | null
+          title?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entries_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
