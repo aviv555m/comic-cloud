@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy } from "lucide-react";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -14,23 +14,42 @@ interface MobileNavDrawerProps {
   avatarUrl?: string | null;
 }
 
-const navItems = [
-  { path: "/", label: "Library", icon: Home },
-  { path: "/public", label: "Browse", icon: BookOpen },
-  { path: "/lists", label: "Reading Lists", icon: List },
-  { path: "/challenges", label: "Goals", icon: Trophy },
-  { path: "/achievements", label: "Achievements", icon: Award },
-  { path: "/vocabulary", label: "Vocabulary", icon: BookMarked },
-  { path: "/clubs", label: "Book Clubs", icon: Users },
-  { path: "/discover", label: "Discover", icon: Sparkles },
-  { path: "/reminders", label: "Reminders", icon: Bell },
-  { path: "/journal", label: "Journal", icon: PenLine },
-  { path: "/quotes", label: "Quotes", icon: Quote },
-  { path: "/bookshelf", label: "3D Bookshelf", icon: BookCopy },
-  { path: "/feed", label: "Activity Feed", icon: Activity },
-  { path: "/year-in-review", label: "Year in Review", icon: Sparkles },
-  { path: "/statistics", label: "Statistics", icon: BarChart3 },
-  { path: "/settings", label: "Settings", icon: Settings },
+const navSections = [
+  {
+    label: "Main",
+    items: [
+      { path: "/", label: "Library", icon: Home },
+      { path: "/public", label: "Browse", icon: BookOpen },
+      { path: "/lists", label: "Lists", icon: List },
+      { path: "/challenges", label: "Goals", icon: Trophy },
+      { path: "/statistics", label: "Stats", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Reading",
+    items: [
+      { path: "/journal", label: "Journal", icon: PenLine },
+      { path: "/quotes", label: "Quotes", icon: Quote },
+      { path: "/vocabulary", label: "Vocabulary", icon: BookMarked },
+      { path: "/reminders", label: "Reminders", icon: Bell },
+    ],
+  },
+  {
+    label: "Social",
+    items: [
+      { path: "/clubs", label: "Book Clubs", icon: Users },
+      { path: "/feed", label: "Activity", icon: Activity },
+      { path: "/discover", label: "Discover", icon: Compass },
+    ],
+  },
+  {
+    label: "Extras",
+    items: [
+      { path: "/achievements", label: "Achievements", icon: Award },
+      { path: "/year-in-review", label: "Year in Review", icon: Sparkles },
+      { path: "/bookshelf", label: "3D Bookshelf", icon: BookCopy },
+    ],
+  },
 ];
 
 export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDrawerProps) => {
@@ -48,16 +67,9 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to sign out",
-      });
+      toast({ variant: "destructive", title: "Error", description: "Failed to sign out" });
     } else {
-      toast({
-        title: "Signed out",
-        description: "You've been signed out successfully",
-      });
+      toast({ title: "Signed out", description: "You've been signed out successfully" });
       navigate("/auth");
     }
     setOpen(false);
@@ -73,87 +85,100 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
           <span className="sr-only">Open menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[85vw] max-w-[320px] p-0">
+      <SheetContent side="left" className="w-[80vw] max-w-[300px] p-0">
         <SheetHeader className="p-4 pb-2 border-b">
           <SheetTitle className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-9 h-9 gradient-warm rounded-lg">
+            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg">
               <BookOpen className="w-4 h-4 text-white" />
             </div>
-            <span className="text-lg">Bookshelf</span>
+            <span className="text-base">Bookshelf</span>
           </SheetTitle>
         </SheetHeader>
-        
-        <div className="flex flex-col h-[calc(100%-68px)]">
+
+        <div className="flex flex-col h-[calc(100%-56px)]">
           {/* User info */}
-          <div className="p-4 border-b bg-muted/30">
+          <div className="px-4 py-3 border-b bg-muted/30">
             <div className="flex items-center gap-3">
               {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="w-11 h-11 rounded-full object-cover" />
+                <img src={avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
               ) : (
-                <div className="w-11 h-11 rounded-full gradient-warm flex items-center justify-center text-white font-medium text-lg">
+                <div className="w-9 h-9 rounded-full gradient-warm flex items-center justify-center text-white font-medium">
                   {(username || userEmail || "U").charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="font-medium truncate text-base">{username || "User"}</p>
-                <p className="text-sm text-muted-foreground truncate">{userEmail}</p>
+                <p className="font-medium truncate text-sm">{username || "User"}</p>
+                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
               </div>
             </div>
           </div>
 
-          {/* Navigation items - larger touch targets */}
-          <nav className="flex-1 overflow-y-auto p-2">
-            <div className="space-y-1">
-              {navItems.map((item) => (
-                <button
-                  key={item.path}
-                  onClick={() => handleNavigation(item.path)}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left transition-colors ${
-                    isActive(item.path)
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted active:bg-muted"
-                  }`}
-                >
-                  <item.icon className="w-5 h-5 shrink-0" />
-                  <span className="text-base">{item.label}</span>
-                </button>
-              ))}
-              
-              {/* Chat item with premium badge */}
-              <button
-                onClick={() => handleNavigation("/chat")}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left transition-colors ${
-                  isActive("/chat")
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted active:bg-muted"
-                }`}
-              >
-                <MessageSquare className="w-5 h-5 shrink-0" />
-                <span className="text-base">AI Chat</span>
-                {!isSubscribed && <Crown className="w-4 h-4 text-amber-500 ml-auto" />}
-              </button>
-            </div>
-            
-            <Separator className="my-3" />
-            
-            {/* Premium/Plan */}
+          {/* Grouped navigation */}
+          <nav className="flex-1 overflow-y-auto py-2">
+            {navSections.map((section, sIdx) => (
+              <div key={section.label}>
+                {sIdx > 0 && <Separator className="my-1.5" />}
+                <p className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {section.label}
+                </p>
+                {section.items.map(item => (
+                  <button
+                    key={item.path}
+                    onClick={() => handleNavigation(item.path)}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                      isActive(item.path)
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-muted active:bg-muted"
+                    }`}
+                  >
+                    <item.icon className="w-4 h-4 shrink-0" />
+                    <span className="text-sm">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+
+            <Separator className="my-1.5" />
+
+            {/* Chat with premium badge */}
+            <button
+              onClick={() => handleNavigation("/chat")}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                isActive("/chat") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span className="text-sm">AI Chat</span>
+              {!isSubscribed && <Crown className="w-3.5 h-3.5 text-amber-500 ml-auto" />}
+            </button>
+
             <button
               onClick={() => handleNavigation("/pricing")}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left hover:bg-muted active:bg-muted transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted active:bg-muted transition-colors"
             >
-              <Crown className="w-5 h-5 shrink-0 text-amber-500" />
-              <span className="text-base">{isSubscribed ? "Your Plan" : "Upgrade to Premium"}</span>
+              <Crown className="w-4 h-4 shrink-0 text-amber-500" />
+              <span className="text-sm">{isSubscribed ? "Your Plan" : "Upgrade"}</span>
+            </button>
+
+            <button
+              onClick={() => handleNavigation("/settings")}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                isActive("/settings") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
+              }`}
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              <span className="text-sm">Settings</span>
             </button>
           </nav>
 
-          {/* Sign out - larger touch target */}
+          {/* Sign out */}
           <div className="p-2 border-t">
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-lg text-left text-destructive hover:bg-destructive/10 active:bg-destructive/10 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-destructive hover:bg-destructive/10 transition-colors"
             >
-              <LogOut className="w-5 h-5 shrink-0" />
-              <span className="text-base">Sign out</span>
+              <LogOut className="w-4 h-4 shrink-0" />
+              <span className="text-sm">Sign out</span>
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Award, BookText, Users, Compass, Bell, PenLine, Quote, Activity, BookCopy, Sparkles } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -11,6 +11,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -32,13 +36,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
     const fetchUserData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Fetch profile for avatar
         const { data: profile } = await supabase
           .from("profiles")
           .select("avatar_url, username")
           .eq("id", user.id)
           .single();
-        
         if (profile) {
           setAvatarUrl(profile.avatar_url);
           setUsername(profile.username);
@@ -51,16 +53,9 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to sign out",
-      });
+      toast({ variant: "destructive", title: "Error", description: "Failed to sign out" });
     } else {
-      toast({
-        title: "Signed out",
-        description: "You've been signed out successfully",
-      });
+      toast({ title: "Signed out", description: "You've been signed out successfully" });
       navigate("/auth");
     }
   };
@@ -73,13 +68,9 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
       <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50 safe-area-inset-top">
         <div className="container mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
           <div className="flex items-center justify-between">
-            {/* Left side: hamburger + logo */}
+            {/* Left: hamburger + logo */}
             <div className="flex items-center gap-1 sm:gap-2">
-              <MobileNavDrawer 
-                userEmail={userEmail} 
-                username={username} 
-                avatarUrl={avatarUrl} 
-              />
+              <MobileNavDrawer userEmail={userEmail} username={username} avatarUrl={avatarUrl} />
               <button
                 onClick={() => navigate("/")}
                 className="flex items-center gap-2 hover:opacity-80 active:opacity-70 transition-opacity"
@@ -91,62 +82,42 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
               </button>
             </div>
 
-            {/* Desktop nav items - hidden on mobile */}
-            <div className="hidden md:flex items-center gap-1 sm:gap-2">
-              <Button
-                variant={isActive("/") ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => navigate("/")}
-                className="gap-1.5 px-2 sm:px-3"
-              >
-                <Home className="w-4 h-4" />
-                <span className="hidden sm:inline">Library</span>
-              </Button>
-
-              <Button
-                variant={isActive("/public") ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => navigate("/public")}
-                className="gap-1.5 px-2 sm:px-3"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span className="hidden sm:inline">Browse</span>
-              </Button>
-
-              <Button
-                variant={isActive("/lists") ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => navigate("/lists")}
-                className="gap-1.5 px-2 sm:px-3"
-              >
-                <List className="w-4 h-4" />
-                <span className="hidden sm:inline">Lists</span>
-              </Button>
-
-              <Button
-                variant={isActive("/challenges") ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => navigate("/challenges")}
-                className="gap-1.5 px-2 sm:px-3"
-              >
-                <Trophy className="w-4 h-4" />
-                <span className="hidden sm:inline">Goals</span>
-              </Button>
+            {/* Desktop nav */}
+            <div className="hidden md:flex items-center gap-1">
+              {[
+                { path: "/", icon: Home, label: "Library" },
+                { path: "/public", icon: BookOpen, label: "Browse" },
+                { path: "/lists", icon: List, label: "Lists" },
+                { path: "/challenges", icon: Trophy, label: "Goals" },
+                { path: "/statistics", icon: BarChart3, label: "Stats" },
+              ].map(item => (
+                <Button
+                  key={item.path}
+                  variant={isActive(item.path) ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => navigate(item.path)}
+                  className="gap-1.5 px-2.5"
+                >
+                  <item.icon className="w-4 h-4" />
+                  <span className="hidden lg:inline">{item.label}</span>
+                </Button>
+              ))}
 
               <Button
                 variant={isActive("/chat") ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => navigate("/chat")}
-                className="gap-1.5 px-2 sm:px-3"
+                className="gap-1.5 px-2.5"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span className="hidden sm:inline">Chat</span>
+                <span className="hidden lg:inline">Chat</span>
                 {!isSubscribed && <Crown className="w-3 h-3 text-amber-500 ml-0.5" />}
               </Button>
 
+              {/* Profile dropdown - simplified */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                  <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1">
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={avatarUrl || undefined} />
                       <AvatarFallback className="gradient-warm text-white text-sm">
@@ -155,81 +126,38 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium">{username || "My Account"}</p>
-                      <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                    </div>
+                    <p className="text-sm font-medium">{username || "My Account"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/lists")}>
-                    <List className="mr-2 h-4 w-4" />
-                    Reading Lists
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/challenges")}>
-                    <Trophy className="mr-2 h-4 w-4" />
-                    Challenges
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/achievements")}>
-                    <Award className="mr-2 h-4 w-4" />
-                    Achievements
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/vocabulary")}>
-                    <BookText className="mr-2 h-4 w-4" />
-                    Vocabulary
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/clubs")}>
-                    <Users className="mr-2 h-4 w-4" />
-                    Book Clubs
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/discover")}>
-                    <Compass className="mr-2 h-4 w-4" />
-                    Discover
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/journal")}>
-                    <PenLine className="mr-2 h-4 w-4" />
-                    Journal
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/quotes")}>
-                    <Quote className="mr-2 h-4 w-4" />
-                    Quotes
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/bookshelf")}>
-                    <BookCopy className="mr-2 h-4 w-4" />
-                    3D Bookshelf
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/feed")}>
-                    <Activity className="mr-2 h-4 w-4" />
-                    Activity Feed
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/year-in-review")}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Year in Review
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/statistics")}>
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Reading Stats
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/journal")}>Journal</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/quotes")}>Quotes</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/vocabulary")}>Vocabulary</DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/settings")}>
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/clubs")}>Book Clubs</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/feed")}>Activity Feed</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/discover")}>Discover</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/achievements")}>Achievements</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/year-in-review")}>Year in Review</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/bookshelf")}>3D Bookshelf</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/pricing")}>
-                    <Crown className="mr-2 h-4 w-4 text-amber-500" />
-                    {isSubscribed ? "Your Plan" : "Upgrade to Premium"}
+                    <Crown className="mr-2 h-3 w-3 text-amber-500" />
+                    {isSubscribed ? "Your Plan" : "Upgrade"}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
+                    <LogOut className="mr-2 h-4 w-4" />Sign out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
 
-            {/* Mobile: just avatar with larger touch target */}
+            {/* Mobile: avatar dropdown */}
             <div className="md:hidden">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -242,21 +170,15 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel>
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium">{username || "My Account"}</p>
-                      <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                    </div>
+                    <p className="text-sm font-medium">{username || "My Account"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">
-                    <Settings className="mr-2 h-4 w-4" />
-                    Settings
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">Settings</DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive py-3">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign out
+                    <LogOut className="mr-2 h-4 w-4" />Sign out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
