@@ -41,16 +41,15 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // SECURITY FIX: Check for manual premium override in SEPARATE secure table (not profiles)
-    // This table has no UPDATE policy for regular users - only service role can modify it
-    const { data: subscriptionData } = await supabaseClient
-      .from('user_subscriptions')
+    // Check for manual premium override in profiles table
+    const { data: profileData } = await supabaseClient
+      .from('profiles')
       .select('is_premium_override')
-      .eq('user_id', user.id)
+      .eq('id', user.id)
       .maybeSingle();
 
-    if (subscriptionData?.is_premium_override === true) {
-      logStep("User has manual premium override from secure table");
+    if (profileData?.is_premium_override === true) {
+      logStep("User has manual premium override");
       return new Response(JSON.stringify({
         subscribed: true,
         product_id: "manual_override",
