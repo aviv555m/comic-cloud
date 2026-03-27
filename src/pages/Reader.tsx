@@ -58,15 +58,10 @@ const Reader = () => {
   const [book, setBook] = useState<Book | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [scale, setScale] = useState(() => {
-    // Auto-fit: start smaller on mobile/tablet
-    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
-    if (w < 640) return 0.55;
-    if (w < 1024) return 0.8;
-    return 1.0;
-  });
+  const [scale, setScale] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [uiVisible, setUiVisible] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
