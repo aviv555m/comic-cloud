@@ -31,6 +31,9 @@ import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
 import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
 import { ReadingTimer } from "@/components/ReadingTimer";
+import { SwipeablePageReader } from "@/components/SwipeablePageReader";
+import { SwipeDirectionToggle } from "@/components/SwipeDirectionToggle";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -55,13 +58,23 @@ const Reader = () => {
   const [book, setBook] = useState<Book | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(() => {
+    // Auto-fit: start smaller on mobile/tablet
+    const w = typeof window !== "undefined" ? window.innerWidth : 1024;
+    if (w < 640) return 0.55;
+    if (w < 1024) return 0.8;
+    return 1.0;
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
+  const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
+    () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
+  );
+  const isMobile = useIsMobile();
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -670,6 +683,10 @@ const Reader = () => {
                       <Maximize className="w-3 h-3" />
                     )}
                   </Button>
+                  <SwipeDirectionToggle
+                    direction={swipeDirection}
+                    onChange={setSwipeDirection}
+                  />
                 </>
               )}
             </div>
@@ -696,15 +713,25 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
-                  <Page
-                    pageNumber={currentPage}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
-                  />
-                </div>
+                <SwipeablePageReader
+                  onNext={() => changePage(1)}
+                  onPrev={() => changePage(-1)}
+                  canGoNext={!!numPages && currentPage < numPages}
+                  canGoPrev={currentPage > 1}
+                  currentPage={currentPage}
+                  totalPages={numPages}
+                  swipeDirection={swipeDirection}
+                >
+                  <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
+                    <Page
+                      pageNumber={currentPage}
+                      scale={scale}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                    />
+                  </div>
+                </SwipeablePageReader>
               ) : (
                 <ScrollModePDF 
                   ref={scrollModePDFRef}
@@ -720,51 +747,20 @@ const Reader = () => {
               )}
             </Document>
 
-            {/* Page Navigation - only show in page mode */}
-            {readingMode === "page" && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2 sm:gap-4">
-                  <Button
-                    onClick={() => changePage(-1)}
-                    disabled={currentPage <= 1}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Previous</span>
-                  </Button>
-                  
-                  <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
-                    Page {currentPage} of {numPages || "..."}
-                  </div>
-
-                  <Button
-                    onClick={() => changePage(1)}
-                    disabled={!numPages || currentPage >= numPages}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <span className="hidden sm:inline">Next</span>
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
-                  </Button>
-                </div>
-                
-                {/* Chapter Navigation for PDF */}
-                {pdfChapters.length > 0 && (
-                  <ChapterNavigation
-                    chapters={pdfChapters}
-                    currentPage={currentPage}
-                    totalPages={numPages || undefined}
-                    onChapterSelect={(chapter) => {
-                      if (chapter.page) {
-                        setCurrentPage(chapter.page);
-                        updateProgress(chapter.page, numPages || undefined);
-                      }
-                    }}
-                    fileType="pdf"
-                  />
-                )}
-              </div>
+            {/* Chapter Navigation for PDF - page mode */}
+            {readingMode === "page" && pdfChapters.length > 0 && (
+              <ChapterNavigation
+                chapters={pdfChapters}
+                currentPage={currentPage}
+                totalPages={numPages || undefined}
+                onChapterSelect={(chapter) => {
+                  if (chapter.page) {
+                    setCurrentPage(chapter.page);
+                    updateProgress(chapter.page, numPages || undefined);
+                  }
+                }}
+                fileType="pdf"
+              />
             )}
           </div>
         )}
