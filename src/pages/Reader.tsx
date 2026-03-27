@@ -7,10 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   ChevronLeft, 
   ChevronRight, 
-  ZoomIn, 
-  ZoomOut, 
-  Maximize, 
-  Minimize,
   ArrowLeft,
   BookOpen,
   StickyNote,
