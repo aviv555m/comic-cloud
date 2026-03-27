@@ -683,6 +683,10 @@ const Reader = () => {
                       <Maximize className="w-3 h-3" />
                     )}
                   </Button>
+                  <SwipeDirectionToggle
+                    direction={swipeDirection}
+                    onChange={setSwipeDirection}
+                  />
                 </>
               )}
             </div>
