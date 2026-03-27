@@ -89,16 +89,32 @@ const Reader = () => {
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
 
+  // Auto-fit scale to fill screen width
+  useEffect(() => {
+    const updateScale = () => {
+      const w = window.innerWidth;
+      // PDF pages are ~612px at scale 1.0, we want to fill viewport
+      const targetScale = Math.min(2.5, (w - 8) / 612);
+      setScale(targetScale);
+    };
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, []);
+
+  const toggleUi = useCallback(() => {
+    setUiVisible(prev => !prev);
+  }, []);
+
   useEffect(() => {
     const measure = () => {
       const h = headerRef.current?.getBoundingClientRect().height ?? 0;
       setHeaderHeight(h);
     };
-
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, []);
+  }, [uiVisible]);
 
 
   // Start reading session
