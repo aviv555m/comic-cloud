@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
-import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
-
+import { SwipeablePageReader } from "./SwipeablePageReader";
+import { SwipeDirectionToggle } from "./SwipeDirectionToggle";
+import { useIsMobile } from "@/hooks/use-mobile";
 interface EpubReaderProps {
   url: string;
   onLocationChange?: (location: string) => void;
