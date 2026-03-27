@@ -593,27 +593,24 @@ const Reader = () => {
 
   return (
     <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
-      <div ref={headerRef} className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-2 sm:px-4 py-2">
+      {/* Header - tap to toggle */}
+      <div
+        ref={headerRef}
+        className={`border-b bg-card/80 backdrop-blur-sm z-50 transition-all duration-300 shrink-0 ${
+          uiVisible ? "" : "hidden"
+        }`}
+      >
+        <div className="px-2 sm:px-4 py-2">
           <div className="flex flex-col gap-2">
-            {/* Top row: back button and title */}
             <div className="flex items-center gap-2 w-full">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/")}
-                className="shrink-0 h-8 px-2 sm:px-3"
-              >
+              <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="shrink-0 h-8 px-2 sm:px-3">
                 <ArrowLeft className="w-4 h-4" />
                 <span className="hidden sm:inline ml-2">Back</span>
               </Button>
               <div className="min-w-0 flex-1 flex items-center gap-2">
                 <div className="min-w-0">
                   <h1 className="font-semibold truncate text-sm">{book.title}</h1>
-                  {book.author && (
-                    <p className="text-xs text-muted-foreground truncate">{book.author}</p>
-                  )}
+                  {book.author && <p className="text-xs text-muted-foreground truncate">{book.author}</p>}
                 </div>
                 {isReadingOffline && (
                   <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0 text-xs">
@@ -622,95 +619,23 @@ const Reader = () => {
                 )}
               </div>
             </div>
-            
-            {/* Bottom row: controls */}
-
             <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
-              {/* Narration Controls */}
               {(isTXT || isPDF) && (
-                <NarrationControls 
-                  text={isTXT ? textContent : pdfTextContent}
-                  onPlayingChange={setIsPlaying}
-                />
+                <NarrationControls text={isTXT ? textContent : pdfTextContent} onPlayingChange={setIsPlaying} />
               )}
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAnnotations(!showAnnotations)}
-                className="h-9 px-3"
-                title="View annotations"
-              >
+              <Button variant="outline" size="sm" onClick={() => setShowAnnotations(!showAnnotations)} className="h-9 px-3" title="View annotations">
                 <StickyNote className="w-4 h-4" />
               </Button>
-
               {isPDF && (
                 <>
                   <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      placeholder="Pg"
-                      value={pageInput}
-                      onChange={(e) => setPageInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
-                      className="w-12 sm:w-16 h-8 text-xs sm:text-sm"
-                      min={1}
-                      max={numPages || 1}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={jumpToPage}
-                      className="h-8 px-2 text-xs"
-                    >
-                      Go
-                    </Button>
+                    <Input type="number" placeholder="Pg" value={pageInput} onChange={(e) => setPageInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && jumpToPage()} className="w-12 sm:w-16 h-8 text-xs sm:text-sm" min={1} max={numPages || 1} />
+                    <Button variant="outline" size="sm" onClick={jumpToPage} className="h-8 px-2 text-xs">Go</Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleReadingMode}
-                    className="text-xs h-8 px-2"
-                  >
+                  <Button variant="outline" size="sm" onClick={toggleReadingMode} className="text-xs h-8 px-2">
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
-                  <div className="flex items-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => changeScale(-0.2)}
-                      className="h-8 px-2 rounded-r-none"
-                    >
-                      <ZoomOut className="w-3 h-3" />
-                    </Button>
-                    <span className="text-xs font-medium px-2 bg-muted h-8 flex items-center border-y">
-                      {Math.round(scale * 100)}%
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => changeScale(0.2)}
-                      className="h-8 px-2 rounded-l-none"
-                    >
-                      <ZoomIn className="w-3 h-3" />
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleFullscreen}
-                    className="h-8 px-2 hidden sm:flex"
-                  >
-                    {isFullscreen ? (
-                      <Minimize className="w-3 h-3" />
-                    ) : (
-                      <Maximize className="w-3 h-3" />
-                    )}
-                  </Button>
-                  <SwipeDirectionToggle
-                    direction={swipeDirection}
-                    onChange={setSwipeDirection}
-                  />
+                  <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
                 </>
               )}
             </div>
@@ -718,91 +643,74 @@ const Reader = () => {
         </div>
       </div>
 
-      {/* Reader Content */}
-      <div className="container mx-auto px-1 sm:px-4 py-2 sm:py-8 overflow-x-hidden">
+      {/* Reader Content - fills remaining screen */}
+      <div className="flex-1 overflow-hidden relative">
         {isPDF && signedUrl && (
-          <div className="flex flex-col items-center gap-4 sm:gap-6">
-            <Document
-              file={signedUrl}
-              onLoadSuccess={onDocumentLoadSuccessWrapper}
-              loading={
-                <div className="flex items-center justify-center py-20">
-                  <p className="text-muted-foreground text-sm">Loading PDF...</p>
-                </div>
-              }
-              error={
-                <div className="flex items-center justify-center py-20">
-                  <p className="text-destructive text-sm">Failed to load PDF</p>
-                </div>
-              }
-            >
-              {readingMode === "page" ? (
-                <SwipeablePageReader
-                  onNext={() => changePage(1)}
-                  onPrev={() => changePage(-1)}
-                  canGoNext={!!numPages && currentPage < numPages}
-                  canGoPrev={currentPage > 1}
-                  currentPage={currentPage}
-                  totalPages={numPages}
-                  swipeDirection={swipeDirection}
-                >
-                  <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
-                    <Page
-                      pageNumber={currentPage}
-                      scale={scale}
-                      renderTextLayer={true}
-                      renderAnnotationLayer={true}
-                      className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
-                    />
-                  </div>
-                </SwipeablePageReader>
-              ) : (
-                <ScrollModePDF 
-                  ref={scrollModePDFRef}
-                  numPages={numPages || 0}
-                  scale={scale}
-                  initialPage={currentPage}
-                  topOffset={Math.max(80, Math.round(headerHeight) + 8)}
-                  onPageChange={(page) => {
-                    setCurrentPage(page);
-                    updateProgress(page, numPages || undefined);
-                  }}
-                />
-              )}
-            </Document>
-
-            {/* Chapter Navigation for PDF - page mode */}
-            {readingMode === "page" && pdfChapters.length > 0 && (
-              <ChapterNavigation
-                chapters={pdfChapters}
+          <Document
+            file={signedUrl}
+            onLoadSuccess={onDocumentLoadSuccessWrapper}
+            loading={
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground text-sm">Loading PDF...</p>
+              </div>
+            }
+            error={
+              <div className="flex items-center justify-center h-full">
+                <p className="text-destructive text-sm">Failed to load PDF</p>
+              </div>
+            }
+          >
+            {readingMode === "page" ? (
+              <SwipeablePageReader
+                onNext={() => changePage(1)}
+                onPrev={() => changePage(-1)}
+                canGoNext={!!numPages && currentPage < numPages}
+                canGoPrev={currentPage > 1}
                 currentPage={currentPage}
-                totalPages={numPages || undefined}
-                onChapterSelect={(chapter) => {
-                  if (chapter.page) {
-                    setCurrentPage(chapter.page);
-                    updateProgress(chapter.page, numPages || undefined);
-                  }
+                totalPages={numPages}
+                swipeDirection={swipeDirection}
+                onTap={toggleUi}
+                pagesUntilNextChapter={pagesUntilNextChapter}
+                currentChapterLabel={currentChapterLabel}
+              >
+                <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                  <Page
+                    pageNumber={currentPage}
+                    width={typeof window !== "undefined" ? window.innerWidth : 400}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="[&_.react-pdf__Page__canvas]:!w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                  />
+                </div>
+              </SwipeablePageReader>
+            ) : (
+              <ScrollModePDF 
+                ref={scrollModePDFRef}
+                numPages={numPages || 0}
+                scale={scale}
+                initialPage={currentPage}
+                topOffset={Math.max(80, Math.round(headerHeight) + 8)}
+                onPageChange={(page) => {
+                  setCurrentPage(page);
+                  updateProgress(page, numPages || undefined);
                 }}
-                fileType="pdf"
               />
             )}
-          </div>
+          </Document>
         )}
 
         {isEPUB && signedUrl && (
-          <EpubReader
-            url={signedUrl}
-            onLocationChange={(location) => {
-              // Save location for progress tracking
-              if (book) {
-                supabase
-                  .from("books")
-                  .update({ last_page_read: currentPage })
-                  .eq("id", book.id);
-              }
-            }}
-            initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
-          />
+          <div className="h-full" onClick={toggleUi}>
+            <EpubReader
+              url={signedUrl}
+              onLocationChange={(location) => {
+                if (book) {
+                  supabase.from("books").update({ last_page_read: currentPage }).eq("id", book.id);
+                }
+              }}
+              initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
+            />
+          </div>
         )}
 
         {(isCBZ || isCBR) && signedUrl && (
@@ -817,8 +725,8 @@ const Reader = () => {
         )}
 
         {isTXT && (
-          <div className="max-w-4xl mx-auto">
-            <div className="glass-card p-8 rounded-lg">
+          <div className="h-full overflow-y-auto p-4" onClick={toggleUi}>
+            <div className="max-w-4xl mx-auto">
               <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed">
                 {textContent}
               </pre>
@@ -827,25 +735,35 @@ const Reader = () => {
         )}
 
         {isUnsupported && (
-          <div className="flex items-center justify-center py-20">
+          <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md">
               <BookOpen className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">
-                Reader Coming Soon
-              </h3>
+              <h3 className="text-xl font-semibold mb-2">Reader Coming Soon</h3>
               <p className="text-muted-foreground mb-4">
                 Support for {book.file_type.toUpperCase()} files is in development.
               </p>
-              <p className="text-sm text-muted-foreground">
-                Currently supported: PDF, EPUB, CBZ, CBR, TXT
-              </p>
-              <Button
-                className="mt-6"
-                onClick={() => window.open(book.file_url, '_blank')}
-              >
+              <Button className="mt-6" onClick={() => window.open(book.file_url, '_blank')}>
                 Download File
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Bottom bar with chapter nav - toggleable */}
+        {uiVisible && isPDF && readingMode === "page" && pdfChapters.length > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 bg-card/80 backdrop-blur-sm border-t p-2 z-40">
+            <ChapterNavigation
+              chapters={pdfChapters}
+              currentPage={currentPage}
+              totalPages={numPages || undefined}
+              onChapterSelect={(chapter) => {
+                if (chapter.page) {
+                  setCurrentPage(chapter.page);
+                  updateProgress(chapter.page, numPages || undefined);
+                }
+              }}
+              fileType="pdf"
+            />
           </div>
         )}
       </div>
@@ -856,21 +774,13 @@ const Reader = () => {
         onEnded={() => setIsPlaying(false)}
         onError={() => {
           setIsPlaying(false);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to play audio",
-          });
+          toast({ variant: "destructive", title: "Error", description: "Failed to play audio" });
         }}
       />
 
       {/* Annotation Panel */}
       {showAnnotations && book && (
-        <AnnotationPanel
-          bookId={book.id}
-          currentPage={currentPage}
-          onClose={() => setShowAnnotations(false)}
-        />
+        <AnnotationPanel bookId={book.id} currentPage={currentPage} onClose={() => setShowAnnotations(false)} />
       )}
 
       {/* Highlight Menu */}
@@ -880,20 +790,17 @@ const Reader = () => {
           bookId={book.id}
           pageNumber={currentPage}
           position={highlightMenuPos}
-          onClose={() => {
-            setHighlightMenuPos(null);
-            window.getSelection()?.removeAllRanges();
-          }}
-          onSaved={() => {
-            window.getSelection()?.removeAllRanges();
-          }}
+          onClose={() => { setHighlightMenuPos(null); window.getSelection()?.removeAllRanges(); }}
+          onSaved={() => { window.getSelection()?.removeAllRanges(); }}
         />
       )}
 
-      {/* Reading Timer / Pomodoro */}
-      <div className="fixed bottom-4 right-4 z-40">
-        <ReadingTimer />
-      </div>
+      {/* Reading Timer - toggleable */}
+      {uiVisible && (
+        <div className="fixed bottom-4 right-4 z-40">
+          <ReadingTimer />
+        </div>
+      )}
     </div>
   );
 };
