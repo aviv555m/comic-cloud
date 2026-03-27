@@ -713,15 +713,25 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
-                  <Page
-                    pageNumber={currentPage}
-                    scale={scale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
-                  />
-                </div>
+                <SwipeablePageReader
+                  onNext={() => changePage(1)}
+                  onPrev={() => changePage(-1)}
+                  canGoNext={!!numPages && currentPage < numPages}
+                  canGoPrev={currentPage > 1}
+                  currentPage={currentPage}
+                  totalPages={numPages}
+                  swipeDirection={swipeDirection}
+                >
+                  <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
+                    <Page
+                      pageNumber={currentPage}
+                      scale={scale}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                    />
+                  </div>
+                </SwipeablePageReader>
               ) : (
                 <ScrollModePDF 
                   ref={scrollModePDFRef}
@@ -737,51 +747,20 @@ const Reader = () => {
               )}
             </Document>
 
-            {/* Page Navigation - only show in page mode */}
-            {readingMode === "page" && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2 sm:gap-4">
-                  <Button
-                    onClick={() => changePage(-1)}
-                    disabled={currentPage <= 1}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Previous</span>
-                  </Button>
-                  
-                  <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
-                    Page {currentPage} of {numPages || "..."}
-                  </div>
-
-                  <Button
-                    onClick={() => changePage(1)}
-                    disabled={!numPages || currentPage >= numPages}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <span className="hidden sm:inline">Next</span>
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
-                  </Button>
-                </div>
-                
-                {/* Chapter Navigation for PDF */}
-                {pdfChapters.length > 0 && (
-                  <ChapterNavigation
-                    chapters={pdfChapters}
-                    currentPage={currentPage}
-                    totalPages={numPages || undefined}
-                    onChapterSelect={(chapter) => {
-                      if (chapter.page) {
-                        setCurrentPage(chapter.page);
-                        updateProgress(chapter.page, numPages || undefined);
-                      }
-                    }}
-                    fileType="pdf"
-                  />
-                )}
-              </div>
+            {/* Chapter Navigation for PDF - page mode */}
+            {readingMode === "page" && pdfChapters.length > 0 && (
+              <ChapterNavigation
+                chapters={pdfChapters}
+                currentPage={currentPage}
+                totalPages={numPages || undefined}
+                onChapterSelect={(chapter) => {
+                  if (chapter.page) {
+                    setCurrentPage(chapter.page);
+                    updateProgress(chapter.page, numPages || undefined);
+                  }
+                }}
+                fileType="pdf"
+              />
             )}
           </div>
         )}
