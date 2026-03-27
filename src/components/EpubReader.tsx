@@ -19,6 +19,10 @@ export const EpubReader = ({ url, onLocationChange, initialLocation }: EpubReade
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentCfi, setCurrentCfi] = useState<string>("");
   const [currentChapterLabel, setCurrentChapterLabel] = useState<string>("");
+  const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
+    () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
+  );
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!viewerRef.current) return;
