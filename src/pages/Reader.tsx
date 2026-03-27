@@ -31,6 +31,9 @@ import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
 import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
 import { ReadingTimer } from "@/components/ReadingTimer";
+import { SwipeablePageReader } from "@/components/SwipeablePageReader";
+import { SwipeDirectionToggle } from "@/components/SwipeDirectionToggle";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
