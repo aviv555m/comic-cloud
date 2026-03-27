@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 
 interface SwipeablePageReaderProps {
   children: React.ReactNode;
@@ -11,6 +10,9 @@ interface SwipeablePageReaderProps {
   currentPage: number;
   totalPages: number | null;
   swipeDirection: "horizontal" | "vertical";
+  onTap?: () => void;
+  pagesUntilNextChapter?: number | null;
+  currentChapterLabel?: string;
 }
 
 const SWIPE_THRESHOLD = 50;
@@ -25,17 +27,33 @@ export const SwipeablePageReader = ({
   currentPage,
   totalPages,
   swipeDirection,
+  onTap,
+  pagesUntilNextChapter,
+  currentChapterLabel,
 }: SwipeablePageReaderProps) => {
   const isMobile = useIsMobile();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showPageInfo, setShowPageInfo] = useState(false);
+  const pageInfoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastOffsetRef = useRef(0);
+  const hasMoved = useRef(false);
 
   const isHorizontal = swipeDirection === "horizontal";
+
+  // Show page info popup on page change
+  useEffect(() => {
+    if (pageInfoTimerRef.current) clearTimeout(pageInfoTimerRef.current);
+    setShowPageInfo(true);
+    pageInfoTimerRef.current = setTimeout(() => setShowPageInfo(false), 2000);
+    return () => {
+      if (pageInfoTimerRef.current) clearTimeout(pageInfoTimerRef.current);
+    };
+  }, [currentPage]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (isAnimating) return;
@@ -43,6 +61,7 @@ export const SwipeablePageReader = ({
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
     setIsDragging(true);
     lastOffsetRef.current = 0;
+    hasMoved.current = false;
   }, [isAnimating]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
@@ -54,13 +73,13 @@ export const SwipeablePageReader = ({
     const primaryDelta = isHorizontal ? dx : dy;
     const secondaryDelta = isHorizontal ? dy : dx;
 
-    // Only track swipe if primary axis dominates
+    if (Math.abs(primaryDelta) > 10) hasMoved.current = true;
+
     if (Math.abs(primaryDelta) > Math.abs(secondaryDelta) * 0.8) {
       e.preventDefault();
-      // Clamp with resistance at edges
       let offset = primaryDelta;
       if ((offset > 0 && !canGoPrev) || (offset < 0 && !canGoNext)) {
-        offset *= 0.3; // rubber-band effect
+        offset *= 0.3;
       }
       setDragOffset(offset);
       lastOffsetRef.current = offset;
@@ -69,6 +88,15 @@ export const SwipeablePageReader = ({
 
   const handleTouchEnd = useCallback(() => {
     if (!touchStartRef.current || isAnimating) return;
+
+    // Detect tap (no significant movement)
+    if (!hasMoved.current) {
+      onTap?.();
+      touchStartRef.current = null;
+      setIsDragging(false);
+      setDragOffset(0);
+      return;
+    }
 
     const offset = lastOffsetRef.current;
     const elapsed = Date.now() - touchStartRef.current.time;
@@ -90,7 +118,7 @@ export const SwipeablePageReader = ({
 
     touchStartRef.current = null;
     setIsDragging(false);
-  }, [isAnimating, canGoNext, canGoPrev]);
+  }, [isAnimating, canGoNext, canGoPrev, onTap]);
 
   const triggerPageTransition = useCallback((direction: "next" | "prev") => {
     setIsAnimating(true);
@@ -104,100 +132,115 @@ export const SwipeablePageReader = ({
       else onPrev();
       setDragOffset(0);
       setIsAnimating(false);
-    }, 250);
+    }, 300);
   }, [isHorizontal, onNext, onPrev]);
 
   const snapBack = useCallback(() => {
     setIsAnimating(true);
     setDragOffset(0);
-    setTimeout(() => setIsAnimating(false), 250);
+    setTimeout(() => setIsAnimating(false), 300);
   }, []);
 
   // Keyboard support
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        if (canGoNext) onNext();
+        if (canGoNext) triggerPageTransition("next");
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        if (canGoPrev) onPrev();
+        if (canGoPrev) triggerPageTransition("prev");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canGoNext, canGoPrev, onNext, onPrev]);
+  }, [canGoNext, canGoPrev, triggerPageTransition]);
 
   const transform = isHorizontal
     ? `translateX(${dragOffset}px)`
     : `translateY(${dragOffset}px)`;
 
-  const PrevIcon = isHorizontal ? ChevronLeft : ChevronUp;
-  const NextIcon = isHorizontal ? ChevronRight : ChevronDown;
+  // Calculate opacity for page turn effect
+  const dragProgress = containerRef.current
+    ? Math.abs(dragOffset) / (isHorizontal ? containerRef.current.offsetWidth : containerRef.current.offsetHeight)
+    : 0;
+  const contentOpacity = Math.max(0.4, 1 - dragProgress * 0.6);
 
   return (
-    <div className="relative w-full select-none" ref={containerRef}>
-      {/* Swipe hint indicators (mobile only) */}
-      {isMobile && isDragging && (
-        <>
-          {dragOffset > 20 && canGoPrev && (
-            <div className="absolute left-2 top-1/2 -translate-y-1/2 z-20 bg-primary/80 text-primary-foreground rounded-full p-2 animate-pulse">
-              <PrevIcon className="w-5 h-5" />
-            </div>
-          )}
-          {dragOffset < -20 && canGoNext && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 z-20 bg-primary/80 text-primary-foreground rounded-full p-2 animate-pulse">
-              <NextIcon className="w-5 h-5" />
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Content with swipe transform */}
+    <div className="relative w-full h-full select-none overflow-hidden" ref={containerRef}>
+      {/* Page turn content with transform */}
       <div
-        className="w-full overflow-hidden"
+        className="w-full h-full"
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
+        onClick={!isMobile ? () => onTap?.() : undefined}
         style={{
           transform,
-          transition: isDragging ? "none" : "transform 0.25s ease-out",
+          opacity: isDragging ? contentOpacity : 1,
+          transition: isDragging ? "none" : "transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease",
           touchAction: isHorizontal ? "pan-y" : "pan-x",
         }}
       >
         {children}
       </div>
 
-      {/* Desktop buttons (hidden on mobile) */}
-      {!isMobile && (
-        <div className="flex items-center justify-center gap-4 mt-4">
-          <button
-            onClick={canGoPrev ? onPrev : undefined}
-            disabled={!canGoPrev}
-            className="flex items-center gap-1 px-4 py-2 rounded-md border border-border bg-card text-sm font-medium disabled:opacity-40 hover:bg-accent/10 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Previous
-          </button>
-          <span className="text-sm font-medium text-muted-foreground">
-            {currentPage} / {totalPages || "..."}
-          </span>
-          <button
-            onClick={canGoNext ? onNext : undefined}
-            disabled={!canGoNext}
-            className="flex items-center gap-1 px-4 py-2 rounded-md border border-border bg-card text-sm font-medium disabled:opacity-40 hover:bg-accent/10 transition-colors"
-          >
-            Next
-            <ChevronRight className="w-4 h-4" />
-          </button>
+      {/* Edge shadow during swipe for depth effect */}
+      {isDragging && Math.abs(dragOffset) > 10 && (
+        <div
+          className="absolute inset-0 pointer-events-none z-10"
+          style={{
+            background: isHorizontal
+              ? dragOffset < 0
+                ? "linear-gradient(to left, rgba(0,0,0,0.15) 0%, transparent 30%)"
+                : "linear-gradient(to right, rgba(0,0,0,0.15) 0%, transparent 30%)"
+              : dragOffset < 0
+                ? "linear-gradient(to top, rgba(0,0,0,0.15) 0%, transparent 30%)"
+                : "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, transparent 30%)",
+          }}
+        />
+      )}
+
+      {/* Page info popup */}
+      {showPageInfo && totalPages && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 animate-fade-in">
+          <div className="bg-foreground/85 text-background px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm shadow-lg flex flex-col items-center gap-0.5">
+            <span>Page {currentPage} of {totalPages}</span>
+            {pagesUntilNextChapter != null && pagesUntilNextChapter > 0 && (
+              <span className="text-xs opacity-80">
+                {pagesUntilNextChapter} {pagesUntilNextChapter === 1 ? "page" : "pages"} left in chapter
+              </span>
+            )}
+            {currentChapterLabel && (
+              <span className="text-xs opacity-70 truncate max-w-[200px]">{currentChapterLabel}</span>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Mobile page indicator */}
-      {isMobile && (
-        <div className="flex justify-center mt-3">
-          <span className="text-xs font-medium text-muted-foreground bg-muted/80 px-3 py-1 rounded-full">
-            {currentPage} / {totalPages || "..."}
-          </span>
-        </div>
+      {/* Desktop navigation buttons */}
+      {!isMobile && (
+        <>
+          {canGoPrev && (
+            <button
+              onClick={(e) => { e.stopPropagation(); triggerPageTransition("prev"); }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 bg-foreground/10 hover:bg-foreground/20 text-foreground rounded-full p-2 transition-all opacity-0 hover:opacity-100 group-hover:opacity-100"
+              style={{ opacity: undefined }}
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+          )}
+          {canGoNext && (
+            <button
+              onClick={(e) => { e.stopPropagation(); triggerPageTransition("next"); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 bg-foreground/10 hover:bg-foreground/20 text-foreground rounded-full p-2 transition-all opacity-0"
+              onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+              onMouseLeave={(e) => (e.currentTarget.style.opacity = "0")}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          )}
+        </>
       )}
     </div>
   );
