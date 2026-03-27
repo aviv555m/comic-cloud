@@ -65,6 +65,10 @@ const Reader = () => {
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
+  const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
+    () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
+  );
+  const isMobile = useIsMobile();
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
