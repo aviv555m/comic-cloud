@@ -578,8 +578,21 @@ const Reader = () => {
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
 
+  // Compute pages until next chapter for the popup
+  const currentChapterIndex = pdfChapters.length > 0
+    ? (() => {
+        for (let i = pdfChapters.length - 1; i >= 0; i--) {
+          if (pdfChapters[i].page && currentPage >= pdfChapters[i].page!) return i;
+        }
+        return 0;
+      })()
+    : -1;
+  const currentChapterLabel = currentChapterIndex >= 0 ? pdfChapters[currentChapterIndex]?.label : undefined;
+  const nextChapter = currentChapterIndex >= 0 ? pdfChapters[currentChapterIndex + 1] : undefined;
+  const pagesUntilNextChapter = nextChapter?.page ? nextChapter.page - currentPage : null;
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <div ref={headerRef} className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-2 sm:px-4 py-2">
