@@ -29,7 +29,6 @@ import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
 import { ReadingTimer } from "@/components/ReadingTimer";
 import { SwipeablePageReader } from "@/components/SwipeablePageReader";
 import { SwipeDirectionToggle } from "@/components/SwipeDirectionToggle";
-import { PageAnimationToggle } from "@/components/PageAnimationToggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // Configure PDF.js worker
@@ -58,16 +57,13 @@ const Reader = () => {
   const [scale, setScale] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [uiVisible, setUiVisible] = useState(false);
+  const [uiVisible, setUiVisible] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
   const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
     () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
-  );
-  const [animationMode, setAnimationMode] = useState<"slide" | "curl">(
-    () => (localStorage.getItem("pageAnimation") as "slide" | "curl") || "slide"
   );
   const isMobile = useIsMobile();
   const [pageInput, setPageInput] = useState("");
@@ -80,30 +76,42 @@ const Reader = () => {
   const [isReadingOffline, setIsReadingOffline] = useState(false);
   const [checkingOffline, setCheckingOffline] = useState(true);
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
-  const [containerWidth, setContainerWidth] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
   const startPageRef = useRef<number>(1);
   const lastUpdateRef = useRef<Date>(new Date());
   const scrollModePDFRef = useRef<ScrollModePDFHandle>(null);
-  const readerContentRef = useRef<HTMLDivElement>(null);
 
-  // Measure container width with ResizeObserver
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+
+  // Auto-fit scale to fill screen width
   useEffect(() => {
-    const el = readerContentRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerWidth(entry.contentRect.width);
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+    const updateScale = () => {
+      const w = window.innerWidth;
+      // PDF pages are ~612px at scale 1.0, we want to fill viewport
+      const targetScale = Math.min(2.5, (w - 8) / 612);
+      setScale(targetScale);
+    };
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
   }, []);
 
   const toggleUi = useCallback(() => {
     setUiVisible(prev => !prev);
   }, []);
+
+  useEffect(() => {
+    const measure = () => {
+      const h = headerRef.current?.getBoundingClientRect().height ?? 0;
+      setHeaderHeight(h);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [uiVisible]);
+
 
   // Start reading session
   const startReadingSession = useCallback(async () => {
@@ -176,10 +184,12 @@ const Reader = () => {
     fetchBook();
     startReadingSession();
 
+    // Periodic session updates every 30 seconds
     const updateInterval = setInterval(() => {
       updateSessionProgress();
     }, 30000);
 
+    // Handle visibility change
     const handleVisibility = () => {
       if (document.hidden) {
         updateSessionProgress();
@@ -187,6 +197,7 @@ const Reader = () => {
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
+    // Handle page unload
     const handleUnload = () => {
       endReadingSession();
     };
@@ -229,19 +240,25 @@ const Reader = () => {
     setCheckingOffline(true);
     
     try {
+      // Check if we're offline first
       const currentlyOnline = navigator.onLine;
+      
+      // Check if book is available in offline storage
       const hasOfflineCopy = bookId ? await checkBookOfflineAsync(bookId) : false;
       setCheckingOffline(false);
       
+      // If offline, we MUST use offline copy
       if (!currentlyOnline) {
         if (hasOfflineCopy && bookId) {
           const offlineFile = await getOfflineFile(bookId);
           if (offlineFile) {
+            // Try to get metadata from IndexedDB offline books list
             const url = URL.createObjectURL(offlineFile);
             setSignedUrl(url);
             setIsReadingOffline(true);
             setLoading(false);
             
+            // Try to get book metadata from database (may fail if offline)
             try {
               const { data } = await supabase
                 .from("books")
@@ -255,7 +272,7 @@ const Reader = () => {
                 setReadingMode(data.reading_mode as "page" | "scroll" || "page");
               }
             } catch {
-              // offline
+              // If we can't fetch from DB, that's okay for offline mode
             }
             
             toast({
@@ -266,6 +283,7 @@ const Reader = () => {
           }
         }
         
+        // Offline but no cached copy - show error and navigate away
         toast({
           variant: "destructive",
           title: "Offline",
@@ -275,6 +293,7 @@ const Reader = () => {
         return;
       }
       
+      // Online - fetch from database
       const { data, error } = await supabase
         .from("books")
         .select("*")
@@ -286,12 +305,14 @@ const Reader = () => {
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
-      setIsReadingOffline(false);
+      setIsReadingOffline(false); // Explicitly set to false for online reads
       
+      // Use public URL for files (bucket is public)
       if (data.file_type === 'pdf' || data.file_type === 'epub') {
         setSignedUrl(data.file_url);
       }
       
+      // If it's a text file, fetch and display content
       if (data.file_type === 'txt') {
         const response = await fetch(data.file_url);
         const text = await response.text();
@@ -355,6 +376,7 @@ const Reader = () => {
     const { numPages } = pdf;
     setNumPages(numPages);
     
+    // Update total pages if not set
     if (book && !book.total_pages) {
       supabase
         .from("books")
@@ -362,8 +384,10 @@ const Reader = () => {
         .eq("id", book.id);
     }
 
+    // Extract text from current page for narration
     extractPdfPageText(pdf, currentPage);
 
+    // Extract PDF outline/chapters
     try {
       const outline = await pdf.getOutline();
       if (outline && outline.length > 0) {
@@ -382,7 +406,7 @@ const Reader = () => {
                   pageNum = pageIndex + 1;
                 }
               } catch {
-                // Skip
+                // Skip if can't resolve destination
               }
             }
             
@@ -406,6 +430,7 @@ const Reader = () => {
     }
   };
 
+  // Extract text from PDF page for narration
   const extractPdfPageText = async (pdf: any, pageNum: number) => {
     try {
       const page = await pdf.getPage(pageNum);
@@ -422,6 +447,7 @@ const Reader = () => {
     }
   };
 
+  // Store pdf reference for text extraction
   const pdfDocRef = useRef<any>(null);
 
   const onDocumentLoadSuccessWrapper = async (pdf: any) => {
@@ -429,6 +455,7 @@ const Reader = () => {
     await onDocumentLoadSuccess(pdf);
   };
 
+  // Update text when page changes
   useEffect(() => {
     if (pdfDocRef.current && book?.file_type === 'pdf') {
       extractPdfPageText(pdfDocRef.current, currentPage);
@@ -492,12 +519,17 @@ const Reader = () => {
       let url = audioUrl;
       
       if (!url && textContent) {
+        // For text files
         url = await generateAudio(textContent.substring(0, 3000));
       } else if (!url && isPDF) {
+        // For PDFs, generate audio for current page
         toast({
           title: "Generating audio",
           description: "Please wait...",
         });
+        
+        // This would need actual PDF text extraction
+        // For now, show a placeholder message
         toast({
           title: "Feature coming soon",
           description: "PDF text-to-speech is being implemented",
@@ -542,7 +574,7 @@ const Reader = () => {
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
 
-  // Compute pages until next chapter
+  // Compute pages until next chapter for the popup
   const currentChapterIndex = pdfChapters.length > 0
     ? (() => {
         for (let i = pdfChapters.length - 1; i >= 0; i--) {
@@ -555,33 +587,16 @@ const Reader = () => {
   const nextChapter = currentChapterIndex >= 0 ? pdfChapters[currentChapterIndex + 1] : undefined;
   const pagesUntilNextChapter = nextChapter?.page ? nextChapter.page - currentPage : null;
 
-  // The width to render PDF pages at — fill container
-  const pdfPageWidth = containerWidth > 0 ? containerWidth : (typeof window !== "undefined" ? window.innerWidth : 400);
-
-  // renderPage callback for SwipeablePageReader
-  const renderPdfPage = (pageNum: number) => (
-    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-background">
-      <Page
-        pageNumber={pageNum}
-        width={pdfPageWidth}
-        renderTextLayer={true}
-        renderAnnotationLayer={true}
-        className="[&_.react-pdf__Page__canvas]:!w-full [&_.react-pdf__Page__canvas]:!h-auto"
-      />
-    </div>
-  );
-
   return (
-    <div className="h-[100dvh] w-screen bg-background flex flex-col overflow-hidden">
-      {/* Header - hidden by default, shown on tap */}
+    <div className="h-screen w-screen bg-background flex flex-col overflow-hidden">
+      {/* Header - tap to toggle */}
       <div
-        className={`border-b bg-card/90 backdrop-blur-sm z-50 shrink-0 transition-all duration-300 ease-in-out ${
-          uiVisible
-            ? "translate-y-0 opacity-100"
-            : "-translate-y-full opacity-0 pointer-events-none absolute top-0 left-0 right-0"
+        ref={headerRef}
+        className={`border-b bg-card/80 backdrop-blur-sm z-50 transition-all duration-300 shrink-0 ${
+          uiVisible ? "" : "hidden"
         }`}
       >
-        <div className="px-2 sm:px-4 py-2 safe-area-inset-top">
+        <div className="px-2 sm:px-4 py-2">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2 w-full">
               <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="shrink-0 h-8 px-2 sm:px-3">
@@ -617,7 +632,6 @@ const Reader = () => {
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
                   <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
-                  <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
                 </>
               )}
             </div>
@@ -625,8 +639,8 @@ const Reader = () => {
         </div>
       </div>
 
-      {/* Reader Content - fills entire screen */}
-      <div ref={readerContentRef} className="flex-1 overflow-hidden relative">
+      {/* Reader Content - fills remaining screen */}
+      <div className="flex-1 overflow-hidden relative">
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
@@ -644,7 +658,6 @@ const Reader = () => {
           >
             {readingMode === "page" ? (
               <SwipeablePageReader
-                renderPage={renderPdfPage}
                 onNext={() => changePage(1)}
                 onPrev={() => changePage(-1)}
                 canGoNext={!!numPages && currentPage < numPages}
@@ -652,18 +665,27 @@ const Reader = () => {
                 currentPage={currentPage}
                 totalPages={numPages}
                 swipeDirection={swipeDirection}
-                animationMode={animationMode}
                 onTap={toggleUi}
                 pagesUntilNextChapter={pagesUntilNextChapter}
                 currentChapterLabel={currentChapterLabel}
-              />
+              >
+                <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                  <Page
+                    pageNumber={currentPage}
+                    width={typeof window !== "undefined" ? window.innerWidth : 400}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="[&_.react-pdf__Page__canvas]:!w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                  />
+                </div>
+              </SwipeablePageReader>
             ) : (
               <ScrollModePDF 
                 ref={scrollModePDFRef}
                 numPages={numPages || 0}
                 scale={scale}
                 initialPage={currentPage}
-                topOffset={80}
+                topOffset={Math.max(80, Math.round(headerHeight) + 8)}
                 onPageChange={(page) => {
                   setCurrentPage(page);
                   updateProgress(page, numPages || undefined);
@@ -674,17 +696,17 @@ const Reader = () => {
         )}
 
         {isEPUB && signedUrl && (
-          <EpubReader
-            url={signedUrl}
-            onLocationChange={(location) => {
-              if (book) {
-                supabase.from("books").update({ last_page_read: currentPage }).eq("id", book.id);
-              }
-            }}
-            initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
-            onTap={toggleUi}
-            uiVisible={uiVisible}
-          />
+          <div className="h-full" onClick={toggleUi}>
+            <EpubReader
+              url={signedUrl}
+              onLocationChange={(location) => {
+                if (book) {
+                  supabase.from("books").update({ last_page_read: currentPage }).eq("id", book.id);
+                }
+              }}
+              initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
+            />
+          </div>
         )}
 
         {(isCBZ || isCBR) && signedUrl && (
@@ -695,15 +717,13 @@ const Reader = () => {
               updateProgress(page);
             }}
             initialPage={book.last_page_read || 0}
-            onTap={toggleUi}
-            uiVisible={uiVisible}
           />
         )}
 
         {isTXT && (
           <div className="h-full overflow-y-auto p-4" onClick={toggleUi}>
             <div className="max-w-4xl mx-auto">
-              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed text-base md:text-lg">
+              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed">
                 {textContent}
               </pre>
             </div>
@@ -727,7 +747,7 @@ const Reader = () => {
 
         {/* Bottom bar with chapter nav - toggleable */}
         {uiVisible && isPDF && readingMode === "page" && pdfChapters.length > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t p-2 z-40 transition-all duration-300 safe-area-inset-bottom">
+          <div className="absolute bottom-0 left-0 right-0 bg-card/80 backdrop-blur-sm border-t p-2 z-40">
             <ChapterNavigation
               chapters={pdfChapters}
               currentPage={currentPage}
@@ -773,7 +793,7 @@ const Reader = () => {
 
       {/* Reading Timer - toggleable */}
       {uiVisible && (
-        <div className="fixed bottom-4 right-4 z-40 transition-all duration-300">
+        <div className="fixed bottom-4 right-4 z-40">
           <ReadingTimer />
         </div>
       )}
