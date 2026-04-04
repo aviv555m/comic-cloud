@@ -576,12 +576,14 @@ const Reader = () => {
 
   return (
     <div className={`${isScrollMode ? "min-h-screen bg-background" : "h-[100dvh] w-screen bg-background flex flex-col overflow-hidden"}`}>
-      {/* Header - hidden by default, shown on tap */}
+      {/* Header - always visible in scroll mode, tap-toggled in page mode */}
       <div
         className={`border-b bg-card/90 backdrop-blur-sm z-50 shrink-0 transition-all duration-300 ease-in-out ${
-          uiVisible
-            ? "translate-y-0 opacity-100"
-            : "-translate-y-full opacity-0 pointer-events-none absolute top-0 left-0 right-0"
+          isScrollMode
+            ? "sticky top-0"
+            : uiVisible
+              ? "translate-y-0 opacity-100"
+              : "-translate-y-full opacity-0 pointer-events-none absolute top-0 left-0 right-0"
         }`}
       >
         <div className="px-2 sm:px-4 py-2 safe-area-inset-top">
@@ -619,8 +621,12 @@ const Reader = () => {
                   <Button variant="outline" size="sm" onClick={toggleReadingMode} className="text-xs h-8 px-2">
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
-                  <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
-                  <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
+                  {readingMode === "page" && (
+                    <>
+                      <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
+                      <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
+                    </>
+                  )}
                 </>
               )}
             </div>
