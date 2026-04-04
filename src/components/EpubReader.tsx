@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import ePub, { Book, Rendition, NavItem } from "epubjs";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
-import { SwipeDirectionToggle } from "./SwipeDirectionToggle";
-import { PageAnimationToggle } from "./PageAnimationToggle";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 interface EpubReaderProps {
   url: string;
   onLocationChange?: (location: string) => void;
   initialLocation?: string;
-  onTap?: () => void;
-  uiVisible?: boolean;
 }
 
-export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVisible = false }: EpubReaderProps) => {
+export const EpubReader = ({ url, onLocationChange, initialLocation }: EpubReaderProps) => {
   const viewerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -22,10 +19,6 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVi
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [currentCfi, setCurrentCfi] = useState<string>("");
   const [currentChapterLabel, setCurrentChapterLabel] = useState<string>("");
-  const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
-    () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
-  );
-  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (!viewerRef.current) return;
@@ -58,6 +51,7 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVi
       : rendition.display();
 
     displayed.then(() => {
+      // Track location changes
       rendition.on("relocated", (location: any) => {
         setCanGoBack(!location.atStart);
         setCanGoForward(!location.atEnd);
@@ -65,6 +59,7 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVi
         const cfi = location.start?.cfi || "";
         setCurrentCfi(cfi);
         
+        // Find current chapter
         if (bookRef.current && location.start?.href) {
           const currentHref = location.start.href;
           bookRef.current.loaded.navigation.then((navigation) => {
@@ -81,23 +76,13 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVi
           onLocationChange(location.start.cfi);
         }
       });
-
-      // Swipe / touch handling inside epub iframe
-      rendition.on("touchstart", (e: TouchEvent) => {
-        // handled via tap
-      });
-
-      // Tap to toggle UI inside epub
-      rendition.on("click", () => {
-        onTap?.();
-      });
     });
 
     return () => {
       rendition.destroy();
       book.destroy();
     };
-  }, [url, initialLocation, onLocationChange, onTap]);
+  }, [url, initialLocation, onLocationChange]);
 
   const goToPreviousPage = () => {
     renditionRef.current?.prev();
@@ -114,34 +99,41 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, onTap, uiVi
   };
 
   return (
-    <div className="relative w-full h-full flex flex-col">
-      {/* EPUB viewer fills entire space */}
+    <div className="flex flex-col items-center gap-4 w-full">
       <div 
         ref={viewerRef}
-        className={`flex-1 w-full bg-card ${isMobile ? "" : "max-w-4xl mx-auto rounded-lg shadow-2xl"}`}
+        className="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-lg shadow-2xl"
+        style={{ height: "70vh" }}
       />
+      
+      <div className="flex items-center gap-4">
+        <Button
+          onClick={goToPreviousPage}
+          disabled={!canGoBack}
+          variant="outline"
+        >
+          <ChevronLeft className="w-4 h-4 mr-2" />
+          Previous
+        </Button>
 
-      {/* Controls overlay — only when UI visible */}
-      {uiVisible && (
-        <div className="absolute bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t p-2 z-40 safe-area-inset-bottom">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
-            {currentChapterLabel && (
-              <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                {currentChapterLabel}
-              </span>
-            )}
-          </div>
+        <Button
+          onClick={goToNextPage}
+          disabled={!canGoForward}
+          variant="outline"
+        >
+          Next
+          <ChevronRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
 
-          {chapters.length > 0 && (
-            <ChapterNavigation
-              chapters={chapters}
-              currentCfi={currentCfi}
-              onChapterSelect={handleChapterSelect}
-              fileType="epub"
-            />
-          )}
-        </div>
+      {/* Chapter Navigation */}
+      {chapters.length > 0 && (
+        <ChapterNavigation
+          chapters={chapters}
+          currentCfi={currentCfi}
+          onChapterSelect={handleChapterSelect}
+          fileType="epub"
+        />
       )}
     </div>
   );

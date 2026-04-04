@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import JSZip from "jszip";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
-import { SwipeablePageReader } from "./SwipeablePageReader";
-import { SwipeDirectionToggle } from "./SwipeDirectionToggle";
-import { PageAnimationToggle } from "./PageAnimationToggle";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 interface ComicReaderProps {
   url: string;
   onPageChange?: (page: number) => void;
   initialPage?: number;
-  onTap?: () => void;
-  uiVisible?: boolean;
 }
 
 interface ImageFile {
@@ -21,18 +17,11 @@ interface ImageFile {
   folder: string;
 }
 
-export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisible = false }: ComicReaderProps) => {
+export const ComicReader = ({ url, onPageChange, initialPage = 0 }: ComicReaderProps) => {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [swipeDirection, setSwipeDirection] = useState<"horizontal" | "vertical">(
-    () => (localStorage.getItem("swipeDirection") as "horizontal" | "vertical") || "horizontal"
-  );
-  const [animationMode, setAnimationMode] = useState<"slide" | "curl">(
-    () => (localStorage.getItem("pageAnimation") as "slide" | "curl") || "slide"
-  );
-  const isMobile = useIsMobile();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -43,6 +32,7 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisib
     try {
       setLoading(true);
       
+      // Check if file is CBR (RAR format)
       if (url.toLowerCase().includes('.cbr')) {
         toast({
           variant: "destructive",
@@ -57,25 +47,28 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisib
       const arrayBuffer = await response.arrayBuffer();
       const zip = await JSZip.loadAsync(arrayBuffer);
 
+      // Extract all image files with folder info
       const imageFiles: ImageFile[] = [];
       
       for (const filename of Object.keys(zip.files)) {
         const file = zip.files[filename];
         if (!file.dir && /\.(jpg|jpeg|png|gif|webp)$/i.test(filename)) {
           const blob = await file.async("blob");
-          const blobUrl = URL.createObjectURL(blob);
+          const url = URL.createObjectURL(blob);
           
+          // Get folder path
           const parts = filename.split('/');
           const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
           
-          imageFiles.push({ name: filename, data: blobUrl, folder });
+          imageFiles.push({ name: filename, data: url, folder });
         }
       }
 
+      // Sort by filename
       imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       setImages(imageFiles);
 
-      // Extract chapters from folders
+      // Extract chapters from folder structure
       const folderMap = new Map<string, number>();
       imageFiles.forEach((img, index) => {
         if (img.folder && !folderMap.has(img.folder)) {
@@ -83,17 +76,21 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisib
         }
       });
 
+      // Create chapters from folders
       const extractedChapters: Chapter[] = [];
+      
+      // If there are folders, use them as chapters
       if (folderMap.size > 1) {
         folderMap.forEach((pageIndex, folder) => {
           const folderName = folder.split('/').pop() || folder;
           extractedChapters.push({
             id: `chapter-${extractedChapters.length}`,
             label: folderName,
-            page: pageIndex + 1,
+            page: pageIndex + 1, // 1-indexed for display
           });
         });
       } else {
+        // If no folders, create chapters every N pages (e.g., every 20 pages)
         const chapterSize = 20;
         for (let i = 0; i < imageFiles.length; i += chapterSize) {
           const chapterNum = Math.floor(i / chapterSize) + 1;
@@ -126,7 +123,7 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisib
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center py-20">
         <p className="text-muted-foreground">Loading comic...</p>
       </div>
     );
@@ -134,79 +131,62 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0, onTap, uiVisib
 
   if (images.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center py-20">
         <p className="text-muted-foreground">No images found in archive</p>
       </div>
     );
   }
 
-  // Compute chapter info for page popup
-  const currentChapterIndex = chapters.length > 0
-    ? (() => {
-        for (let i = chapters.length - 1; i >= 0; i--) {
-          if (chapters[i].page && (currentPage + 1) >= chapters[i].page!) return i;
-        }
-        return 0;
-      })()
-    : -1;
-  const currentChapterLabel = currentChapterIndex >= 0 ? chapters[currentChapterIndex]?.label : undefined;
-  const nextChapter = currentChapterIndex >= 0 ? chapters[currentChapterIndex + 1] : undefined;
-  const pagesUntilNextChapter = nextChapter?.page ? nextChapter.page - (currentPage + 1) : null;
-
-  const renderPage = (pageNum: number) => {
-    const idx = pageNum - 1; // convert 1-indexed to 0-indexed
-    if (idx < 0 || idx >= images.length) return <div className="w-full h-full bg-background" />;
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-background">
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="relative max-w-4xl w-full">
         <img
-          src={images[idx].data}
-          alt={`Page ${pageNum}`}
-          className="max-w-full max-h-full object-contain"
-          draggable={false}
+          src={images[currentPage]?.data}
+          alt={`Page ${currentPage + 1}`}
+          className="w-full h-auto rounded-lg shadow-2xl"
         />
       </div>
-    );
-  };
 
-  return (
-    <div className="relative w-full h-full flex flex-col">
-      <SwipeablePageReader
-        renderPage={renderPage}
-        onNext={() => goToPage(currentPage + 1)}
-        onPrev={() => goToPage(currentPage - 1)}
-        canGoNext={currentPage < images.length - 1}
-        canGoPrev={currentPage > 0}
-        currentPage={currentPage + 1}
-        totalPages={images.length}
-        swipeDirection={swipeDirection}
-        animationMode={animationMode}
-        onTap={onTap}
-        pagesUntilNextChapter={pagesUntilNextChapter}
-        currentChapterLabel={currentChapterLabel}
-      />
-
-      {/* Controls overlay — only when UI visible */}
-      {uiVisible && (
-        <div className="absolute bottom-0 left-0 right-0 bg-card/90 backdrop-blur-sm border-t p-2 z-40 safe-area-inset-bottom">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
-            <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage === 0}
+            variant="outline"
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Previous
+          </Button>
+          
+          <div className="text-sm font-medium">
+            Page {currentPage + 1} of {images.length}
           </div>
-          {chapters.length > 0 && (
-            <ChapterNavigation
-              chapters={chapters}
-              currentPage={currentPage + 1}
-              totalPages={images.length}
-              onChapterSelect={(chapter) => {
-                if (chapter.page) {
-                  goToPage(chapter.page - 1);
-                }
-              }}
-              fileType="cbz"
-            />
-          )}
+
+          <Button
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= images.length - 1}
+            variant="outline"
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
         </div>
-      )}
+
+        {/* Chapter Navigation */}
+        {chapters.length > 0 && (
+          <ChapterNavigation
+            chapters={chapters}
+            currentPage={currentPage + 1}
+            totalPages={images.length}
+            onChapterSelect={(chapter) => {
+              if (chapter.page) {
+                goToPage(chapter.page - 1); // Convert to 0-indexed
+              }
+            }}
+            fileType="cbz"
+          />
+        )}
+      </div>
     </div>
   );
 };
