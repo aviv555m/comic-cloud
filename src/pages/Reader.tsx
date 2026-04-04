@@ -639,6 +639,7 @@ const Reader = () => {
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
+            className="h-full"
             onLoadSuccess={onDocumentLoadSuccessWrapper}
             loading={
               <div className="flex items-center justify-center h-full">
