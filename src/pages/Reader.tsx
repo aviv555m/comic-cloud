@@ -558,9 +558,13 @@ const Reader = () => {
   // The width to render PDF pages at — fill container
   const pdfPageWidth = containerWidth > 0 ? containerWidth : (typeof window !== "undefined" ? window.innerWidth : 400);
 
+  console.log("[Reader] Rendering", { isPDF, readingMode, signedUrl: !!signedUrl, numPages, currentPage, containerWidth, pdfPageWidth, book: !!book, loading });
+
   // renderPage callback for SwipeablePageReader
-  const renderPdfPage = (pageNum: number) => (
-    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-background">
+  const renderPdfPage = (pageNum: number) => {
+    console.log("[Reader] renderPdfPage called", { pageNum, pdfPageWidth });
+    return (
+    <div className="w-full h-full overflow-auto bg-background">
       <Page
         pageNumber={pageNum}
         width={pdfPageWidth}
@@ -570,6 +574,7 @@ const Reader = () => {
       />
     </div>
   );
+  };
 
   // Scroll mode uses a traditional scrollable layout, not the immersive fullscreen
   const isScrollMode = isPDF && readingMode === "scroll";
@@ -635,18 +640,19 @@ const Reader = () => {
       </div>
 
       {/* Reader Content */}
-      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 overflow-hidden relative"}`}>
+      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 relative"}`} style={isScrollMode ? undefined : { overflow: 'hidden' }}>
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
+            className={isScrollMode ? "" : "absolute inset-0"}
             onLoadSuccess={onDocumentLoadSuccessWrapper}
             loading={
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center h-full min-h-[200px]">
                 <p className="text-muted-foreground text-sm">Loading PDF...</p>
               </div>
             }
             error={
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center h-full min-h-[200px]">
                 <p className="text-destructive text-sm">Failed to load PDF</p>
               </div>
             }
