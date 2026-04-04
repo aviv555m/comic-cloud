@@ -288,7 +288,7 @@ const Reader = () => {
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       setIsReadingOffline(false);
       
-      if (data.file_type === 'pdf' || data.file_type === 'epub') {
+      if (data.file_type === 'pdf' || data.file_type === 'epub' || data.file_type === 'cbz' || data.file_type === 'cbr') {
         setSignedUrl(data.file_url);
       }
       
