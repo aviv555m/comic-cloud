@@ -558,8 +558,12 @@ const Reader = () => {
   // The width to render PDF pages at — fill container
   const pdfPageWidth = containerWidth > 0 ? containerWidth : (typeof window !== "undefined" ? window.innerWidth : 400);
 
+  console.log("[Reader] Rendering", { isPDF, isScrollMode, readingMode, signedUrl: !!signedUrl, numPages, currentPage, containerWidth, pdfPageWidth, book: !!book, loading });
+
   // renderPage callback for SwipeablePageReader
-  const renderPdfPage = (pageNum: number) => (
+  const renderPdfPage = (pageNum: number) => {
+    console.log("[Reader] renderPdfPage called", { pageNum, pdfPageWidth });
+    return (
     <div className="w-full h-full overflow-auto bg-background">
       <Page
         pageNumber={pageNum}
