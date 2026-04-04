@@ -329,16 +329,6 @@ export const SwipeablePageReader = ({
         </>
       )}
 
-      {/* No adjacent page and not dragging: just show current page (fallback) */}
-      {!isDragging && !isAnimating && !isCurl && (
-        <div
-          className="absolute inset-0 w-full h-full z-10"
-          style={{ transform: "none" }}
-          onClick={!isMobile ? () => onTap?.() : undefined}
-        >
-          {renderPage(currentPage)}
-        </div>
-      )}
 
       {/* Page info popup */}
       {showPageInfo && totalPages && (

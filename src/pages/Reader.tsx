@@ -288,7 +288,7 @@ const Reader = () => {
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       setIsReadingOffline(false);
       
-      if (data.file_type === 'pdf' || data.file_type === 'epub') {
+      if (data.file_type === 'pdf' || data.file_type === 'epub' || data.file_type === 'cbz' || data.file_type === 'cbr') {
         setSignedUrl(data.file_url);
       }
       
@@ -571,14 +571,19 @@ const Reader = () => {
     </div>
   );
 
+  // Scroll mode uses a traditional scrollable layout, not the immersive fullscreen
+  const isScrollMode = isPDF && readingMode === "scroll";
+
   return (
-    <div className="h-[100dvh] w-screen bg-background flex flex-col overflow-hidden">
-      {/* Header - hidden by default, shown on tap */}
+    <div className={`${isScrollMode ? "min-h-screen bg-background" : "h-[100dvh] w-screen bg-background flex flex-col overflow-hidden"}`}>
+      {/* Header - always visible in scroll mode, tap-toggled in page mode */}
       <div
         className={`border-b bg-card/90 backdrop-blur-sm z-50 shrink-0 transition-all duration-300 ease-in-out ${
-          uiVisible
-            ? "translate-y-0 opacity-100"
-            : "-translate-y-full opacity-0 pointer-events-none absolute top-0 left-0 right-0"
+          isScrollMode
+            ? "sticky top-0"
+            : uiVisible
+              ? "translate-y-0 opacity-100"
+              : "-translate-y-full opacity-0 pointer-events-none absolute top-0 left-0 right-0"
         }`}
       >
         <div className="px-2 sm:px-4 py-2 safe-area-inset-top">
@@ -616,8 +621,12 @@ const Reader = () => {
                   <Button variant="outline" size="sm" onClick={toggleReadingMode} className="text-xs h-8 px-2">
                     {readingMode === "page" ? "Scroll" : "Page"}
                   </Button>
-                  <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
-                  <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
+                  {readingMode === "page" && (
+                    <>
+                      <SwipeDirectionToggle direction={swipeDirection} onChange={setSwipeDirection} />
+                      <PageAnimationToggle mode={animationMode} onChange={setAnimationMode} />
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -625,8 +634,8 @@ const Reader = () => {
         </div>
       </div>
 
-      {/* Reader Content - fills entire screen */}
-      <div ref={readerContentRef} className="flex-1 overflow-hidden relative">
+      {/* Reader Content */}
+      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 overflow-hidden relative"}`}>
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
@@ -771,8 +780,8 @@ const Reader = () => {
         />
       )}
 
-      {/* Reading Timer - toggleable */}
-      {uiVisible && (
+      {/* Reading Timer - always visible in scroll mode, toggled in page mode */}
+      {(isScrollMode || uiVisible) && (
         <div className="fixed bottom-4 right-4 z-40 transition-all duration-300">
           <ReadingTimer />
         </div>
