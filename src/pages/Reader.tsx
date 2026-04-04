@@ -574,6 +574,7 @@ const Reader = () => {
       />
     </div>
   );
+  };
 
   // Scroll mode uses a traditional scrollable layout, not the immersive fullscreen
   const isScrollMode = isPDF && readingMode === "scroll";
