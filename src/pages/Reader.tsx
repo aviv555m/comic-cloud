@@ -634,8 +634,8 @@ const Reader = () => {
         </div>
       </div>
 
-      {/* Reader Content - fills entire screen */}
-      <div ref={readerContentRef} className="flex-1 overflow-hidden relative">
+      {/* Reader Content */}
+      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 overflow-hidden relative"}`}>
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
