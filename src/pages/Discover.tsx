@@ -74,68 +74,25 @@ const Discover = () => {
     if (!user) return;
 
     setGenerating(true);
-    
-    // Fetch user's reading history for context
-    const { data: books } = await supabase
-      .from("books")
-      .select("title, author, is_completed")
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(10);
-
-    const { data: preferences } = await supabase
-      .from("user_reading_preferences")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    // Generate some sample recommendations based on reading history
-    // In a real app, this would call an AI edge function
-    const completedBooks = books?.filter((b) => b.is_completed) || [];
-    const authors = [...new Set(completedBooks.map((b) => b.author).filter(Boolean))];
-
-    const sampleRecommendations = [
-      {
-        user_id: user.id,
-        recommended_title: "The Midnight Library",
-        recommended_author: "Matt Haig",
-        reason: "Based on your reading patterns, you might enjoy this thought-provoking fiction",
-        source_type: "ai_analysis",
-        confidence_score: 0.85,
-      },
-      {
-        user_id: user.id,
-        recommended_title: "Project Hail Mary",
-        recommended_author: "Andy Weir",
-        reason: "Popular among readers with similar tastes",
-        source_type: "similar_users",
-        confidence_score: 0.78,
-      },
-      {
-        user_id: user.id,
-        recommended_title: "Atomic Habits",
-        recommended_author: "James Clear",
-        reason: "Highly rated self-improvement book",
-        source_type: "reading_history",
-        confidence_score: 0.72,
-      },
-    ];
-
-    // Filter out books user already has
-    const existingTitles = new Set(books?.map((b) => b.title.toLowerCase()) || []);
-    const newRecs = sampleRecommendations.filter(
-      (r) => !existingTitles.has(r.recommended_title.toLowerCase())
-    );
-
-    if (newRecs.length > 0) {
-      await supabase.from("book_recommendations").insert(newRecs);
-      await fetchRecommendations(user.id);
-      toast({ title: "New recommendations generated!" });
-    } else {
-      toast({ title: "No new recommendations", description: "Check back later!" });
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-recommendations');
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        await fetchRecommendations(user.id);
+        toast({ title: "New recommendations generated!", description: `${data.count} books recommended for you` });
+      }
+    } catch (error: any) {
+      console.error('Error generating recommendations:', error);
+      toast({ 
+        variant: "destructive", 
+        title: "Error", 
+        description: error.message || "Failed to generate recommendations. Try again later." 
+      });
+    } finally {
+      setGenerating(false);
     }
-
-    setGenerating(false);
   };
 
   const searchBook = (title: string, author: string | null) => {
