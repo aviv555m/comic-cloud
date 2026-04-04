@@ -571,8 +571,11 @@ const Reader = () => {
     </div>
   );
 
+  // Scroll mode uses a traditional scrollable layout, not the immersive fullscreen
+  const isScrollMode = isPDF && readingMode === "scroll";
+
   return (
-    <div className="h-[100dvh] w-screen bg-background flex flex-col overflow-hidden">
+    <div className={`${isScrollMode ? "min-h-screen bg-background" : "h-[100dvh] w-screen bg-background flex flex-col overflow-hidden"}`}>
       {/* Header - hidden by default, shown on tap */}
       <div
         className={`border-b bg-card/90 backdrop-blur-sm z-50 shrink-0 transition-all duration-300 ease-in-out ${
