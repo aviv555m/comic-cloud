@@ -780,8 +780,8 @@ const Reader = () => {
         />
       )}
 
-      {/* Reading Timer - toggleable */}
-      {uiVisible && (
+      {/* Reading Timer - always visible in scroll mode, toggled in page mode */}
+      {(isScrollMode || uiVisible) && (
         <div className="fixed bottom-4 right-4 z-40 transition-all duration-300">
           <ReadingTimer />
         </div>
