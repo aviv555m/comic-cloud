@@ -560,7 +560,7 @@ const Reader = () => {
 
   // renderPage callback for SwipeablePageReader
   const renderPdfPage = (pageNum: number) => (
-    <div className="w-full h-full flex items-center justify-center overflow-hidden bg-background">
+    <div className="w-full h-full overflow-auto bg-background">
       <Page
         pageNumber={pageNum}
         width={pdfPageWidth}
