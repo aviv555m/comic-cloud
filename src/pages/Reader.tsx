@@ -635,19 +635,19 @@ const Reader = () => {
       </div>
 
       {/* Reader Content */}
-      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 overflow-hidden relative"}`}>
+      <div ref={readerContentRef} className={`${isScrollMode ? "w-full" : "flex-1 relative"}`} style={isScrollMode ? undefined : { overflow: 'hidden' }}>
         {isPDF && signedUrl && (
           <Document
             file={signedUrl}
-            className="h-full"
+            className={isScrollMode ? "" : "absolute inset-0"}
             onLoadSuccess={onDocumentLoadSuccessWrapper}
             loading={
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center h-full min-h-[200px]">
                 <p className="text-muted-foreground text-sm">Loading PDF...</p>
               </div>
             }
             error={
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center h-full min-h-[200px]">
                 <p className="text-destructive text-sm">Failed to load PDF</p>
               </div>
             }
