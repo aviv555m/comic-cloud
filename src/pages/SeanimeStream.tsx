@@ -38,6 +38,8 @@ const sizeFmt = (bytes?: number) => {
 
 export default function SeanimeStream() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { isSubscribed, isLoading: subLoading } = useSubscription();
   const [host, setHost] = useState(localStorage.getItem(LS_HOST) || DEFAULT_HOST);
   const [status, setStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
   const [statusMsg, setStatusMsg] = useState("");
