@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Tv, Search, Server, CheckCircle2, XCircle, Loader2, Link2, PlayCircle, StopCircle, Info } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Tv, Search, Server, CheckCircle2, XCircle, Loader2, Link2, PlayCircle, StopCircle, Info, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { CleanVideoPlayer } from "@/components/CleanVideoPlayer";
 import { Navigation } from "@/components/Navigation";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 const LS_HOST = "seanime_host";
 const DEFAULT_HOST = "http://127.0.0.1:43211";
