@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass } from "lucide-react";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -48,6 +48,7 @@ const navSections = [
       { path: "/achievements", label: "Achievements", icon: Award },
       { path: "/year-in-review", label: "Year in Review", icon: Sparkles },
       { path: "/bookshelf", label: "3D Bookshelf", icon: BookCopy },
+      { path: "/seanime", label: "Seanime Stream", icon: Tv },
     ],
   },
 ];
