@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Tv, Search, Server, CheckCircle2, XCircle, Loader2, Link2, PlayCircle, StopCircle, Info } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Tv, Search, Server, CheckCircle2, XCircle, Loader2, Link2, PlayCircle, StopCircle, Info, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { CleanVideoPlayer } from "@/components/CleanVideoPlayer";
 import { Navigation } from "@/components/Navigation";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 const LS_HOST = "seanime_host";
 const DEFAULT_HOST = "http://127.0.0.1:43211";
@@ -36,6 +38,8 @@ const sizeFmt = (bytes?: number) => {
 
 export default function SeanimeStream() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { isSubscribed, isLoading: subLoading } = useSubscription();
   const [host, setHost] = useState(localStorage.getItem(LS_HOST) || DEFAULT_HOST);
   const [status, setStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
   const [statusMsg, setStatusMsg] = useState("");
@@ -149,6 +153,39 @@ export default function SeanimeStream() {
     setStreamUrl(directUrl.trim());
     setStreamTitle(directUrl.split("/").pop() || "Video");
   };
+
+  if (subLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isSubscribed) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <main className="container mx-auto px-3 sm:px-4 py-10 max-w-2xl">
+          <Card className="p-8 text-center space-y-4">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+              <Crown className="w-7 h-7 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold">Seanime Stream is a Premium feature</h1>
+            <p className="text-sm text-muted-foreground">
+              Stream torrents through your Seanime server, play any MKV/MP4/HLS link, and use the full video player with subtitles and audio language switching.
+            </p>
+            <div className="flex gap-2 justify-center pt-2">
+              <Button onClick={() => navigate("/pricing")} className="gap-2">
+                <Crown className="w-4 h-4" /> Upgrade to Premium
+              </Button>
+              <Button variant="outline" onClick={() => navigate(-1)}>Go back</Button>
+            </div>
+          </Card>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
