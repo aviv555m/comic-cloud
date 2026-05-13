@@ -2,20 +2,31 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Play, Pause, Volume2, VolumeX, Maximize, Minimize,
   PictureInPicture2, RotateCcw, RotateCw, Loader2, Settings,
+  Subtitles, Languages, Upload,
 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+
+interface SubtitleTrack {
+  id: string;
+  label: string;
+  lang: string;
+  url: string;
+}
 
 interface CleanVideoPlayerProps {
   src: string;
   title?: string;
   poster?: string;
   className?: string;
+  /** Optional preset subtitle tracks (e.g. from Seanime) */
+  subtitles?: SubtitleTrack[];
 }
 
 const fmt = (s: number) => {
@@ -28,10 +39,20 @@ const fmt = (s: number) => {
     : `${m}:${String(sec).padStart(2, "0")}`;
 };
 
-export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPlayerProps) => {
+// Convert SRT to VTT
+const srtToVtt = (srt: string) =>
+  "WEBVTT\n\n" +
+  srt
+    .replace(/\r+/g, "")
+    .replace(/^\d+\s*$/gm, "")
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
+    .trim();
+
+export const CleanVideoPlayer = ({ src, title, poster, className, subtitles = [] }: CleanVideoPlayerProps) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -44,6 +65,14 @@ export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPl
   const [loading, setLoading] = useState(false);
   const [rate, setRate] = useState(1);
   const [error, setError] = useState<string | null>(null);
+
+  // Subtitles & audio tracks
+  const [subs, setSubs] = useState<SubtitleTrack[]>(subtitles);
+  const [activeSub, setActiveSub] = useState<string | null>(null);
+  const [audioTracks, setAudioTracks] = useState<{ id: string; label: string; lang: string }[]>([]);
+  const [activeAudio, setActiveAudio] = useState<string | null>(null);
+
+  useEffect(() => setSubs(subtitles), [subtitles]);
 
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) window.clearTimeout(hideTimer.current);
@@ -100,10 +129,11 @@ export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPl
       else if (e.key === "ArrowLeft") seekBy(-10);
       else if (e.key === "f") toggleFullscreen();
       else if (e.key === "m") setMuted((m) => !m);
+      else if (e.key === "c") setActiveSub((cur) => (cur ? null : subs[0]?.id ?? null));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [togglePlay]);
+  }, [togglePlay, subs]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -112,6 +142,63 @@ export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPl
     v.muted = muted;
     v.playbackRate = rate;
   }, [volume, muted, rate]);
+
+  // Sync subtitle text track display mode
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    for (let i = 0; i < v.textTracks.length; i++) {
+      const t = v.textTracks[i];
+      t.mode = t.id === activeSub ? "showing" : "hidden";
+    }
+  }, [activeSub, subs]);
+
+  // Detect native audio tracks (Safari/limited support)
+  useEffect(() => {
+    const v: any = videoRef.current;
+    if (!v?.audioTracks) return;
+    const sync = () => {
+      const list: { id: string; label: string; lang: string }[] = [];
+      let active: string | null = null;
+      for (let i = 0; i < v.audioTracks.length; i++) {
+        const t = v.audioTracks[i];
+        const id = t.id || `audio-${i}`;
+        list.push({ id, label: t.label || `Track ${i + 1}`, lang: t.language || "" });
+        if (t.enabled) active = id;
+      }
+      setAudioTracks(list);
+      setActiveAudio(active);
+    };
+    v.audioTracks.addEventListener?.("change", sync);
+    v.audioTracks.addEventListener?.("addtrack", sync);
+    sync();
+    return () => {
+      v.audioTracks.removeEventListener?.("change", sync);
+      v.audioTracks.removeEventListener?.("addtrack", sync);
+    };
+  }, [src]);
+
+  const selectAudio = (id: string) => {
+    const v: any = videoRef.current;
+    if (!v?.audioTracks) return;
+    for (let i = 0; i < v.audioTracks.length; i++) {
+      v.audioTracks[i].enabled = v.audioTracks[i].id === id || `audio-${i}` === id;
+    }
+    setActiveAudio(id);
+  };
+
+  const onUploadSubtitle = async (file: File) => {
+    const text = await file.text();
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    const vtt = ext === "srt" ? srtToVtt(text) : text;
+    const blob = new Blob([vtt], { type: "text/vtt" });
+    const url = URL.createObjectURL(blob);
+    const id = `sub-${Date.now()}`;
+    const lang = file.name.match(/\.([a-z]{2,3})\.(srt|vtt)$/i)?.[1] || "en";
+    const track: SubtitleTrack = { id, label: file.name.replace(/\.(srt|vtt)$/i, ""), lang, url };
+    setSubs((s) => [...s, track]);
+    setActiveSub(id);
+  };
 
   return (
     <div
@@ -146,6 +233,30 @@ export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPl
           if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1));
         }}
         onError={() => setError("This video format may not be supported by your browser. Try a different stream or use an external player.")}
+      >
+        {subs.map((s) => (
+          <track
+            key={s.id}
+            id={s.id}
+            kind="subtitles"
+            label={s.label}
+            srcLang={s.lang}
+            src={s.url}
+            default={s.id === activeSub}
+          />
+        ))}
+      </video>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".vtt,.srt"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onUploadSubtitle(f);
+          e.target.value = "";
+        }}
       />
 
       {/* center loading */}
@@ -241,6 +352,61 @@ export const CleanVideoPlayer = ({ src, title, poster, className }: CleanVideoPl
           <span className="text-xs sm:text-sm tabular-nums ml-1">{fmt(time)} / {fmt(duration)}</span>
 
           <div className="flex-1" />
+
+          {/* Subtitles menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className={cn(
+                  "text-white hover:bg-white/10 h-9 w-9",
+                  activeSub && "text-primary"
+                )}
+                title="Subtitles (C)"
+              >
+                <Subtitles className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[200px]">
+              <DropdownMenuLabel>Subtitles</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setActiveSub(null)}>
+                {activeSub === null ? "✓ " : "  "}Off
+              </DropdownMenuItem>
+              {subs.map((s) => (
+                <DropdownMenuItem key={s.id} onClick={() => setActiveSub(s.id)}>
+                  {activeSub === s.id ? "✓ " : "  "}
+                  {s.label} {s.lang && <span className="text-xs text-muted-foreground ml-1">({s.lang})</span>}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                <Upload className="w-3.5 h-3.5 mr-2" /> Upload .srt / .vtt
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Audio language menu (only if multiple tracks) */}
+          {audioTracks.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="text-white hover:bg-white/10 h-9 w-9" title="Audio language">
+                  <Languages className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[200px]">
+                <DropdownMenuLabel>Audio</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {audioTracks.map((t) => (
+                  <DropdownMenuItem key={t.id} onClick={() => selectAudio(t.id)}>
+                    {activeAudio === t.id ? "✓ " : "  "}
+                    {t.label} {t.lang && <span className="text-xs text-muted-foreground ml-1">({t.lang})</span>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
