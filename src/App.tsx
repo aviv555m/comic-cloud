@@ -28,6 +28,7 @@ import Quotes from "./pages/Quotes";
 import YearInReview from "./pages/YearInReview";
 import Feed from "./pages/Feed";
 import Bookshelf3D from "./pages/Bookshelf3D";
+import SeanimeStream from "./pages/SeanimeStream";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { FloatingChatBubble } from "./components/FloatingChatBubble";
 import { useServiceWorker } from "./hooks/useServiceWorker";
@@ -101,6 +102,7 @@ const AppContent = () => {
               <Route path="/year-in-review" element={<YearInReview />} />
               <Route path="/feed" element={<Feed />} />
               <Route path="/bookshelf" element={<Bookshelf3D />} />
+              <Route path="/seanime" element={<SeanimeStream />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
