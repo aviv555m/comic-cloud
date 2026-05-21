@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -143,6 +143,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                   <DropdownMenuItem onClick={() => navigate("/achievements")}>Achievements</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/year-in-review")}>Year in Review</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/bookshelf")}>3D Bookshelf</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/seanime")}>
+                    <Tv className="mr-2 h-4 w-4" />
+                    Seanime Stream
+                    {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/pricing")}>
@@ -176,6 +181,11 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/seanime")} className="py-3">
+                    <Tv className="mr-2 h-4 w-4" />
+                    Seanime Stream
+                    {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">Settings</DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive py-3">
                     <LogOut className="mr-2 h-4 w-4" />Sign out
