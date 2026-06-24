@@ -1,95 +1,110 @@
-const CACHE_NAME = 'bookshelf-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/favicon.ico'
-];
+// Bookshelf service worker — app-shell offline support
+// Strategy:
+//   - HTML navigations: network-first, fall back to cached index.html
+//   - Same-origin /assets/* (hashed Vite output): cache-first (immutable)
+//   - Other same-origin GETs: stale-while-revalidate
+//   - Cross-origin (Supabase, fonts, etc.): pass through
 
-// Install event - cache static assets
+const VERSION = 'v3';
+const SHELL_CACHE = `shell-${VERSION}`;
+const ASSETS_CACHE = `assets-${VERSION}`;
+const RUNTIME_CACHE = `runtime-${VERSION}`;
+
+const SHELL_URLS = ['/', '/index.html', '/manifest.json', '/favicon.ico'];
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(SHELL_CACHE).then((cache) =>
+      cache.addAll(SHELL_URLS).catch(() => undefined),
+    ),
   );
   self.skipWaiting();
 });
 
-// Activate event - clean old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter((n) => ![SHELL_CACHE, ASSETS_CACHE, RUNTIME_CACHE].includes(n))
+          .map((n) => caches.delete(n)),
       );
-    })
+      await self.clients.claim();
+    })(),
   );
-  self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+self.addEventListener('message', (event) => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
+});
+
+const isAssetPath = (url) =>
+  url.pathname.startsWith('/assets/') ||
+  /\.(?:js|css|woff2?|ttf|otf|png|jpg|jpeg|svg|webp|ico)$/.test(url.pathname);
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
-
-  // Skip non-GET requests
   if (request.method !== 'GET') return;
 
-  // Skip external requests
+  const url = new URL(request.url);
+
+  // Cross-origin: don't intercept (lets Supabase etc. work normally)
   if (url.origin !== location.origin) return;
 
-  // For navigation requests, try network first then cache
+  // Navigation: network-first → cached index.html fallback
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache the latest version
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
-          return response;
-        })
-        .catch(() => {
-          return caches.match(request).then((cached) => {
-            return cached || caches.match('/');
-          });
-        })
+      (async () => {
+        try {
+          const fresh = await fetch(request);
+          const cache = await caches.open(SHELL_CACHE);
+          cache.put('/index.html', fresh.clone()).catch(() => undefined);
+          return fresh;
+        } catch {
+          const cache = await caches.open(SHELL_CACHE);
+          return (
+            (await cache.match('/index.html')) ||
+            (await cache.match('/')) ||
+            new Response('Offline', { status: 503 })
+          );
+        }
+      })(),
     );
     return;
   }
 
-  // For assets, try cache first then network
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(request).then((response) => {
-        // Cache successful responses
-        if (response.ok) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(request, responseClone);
-          });
+  // Hashed assets: cache-first
+  if (isAssetPath(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(ASSETS_CACHE);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        try {
+          const res = await fetch(request);
+          if (res.ok) cache.put(request, res.clone()).catch(() => undefined);
+          return res;
+        } catch {
+          return cached || new Response('Offline', { status: 503 });
         }
-        return response;
-      }).catch(() => {
-        // Return offline page for navigation
-        if (request.mode === 'navigate') {
-          return caches.match('/');
-        }
-        return new Response('Offline', { status: 503 });
-      });
-    })
-  );
-});
-
-// Handle messages from the app
-self.addEventListener('message', (event) => {
-  if (event.data === 'skipWaiting') {
-    self.skipWaiting();
+      })(),
+    );
+    return;
   }
+
+  // Everything else same-origin: stale-while-revalidate
+  event.respondWith(
+    (async () => {
+      const cache = await caches.open(RUNTIME_CACHE);
+      const cached = await cache.match(request);
+      const fetchPromise = fetch(request)
+        .then((res) => {
+          if (res.ok) cache.put(request, res.clone()).catch(() => undefined);
+          return res;
+        })
+        .catch(() => cached);
+      return cached || fetchPromise;
+    })(),
+  );
 });

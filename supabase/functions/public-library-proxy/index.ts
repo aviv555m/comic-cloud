@@ -15,10 +15,16 @@ const ALLOWED_HOSTS = new Set<string>([
   "openlibrary.org",
   "www.wattpad.com",
   "api.mangadex.org",
+  "uploads.mangadex.org",
   "standardebooks.org",
   "www.standardebooks.org",
   "covers.openlibrary.org",
+  "comix.to",
+  "www.comix.to",
 ]);
+
+// Allow image subdomains under these parent domains (e.g. cdn.comix.to, i0.wp.com style hosts)
+const ALLOWED_SUFFIXES = [".comix.to", ".mangadex.org"];
 
 const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
 
@@ -39,7 +45,10 @@ function validateUrl(rawUrl: string): { ok: true; url: URL } | { ok: false; erro
   if (IPV4_RE.test(hostname) || hostname.includes(":") || hostname === "localhost") {
     return { ok: false, error: "IP/host not allowed" };
   }
-  if (!ALLOWED_HOSTS.has(hostname)) {
+  const allowed =
+    ALLOWED_HOSTS.has(hostname) ||
+    ALLOWED_SUFFIXES.some((s) => hostname.endsWith(s));
+  if (!allowed) {
     return { ok: false, error: `Host not allowed: ${hostname}` };
   }
   parsed.hostname = hostname;
