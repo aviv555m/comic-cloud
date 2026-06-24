@@ -113,12 +113,34 @@ export function useOfflineBooks() {
     last_page_read: number | null;
   }) => {
     setDownloadingBooks(prev => new Set(prev).add(book.id));
-    
+
     try {
-      // Fetch the book file
-      const response = await fetch(book.file_url);
-      if (!response.ok) throw new Error('Failed to download book file');
-      
+      // Try the stored file_url first; if it 4xx's (expired signed URL), ask the
+      // backend to mint a fresh signed URL from the storage path embedded in the URL.
+      const fetchWithRetry = async (url: string): Promise<Response> => {
+        const first = await fetch(url).catch(() => null);
+        if (first && first.ok) return first;
+
+        try {
+          const { supabase } = await import('@/integrations/supabase/client');
+          const match = url.match(/book-files\/(?:sign|public)\/([^?]+)/);
+          const path = match?.[1];
+          if (path) {
+            const { data } = await supabase.storage
+              .from('book-files')
+              .createSignedUrl(decodeURIComponent(path), 60 * 60 * 24 * 7);
+            if (data?.signedUrl) {
+              const retry = await fetch(data.signedUrl);
+              if (retry.ok) return retry;
+            }
+          }
+        } catch (e) {
+          console.warn('Signed URL refresh failed', e);
+        }
+        throw new Error('Failed to download book file (URL may be expired)');
+      };
+
+      const response = await fetchWithRetry(book.file_url);
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
       
