@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Navigation } from "@/components/Navigation";
 import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download } from "lucide-react";
 import { ExportDialog } from "@/components/ExportDialog";
+import { BackupRestoreDialog } from "@/components/BackupRestoreDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -39,6 +40,7 @@ const Settings = () => {
   const [fontSize, setFontSize] = useState(16);
   const [readingGoal, setReadingGoal] = useState(30);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showBackupDialog, setShowBackupDialog] = useState(false);
 
   const handleManageSubscription = async () => {
     try {
@@ -560,13 +562,18 @@ const Settings = () => {
                 <CardTitle>Export & Backup</CardTitle>
                 <CardDescription>Download your library data and reading history</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Export your books, annotations, reading progress, and more in various formats.
+                  Download a full backup of your account (library, progress, annotations,
+                  lists, journal, vocabulary) — and restore it on any device.
                 </p>
-                <Button onClick={() => setShowExportDialog(true)} className="w-full">
+                <Button onClick={() => setShowBackupDialog(true)} className="w-full">
                   <Download className="mr-2 h-4 w-4" />
-                  Export Library
+                  Backup & Restore
+                </Button>
+                <Button onClick={() => setShowExportDialog(true)} variant="outline" className="w-full">
+                  <Download className="mr-2 h-4 w-4" />
+                  Export as JSON / Markdown / CSV
                 </Button>
               </CardContent>
             </Card>
@@ -574,6 +581,7 @@ const Settings = () => {
         </Tabs>
 
         <ExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} />
+        <BackupRestoreDialog open={showBackupDialog} onOpenChange={setShowBackupDialog} />
       </div>
     </div>
   );
