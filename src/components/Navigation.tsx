@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -143,6 +143,10 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                   <DropdownMenuItem onClick={() => navigate("/achievements")}>Achievements</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/year-in-review")}>Year in Review</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/bookshelf")}>3D Bookshelf</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate("/manga")}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Manga & Manhwa
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/seanime")}>
                     <Tv className="mr-2 h-4 w-4" />
                     Seanime Stream
@@ -181,6 +185,10 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                     <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate("/manga")} className="py-3">
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Manga & Manhwa
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate("/seanime")} className="py-3">
                     <Tv className="mr-2 h-4 w-4" />
                     Seanime Stream
