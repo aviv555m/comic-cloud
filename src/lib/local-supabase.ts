@@ -222,6 +222,30 @@ async function handleBookInsertionOffline(book: any) {
     const fileBlob = await getLocalFile(filePath);
     if (!fileBlob) return;
 
+    // Resolve buffers/async requests BEFORE starting transaction
+    const arrayBuffer = await fileBlob.arrayBuffer();
+    
+    let coverBlob: ArrayBuffer | null = null;
+    if (book.cover_url) {
+      try {
+        if (book.cover_url.startsWith('data:')) {
+          const response = await fetch(book.cover_url);
+          coverBlob = await response.arrayBuffer();
+        } else if (book.cover_url.includes('/local-file-route/')) {
+          const coverMatch = book.cover_url.match(/\/local-file-route\/([^?]+)/);
+          const coverPath = coverMatch ? decodeURIComponent(coverMatch[1]) : null;
+          if (coverPath) {
+            const coverFile = await getLocalFile(coverPath);
+            if (coverFile) {
+              coverBlob = await coverFile.arrayBuffer();
+            }
+          }
+        }
+      } catch (coverErr) {
+        console.warn("[Local DB] Failed to pre-fetch cover:", coverErr);
+      }
+    }
+
     const db = await openLocalDB();
     const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
     
@@ -239,25 +263,6 @@ async function handleBookInsertionOffline(book: any) {
     booksStore.put(offlineBook);
 
     const filesStore = transaction.objectStore(FILES_STORE);
-    const arrayBuffer = await fileBlob.arrayBuffer();
-    
-    let coverBlob: ArrayBuffer | null = null;
-    if (book.cover_url) {
-      if (book.cover_url.startsWith('data:')) {
-        const response = await fetch(book.cover_url);
-        coverBlob = await response.arrayBuffer();
-      } else if (book.cover_url.includes('/local-file-route/')) {
-        const coverMatch = book.cover_url.match(/\/local-file-route\/([^?]+)/);
-        const coverPath = coverMatch ? decodeURIComponent(coverMatch[1]) : null;
-        if (coverPath) {
-          const coverFile = await getLocalFile(coverPath);
-          if (coverFile) {
-            coverBlob = await coverFile.arrayBuffer();
-          }
-        }
-      }
-    }
-
     filesStore.put({
       bookId: book.id,
       data: arrayBuffer,

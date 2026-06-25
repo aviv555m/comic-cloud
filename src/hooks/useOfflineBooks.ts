@@ -76,9 +76,8 @@ export function useOfflineBooks() {
         return;
       }
       const db = await openDB();
-      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readonly');
+      const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const booksStore = transaction.objectStore(BOOKS_STORE);
-      const filesStore = transaction.objectStore(FILES_STORE);
       
       const request = booksStore.getAll();
       
@@ -87,10 +86,17 @@ export function useOfflineBooks() {
         const processedBooks: OfflineBook[] = [];
         
         for (const book of booksList) {
-          const fileRequest = filesStore.get(book.id);
-          const fileRecord = await new Promise<any>((resolve) => {
-            fileRequest.onsuccess = () => resolve(fileRequest.result);
-            fileRequest.onerror = () => resolve(null);
+          const fileRecord = await new Promise<any>(async (resolve) => {
+            try {
+              const readDb = await openDB();
+              const readTx = readDb.transaction(FILES_STORE, 'readonly');
+              const readStore = readTx.objectStore(FILES_STORE);
+              const fileRequest = readStore.get(book.id);
+              fileRequest.onsuccess = () => resolve(fileRequest.result);
+              fileRequest.onerror = () => resolve(null);
+            } catch (err) {
+              resolve(null);
+            }
           });
           
           let coverUrl = book.cover_url;
