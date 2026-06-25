@@ -96,12 +96,7 @@ const Library = () => {
         fetchBooks(session.user.id);
         fetchTags(session.user.id);
       } else {
-        const isApp = Capacitor.isNativePlatform();
-        if (isApp) {
-          navigate("/auth");
-        } else {
-          navigate("/public");
-        }
+        navigate("/auth");
       }
       setAuthLoading(false);
     });
@@ -113,12 +108,7 @@ const Library = () => {
           fetchBooks(session.user.id);
           fetchTags(session.user.id);
         } else {
-          const isApp = Capacitor.isNativePlatform();
-          if (isApp) {
-            navigate("/auth");
-          } else {
-            navigate("/public");
-          }
+          navigate("/auth");
         }
         setAuthLoading(false);
       }
