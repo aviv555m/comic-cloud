@@ -103,7 +103,7 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, showControl
     <div className="flex flex-col items-center gap-4 w-full">
       <div 
         ref={viewerRef}
-        className="w-full max-w-4xl bg-white dark:bg-gray-900 rounded-lg shadow-2xl"
+        className="w-[90%] sm:w-full max-w-4xl bg-white dark:bg-gray-900 rounded-lg shadow-2xl mx-auto"
         style={{ height: "70vh" }}
       />
       

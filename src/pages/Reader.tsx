@@ -721,7 +721,7 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
+                <div className="shadow-lg rounded overflow-hidden w-[90%] sm:w-full mx-auto" style={{ maxWidth: '100%' }}>
                   <Page
                     pageNumber={currentPage}
                     scale={scale}

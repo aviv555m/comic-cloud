@@ -223,7 +223,7 @@ export const ComicReader = ({
 
         {/* Seamless Webtoon Continuous list */}
         <div 
-          className="flex flex-col gap-0 w-full max-w-3xl px-0 mt-4 cursor-pointer"
+          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto"
           onClick={(e) => {
             e.stopPropagation();
             onToggleControls?.();
@@ -252,7 +252,7 @@ export const ComicReader = ({
   return (
     <div className="flex flex-col items-center gap-4 w-full">
       {/* Immersive Image Container with Navigation Overlays */}
-      <div className="relative max-w-4xl w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40">
+      <div className="relative max-w-4xl w-[90%] sm:w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40 mx-auto">
         <img
           src={images[currentPage]?.data}
           alt={`Page ${currentPage + 1}`}

@@ -248,7 +248,7 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
           key={pageNum}
           ref={(el) => setPageRef(pageNum, el)}
           data-page={pageNum}
-          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
+          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto w-[90%] sm:w-full"
           style={{ maxWidth: "100%" }}
         >
           <Page
