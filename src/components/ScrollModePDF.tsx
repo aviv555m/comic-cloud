@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 interface ScrollModePDFProps {
   numPages: number;
   scale: number;
+  width: number;
   initialPage?: number;
   /** Pixels to offset for sticky headers (mobile/desktop) */
   topOffset?: number;
@@ -24,6 +25,7 @@ export interface ScrollModePDFHandle {
 export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>(({
   numPages,
   scale,
+  width,
   initialPage = 1,
   topOffset = 96,
   onPageChange,
@@ -248,15 +250,16 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
           key={pageNum}
           ref={(el) => setPageRef(pageNum, el)}
           data-page={pageNum}
-          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto w-[90%] sm:w-full"
-          style={{ maxWidth: "100%" }}
+          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
+          style={{ width: `${width}px`, maxWidth: "100%" }}
         >
           <Page
             pageNumber={pageNum}
             scale={scale}
+            width={width}
             renderTextLayer={true}
             renderAnnotationLayer={false}
-            className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+            className="mx-auto"
             loading={
               <div className="flex items-center justify-center h-[400px] sm:h-[600px] bg-muted/30">
                 <span className="text-muted-foreground text-sm">Loading page {pageNum}...</span>

@@ -81,6 +81,7 @@ const Reader = () => {
 
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(360);
 
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -101,6 +102,13 @@ const Reader = () => {
     const measure = () => {
       const h = headerRef.current?.getBoundingClientRect().height ?? 0;
       setHeaderHeight(h);
+
+      const w = window.innerWidth;
+      if (w < 768) {
+        setContainerWidth(Math.round(w * 0.9));
+      } else {
+        setContainerWidth(Math.min(800, Math.round(w * 0.8)));
+      }
     };
 
     measure();
@@ -721,13 +729,14 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden w-[90%] sm:w-full mx-auto" style={{ maxWidth: '100%' }}>
+                <div className="shadow-lg rounded overflow-hidden mx-auto bg-card border" style={{ width: `${containerWidth}px`, maxWidth: '100%' }}>
                   <Page
                     pageNumber={currentPage}
                     scale={scale}
+                    width={containerWidth}
                     renderTextLayer={true}
                     renderAnnotationLayer={true}
-                    className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                    className="mx-auto"
                   />
                 </div>
               ) : (
@@ -735,6 +744,7 @@ const Reader = () => {
                   ref={scrollModePDFRef}
                   numPages={numPages || 0}
                   scale={scale}
+                  width={containerWidth}
                   initialPage={currentPage}
                   topOffset={Math.max(80, Math.round(headerHeight) + 8)}
                   onPageChange={(page) => {
