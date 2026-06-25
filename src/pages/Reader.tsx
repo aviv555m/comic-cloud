@@ -95,7 +95,27 @@ const Reader = () => {
     ) {
       return;
     }
-    setShowControls(prev => !prev);
+
+    // If text is selected, do not trigger page turning
+    if (window.getSelection()?.toString().trim()) {
+      return;
+    }
+
+    // PDF page mode navigation support
+    if (book?.file_type === 'pdf' && readingMode === 'page') {
+      const clickX = e.clientX;
+      const width = window.innerWidth;
+      
+      if (clickX < width * 0.3) {
+        if (currentPage > 1) changePage(-1);
+      } else if (clickX > width * 0.7) {
+        if (numPages && currentPage < numPages) changePage(1);
+      } else {
+        setShowControls(prev => !prev);
+      }
+    } else {
+      setShowControls(prev => !prev);
+    }
   };
 
   useEffect(() => {

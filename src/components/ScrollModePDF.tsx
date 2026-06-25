@@ -245,29 +245,41 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
       </div>
 
       {/* Render all pages */}
-      {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-        <div
-          key={pageNum}
-          ref={(el) => setPageRef(pageNum, el)}
-          data-page={pageNum}
-          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
-          style={{ width: `${width}px`, maxWidth: "100%" }}
-        >
-          <Page
-            pageNumber={pageNum}
-            scale={scale}
-            width={width}
-            renderTextLayer={true}
-            renderAnnotationLayer={false}
-            className="mx-auto"
-            loading={
-              <div className="flex items-center justify-center h-[400px] sm:h-[600px] bg-muted/30">
-                <span className="text-muted-foreground text-sm">Loading page {pageNum}...</span>
+      {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+        const isNear = Math.abs(pageNum - visiblePage) <= 2;
+        return (
+          <div
+            key={pageNum}
+            ref={(el) => setPageRef(pageNum, el)}
+            data-page={pageNum}
+            className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
+            style={{ width: `${width}px`, maxWidth: "100%" }}
+          >
+            {isNear ? (
+              <Page
+                pageNumber={pageNum}
+                scale={scale}
+                width={width}
+                renderTextLayer={true}
+                renderAnnotationLayer={false}
+                className="mx-auto"
+                loading={
+                  <div className="flex items-center justify-center bg-muted/10" style={{ height: `${width * 1.414}px` }}>
+                    <span className="text-muted-foreground text-sm animate-pulse">Loading page {pageNum}...</span>
+                  </div>
+                }
+              />
+            ) : (
+              <div 
+                className="flex items-center justify-center bg-muted/5" 
+                style={{ height: `${width * 1.414}px` }}
+              >
+                <span className="text-muted-foreground/30 text-xs">Page {pageNum}</span>
               </div>
-            }
-          />
-        </div>
-      ))}
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 });

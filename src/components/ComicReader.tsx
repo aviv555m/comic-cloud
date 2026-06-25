@@ -260,7 +260,7 @@ export const ComicReader = ({
         />
         
         {/* Navigation Tap Zones */}
-        <div className="absolute inset-0 flex">
+        <div className="absolute inset-0 flex z-10">
           {/* Left 30%: Previous page */}
           <div 
             onClick={(e) => {
