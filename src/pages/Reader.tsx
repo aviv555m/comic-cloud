@@ -56,7 +56,7 @@ const Reader = () => {
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [scale, setScale] = useState(1.0);
+  const [scale, setScale] = useState(typeof window !== "undefined" && window.innerWidth < 768 ? 1.5 : 1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
@@ -613,12 +613,11 @@ const Reader = () => {
             <div className="flex items-center gap-2 w-full">
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => navigate("/")}
-                className="shrink-0 h-8 px-2 sm:px-3"
+                className="shrink-0 h-10 px-3 sm:px-4 text-sm sm:text-base translate-y-[2px] flex items-center justify-center gap-2"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Back</span>
+                <ArrowLeft className="w-5 h-5" />
+                <span className="hidden sm:inline">Back</span>
               </Button>
               <div className="min-w-0 flex-1 flex items-center gap-2">
                 <div className="min-w-0">
@@ -749,15 +748,17 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded overflow-hidden mx-auto bg-card border" style={{ width: `${containerWidth}px`, maxWidth: '100%' }}>
-                  <Page
-                    pageNumber={currentPage}
-                    scale={scale}
-                    width={containerWidth}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    className="mx-auto"
-                  />
+                <div className="shadow-lg rounded mx-auto bg-card border overflow-x-auto overflow-y-hidden w-full">
+                  <div className="mx-auto" style={{ width: `${containerWidth * scale}px`, minWidth: `${containerWidth * scale}px` }}>
+                    <Page
+                      pageNumber={currentPage}
+                      scale={scale}
+                      width={containerWidth}
+                      renderTextLayer={true}
+                      renderAnnotationLayer={true}
+                      className="mx-auto"
+                    />
+                  </div>
                 </div>
               ) : (
                 <ScrollModePDF 
@@ -857,8 +858,8 @@ const Reader = () => {
 
         {isTXT && (
           <div className="max-w-4xl mx-auto">
-            <div className="glass-card p-8 rounded-lg">
-              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed">
+            <div className="glass-card p-4 sm:p-8 rounded-lg">
+              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed text-lg sm:text-xl md:text-2xl">
                 {textContent}
               </pre>
             </div>

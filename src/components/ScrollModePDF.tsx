@@ -252,27 +252,29 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
             key={pageNum}
             ref={(el) => setPageRef(pageNum, el)}
             data-page={pageNum}
-            className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
-            style={{ width: `${width}px`, maxWidth: "100%" }}
+            className="shadow-lg rounded bg-card border border-border/50 mx-auto overflow-x-auto overflow-y-hidden w-full"
+            style={{ maxWidth: `${width * scale}px` }}
           >
             {isNear ? (
-              <Page
-                pageNumber={pageNum}
-                scale={scale}
-                width={width}
-                renderTextLayer={true}
-                renderAnnotationLayer={false}
-                className="mx-auto"
-                loading={
-                  <div className="flex items-center justify-center bg-muted/10" style={{ height: `${width * 1.414}px` }}>
-                    <span className="text-muted-foreground text-sm animate-pulse">Loading page {pageNum}...</span>
-                  </div>
-                }
-              />
+              <div style={{ width: `${width * scale}px`, minWidth: `${width * scale}px` }} className="mx-auto">
+                <Page
+                  pageNumber={pageNum}
+                  scale={scale}
+                  width={width}
+                  renderTextLayer={true}
+                  renderAnnotationLayer={false}
+                  className="mx-auto"
+                  loading={
+                    <div className="flex items-center justify-center bg-muted/10" style={{ height: `${width * scale * 1.414}px` }}>
+                      <span className="text-muted-foreground text-sm animate-pulse">Loading page {pageNum}...</span>
+                    </div>
+                  }
+                />
+              </div>
             ) : (
               <div 
-                className="flex items-center justify-center bg-muted/5" 
-                style={{ height: `${width * 1.414}px` }}
+                className="flex items-center justify-center bg-muted/5 mx-auto" 
+                style={{ width: `${width * scale}px`, height: `${width * scale * 1.414}px` }}
               >
                 <span className="text-muted-foreground/30 text-xs">Page {pageNum}</span>
               </div>

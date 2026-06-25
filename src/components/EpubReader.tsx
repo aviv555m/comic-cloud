@@ -34,6 +34,46 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, showControl
     });
     renditionRef.current = rendition;
 
+    // Define themes with large readable fonts (20px) and standard line heights (1.6)
+    rendition.themes.register("light", {
+      body: {
+        "background-color": "#ffffff",
+        "color": "#111827",
+        "font-family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",
+        "font-size": "20px !important",
+        "line-height": "1.6 !important",
+        "padding": "0 16px !important",
+      },
+      p: {
+        "font-size": "20px !important",
+        "line-height": "1.6 !important",
+      }
+    });
+
+    rendition.themes.register("dark", {
+      body: {
+        "background-color": "#111827",
+        "color": "#f3f4f6",
+        "font-family": "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif",
+        "font-size": "20px !important",
+        "line-height": "1.6 !important",
+        "padding": "0 16px !important",
+      },
+      p: {
+        "font-size": "20px !important",
+        "line-height": "1.6 !important",
+      }
+    });
+
+    const isDark = document.documentElement.classList.contains("dark");
+    rendition.themes.select(isDark ? "dark" : "light");
+
+    const observer = new MutationObserver(() => {
+      const currentDark = document.documentElement.classList.contains("dark");
+      rendition.themes.select(currentDark ? "dark" : "light");
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+
     // Load table of contents
     book.loaded.navigation.then((navigation) => {
       const toc = navigation.toc;
@@ -80,6 +120,7 @@ export const EpubReader = ({ url, onLocationChange, initialLocation, showControl
     });
 
     return () => {
+      observer.disconnect();
       rendition.destroy();
       book.destroy();
     };

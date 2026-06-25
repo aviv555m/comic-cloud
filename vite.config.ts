@@ -52,6 +52,28 @@ export default defineConfig(({ mode }) => ({
             proxyReq.setHeader("origin", "https://mangapark.io");
           });
         }
+      },
+      "/api-manganato": {
+        target: "https://manganato.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-manganato/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://manganato.com/");
+            proxyReq.setHeader("origin", "https://manganato.com");
+          });
+        }
+      },
+      "/api-chapmanganato": {
+        target: "https://chapmanganato.to",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-chapmanganato/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://chapmanganato.to/");
+            proxyReq.setHeader("origin", "https://chapmanganato.to");
+          });
+        }
       }
     }
   },

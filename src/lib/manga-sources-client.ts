@@ -40,6 +40,10 @@ export async function proxyFetchText(targetUrl: string, headers?: Record<string,
       proxiedUrl = targetUrl.replace('https://ww2.mangafreak.me', '/api-mangafreak');
     } else if (targetUrl.startsWith('https://mangapark.io')) {
       proxiedUrl = targetUrl.replace('https://mangapark.io', '/api-mangapark');
+    } else if (targetUrl.startsWith('https://manganato.com')) {
+      proxiedUrl = targetUrl.replace('https://manganato.com', '/api-manganato');
+    } else if (targetUrl.startsWith('https://chapmanganato.to')) {
+      proxiedUrl = targetUrl.replace('https://chapmanganato.to', '/api-chapmanganato');
     }
     const res = await fetch(proxiedUrl, { headers });
     return res.text();
@@ -78,6 +82,10 @@ export async function proxyFetchJson(
       proxiedUrl = targetUrl.replace('https://ww2.mangafreak.me', '/api-mangafreak');
     } else if (targetUrl.startsWith('https://mangapark.io')) {
       proxiedUrl = targetUrl.replace('https://mangapark.io', '/api-mangapark');
+    } else if (targetUrl.startsWith('https://manganato.com')) {
+      proxiedUrl = targetUrl.replace('https://manganato.com', '/api-manganato');
+    } else if (targetUrl.startsWith('https://chapmanganato.to')) {
+      proxiedUrl = targetUrl.replace('https://chapmanganato.to', '/api-chapmanganato');
     }
     const res = await fetch(proxiedUrl, {
       method,
@@ -532,4 +540,75 @@ export const mangaparkPages = async (chapterId: string) => {
   });
   
   return data?.data?.get_chapterNode?.data?.imageFile?.urlList || [];
+};
+
+// ============================================================================
+// 4. MANGANATO CLIENT
+// ============================================================================
+export const manganatoSearch = async (query: string) => {
+  const formattedQuery = query.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  const url = `https://manganato.com/search/story/${formattedQuery}`;
+  const html = await proxyFetchText(url);
+  const doc = LoadDoc(html);
+  
+  const mangas: any[] = [];
+  const items = doc.querySelectorAll("div.search-story-item");
+  items.forEach((element: any) => {
+    const titleElement = element.querySelector("a.item-title");
+    const imageElement = element.querySelector("img");
+    if (titleElement) {
+      const title = titleElement.textContent.trim();
+      const href = titleElement.getAttribute("href") || "";
+      const mangaId = href.split('/').pop() || "";
+      const cover = imageElement ? imageElement.getAttribute("src") : undefined;
+      
+      mangas.push({
+        title,
+        url: mangaId,
+        cover
+      });
+    }
+  });
+  return mangas;
+};
+
+export const manganatoChapters = async (mangaId: string) => {
+  const url = mangaId.includes('manga-') ? `https://chapmanganato.to/${mangaId}` : `https://manganato.com/${mangaId}`;
+  const html = await proxyFetchText(url);
+  const doc = LoadDoc(html);
+  
+  const chapters: any[] = [];
+  doc.querySelectorAll("li.a-h a.chapter-name").forEach((element: any) => {
+    const title = element.textContent.trim();
+    const href = element.getAttribute("href") || "";
+    const parts = href.split('/');
+    const chapterId = parts.slice(-2).join('/');
+    
+    const chapMatch = title.match(/(\d+(\.\d+)?)/);
+    const chapterNumber = chapMatch ? parseFloat(chapMatch[0]) : 0;
+    
+    chapters.push({
+      title,
+      url: chapterId,
+      chapter: chapterNumber
+    });
+  });
+  
+  chapters.sort((a, b) => b.chapter - a.chapter);
+  return chapters.map(c => ({ title: c.title, url: c.url }));
+};
+
+export const manganatoPages = async (chapterId: string) => {
+  const url = `https://chapmanganato.to/${chapterId}`;
+  const html = await proxyFetchText(url);
+  const doc = LoadDoc(html);
+  
+  const pages: string[] = [];
+  doc.querySelectorAll("div.container-chapter-reader img").forEach((element: any) => {
+    const src = element.getAttribute("src");
+    if (src) {
+      pages.push(src);
+    }
+  });
+  return pages;
 };

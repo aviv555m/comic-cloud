@@ -16,6 +16,7 @@ import {
   ChevronRight,
   ExternalLink,
   Sparkles,
+  Download,
 } from "lucide-react";
 
 /**
@@ -27,7 +28,7 @@ import {
  * page images). The proxy enforces an allowlist server-side.
  */
 
-type Source = "comix" | "mangadex" | "mangafire" | "mangafreak" | "mangapark";
+type Source = "comix" | "mangadex" | "mangafire" | "mangafreak" | "mangapark" | "manganato";
 
 interface SearchResult {
   title: string;
@@ -195,11 +196,107 @@ import {
   mangaparkSearch,
   mangaparkChapters,
   mangaparkPages,
+  manganatoSearch,
+  manganatoChapters,
+  manganatoPages,
 } from "@/lib/manga-sources-client";
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import JSZip from "jszip";
+import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+
+const fetchImageAsArrayBuffer = async (imgUrl: string): Promise<ArrayBuffer> => {
+  const isNative = Capacitor.isNativePlatform();
+  
+  // Parse hostname to see if it is in ALLOWED_HOSTS
+  let hostname = "";
+  try {
+    hostname = new URL(imgUrl).hostname.toLowerCase();
+  } catch {}
+  
+  const ALLOWED_HOSTS = [
+    "gutendex.com",
+    "archive.org",
+    "openlibrary.org",
+    "www.wattpad.com",
+    "api.mangadex.org",
+    "uploads.mangadex.org",
+    "standardebooks.org",
+    "www.standardebooks.org",
+    "covers.openlibrary.org",
+    "comix.to",
+    "www.comix.to"
+  ];
+  const isAllowedHost = ALLOWED_HOSTS.includes(hostname) || hostname.endsWith(".comix.to") || hostname.endsWith(".mangadex.org");
+  
+  if (isAllowedHost) {
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: { url: imgUrl, responseType: "text" },
+    });
+    if (!error && data?.success && data.data) {
+      const binaryString = atob(data.data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+  }
+  
+  if (isNative) {
+    const response = await CapacitorHttp.get({
+      url: imgUrl,
+      responseType: 'arraybuffer',
+    });
+    if (response.status >= 200 && response.status < 300 && response.data) {
+      if (typeof response.data === 'string') {
+        const binaryString = atob(response.data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+      }
+      return response.data;
+    }
+  }
+  
+  const corsUrl = `https://corsproxy.io/?${encodeURIComponent(imgUrl)}`;
+  try {
+    const res = await fetch(corsUrl);
+    if (res.ok) return await res.arrayBuffer();
+  } catch {}
+  
+  const resDirect = await fetch(imgUrl);
+  return await resDirect.arrayBuffer();
+};
+
+const getSourceUrl = (source: Source, seriesUrl: string): string => {
+  if (source === "comix") {
+    const slug = seriesUrl.split("|")[1] || "";
+    return `https://comix.to/manga/${slug}`;
+  }
+  if (source === "mangadex") {
+    return `https://mangadex.org/title/${seriesUrl}`;
+  }
+  if (source === "mangafire") {
+    return `https://mangafire.to/manga/${seriesUrl}`;
+  }
+  if (source === "mangafreak") {
+    return `https://ww2.mangafreak.me/Manga/${seriesUrl}`;
+  }
+  if (source === "mangapark") {
+    return `https://mangapark.io/title/${seriesUrl}`;
+  }
+  if (source === "manganato") {
+    return `https://chapmanganato.to/${seriesUrl}`;
+  }
+  return "#";
+};
 
 const MangaBrowser = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { saveBookOffline } = useOfflineBooks();
   const [source, setSource] = useState<Source>("mangadex");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -208,6 +305,7 @@ const MangaBrowser = () => {
   const [currentChapter, setCurrentChapter] = useState<ChapterRef | null>(null);
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // AniList Sync state
   const [aniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
@@ -235,6 +333,8 @@ const MangaBrowser = () => {
         found = await mangafreakSearch(query);
       } else if (source === "mangapark") {
         found = await mangaparkSearch(query);
+      } else if (source === "manganato") {
+        found = await manganatoSearch(query);
       }
       setResults(found);
       if (found.length === 0) {
@@ -270,6 +370,8 @@ const MangaBrowser = () => {
         list = await mangafreakChapters(series.url);
       } else if (source === "mangapark") {
         list = await mangaparkChapters(series.url);
+      } else if (source === "manganato") {
+        list = await manganatoChapters(series.url);
       }
       setChapters(list);
 
@@ -316,6 +418,8 @@ const MangaBrowser = () => {
         imgs = await mangafreakPages(chapter.url);
       } else if (source === "mangapark") {
         imgs = await mangaparkPages(chapter.url);
+      } else if (source === "manganato") {
+        imgs = await manganatoPages(chapter.url);
       }
       if (imgs.length === 0) throw new Error("No pages found on this chapter page.");
       setPages(imgs);
@@ -355,6 +459,117 @@ const MangaBrowser = () => {
     }
   };
 
+  const saveChapter = async (shouldDownloadOffline: boolean) => {
+    if (!currentSeries || !currentChapter || pages.length === 0) return;
+    setSaving(true);
+    toast({
+      title: shouldDownloadOffline ? "Downloading manga chapter..." : "Saving manga chapter...",
+      description: "Fetching pages and packaging as CBZ. This may take a moment.",
+    });
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          variant: "destructive",
+          title: "Authentication required",
+          description: "Please sign in to save manga.",
+        });
+        setSaving(false);
+        return;
+      }
+
+      // 1. Create CBZ zip file on the fly
+      const zip = new JSZip();
+      
+      for (let i = 0; i < pages.length; i++) {
+        const pageUrl = pages[i];
+        try {
+          const buffer = await fetchImageAsArrayBuffer(pageUrl);
+          const ext = pageUrl.split('?')[0].split('.').pop() || 'jpg';
+          const validExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext.toLowerCase()) ? ext : 'jpg';
+          const fileName = `${String(i + 1).padStart(3, '0')}.${validExt}`;
+          zip.file(fileName, buffer);
+        } catch (fetchErr) {
+          console.error(`Failed to fetch page ${i + 1}:`, fetchErr);
+        }
+      }
+
+      const cbzBlob = await zip.generateAsync({ type: 'blob' });
+      if (cbzBlob.size < 1000) {
+        throw new Error("Failed to package manga pages into CBZ (empty file).");
+      }
+
+      // 2. Upload CBZ to Supabase Storage
+      const fileName = `${user.id}/manga_${Date.now()}.cbz`;
+      const { error: uploadError } = await supabase.storage
+        .from("book-files")
+        .upload(fileName, cbzBlob, {
+          contentType: "application/x-cbz",
+          cacheControl: "3600",
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // 3. Create signed URL for bookshelf
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from("book-files")
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year
+
+      if (signedUrlError) throw signedUrlError;
+
+      const fileUrl = signedUrlData.signedUrl;
+
+      // 4. Save to Books table
+      const { data: insertedBook, error: insertError } = await supabase
+        .from("books")
+        .insert({
+          user_id: user.id,
+          title: `${currentSeries.title} - ${currentChapter.title}`,
+          author: source.toUpperCase(),
+          file_url: fileUrl,
+          file_type: "cbz",
+          file_size: cbzBlob.size,
+          cover_url: currentSeries.cover || null,
+          last_page_read: 0,
+          reading_progress: 0,
+          is_completed: false
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // 5. If download is requested, download it offline to IndexedDB
+      if (shouldDownloadOffline && insertedBook) {
+        await saveBookOffline({
+          id: insertedBook.id,
+          title: insertedBook.title,
+          author: insertedBook.author,
+          file_url: insertedBook.file_url,
+          file_type: insertedBook.file_type,
+          cover_url: insertedBook.cover_url,
+          last_page_read: 0
+        });
+      } else {
+        toast({
+          title: "Saved to Library",
+          description: `"${currentSeries.title} - ${currentChapter.title}" has been added to your bookshelf.`,
+        });
+      }
+    } catch (err: any) {
+      console.error("Manga save/download failed:", err);
+      toast({
+        variant: "destructive",
+        title: "Process failed",
+        description: err.message || "An error occurred while saving/downloading.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // ---------------- Render ----------------
 
   if (currentChapter && pages.length > 0) {
@@ -365,13 +580,38 @@ const MangaBrowser = () => {
       <div className="min-h-screen bg-background">
         <div className="sticky top-0 z-30 backdrop-blur-md bg-background/80 border-b">
           <div className="max-w-3xl mx-auto flex items-center gap-2 p-3">
-            <Button variant="ghost" size="icon" onClick={() => setPages([])}>
-              <ArrowLeft className="w-4 h-4" />
+            <Button variant="ghost" size="icon" onClick={() => setPages([])} className="h-9 w-9 translate-y-[2px]">
+              <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{currentSeries?.title}</p>
               <p className="text-xs text-muted-foreground truncate">{currentChapter.title}</p>
             </div>
+            
+            <div className="flex items-center gap-1.5 mr-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-2.5 text-xs flex items-center gap-1"
+                onClick={() => saveChapter(false)}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Save to Bookshelf</span>
+                <span className="sm:hidden">Save</span>
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                onClick={() => saveChapter(true)}
+                disabled={saving}
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Download Offline</span>
+                <span className="sm:hidden">Download</span>
+              </Button>
+            </div>
+
             <Button
               size="sm"
               variant="outline"
@@ -418,9 +658,9 @@ const MangaBrowser = () => {
     <div className="min-h-screen bg-background">
       <Navigation />
       <div className="container mx-auto px-4 py-6 max-w-5xl">
-        <div className="flex items-center gap-2 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/")}>
-            <ArrowLeft className="w-4 h-4" />
+        <div className="flex items-center gap-3 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => navigate("/")} className="h-10 w-10 translate-y-[2px]">
+            <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Manga & Manhwa</h1>
@@ -466,6 +706,13 @@ const MangaBrowser = () => {
           >
             MangaPark
           </Badge>
+          <Badge
+            variant={source === "manganato" ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setSource("manganato")}
+          >
+            Manganato
+          </Badge>
         </div>
 
         <form onSubmit={onSearch} className="flex gap-2 mb-6">
@@ -489,7 +736,7 @@ const MangaBrowser = () => {
                 {aniListSyncing ? "Syncing..." : "AniList Linked"}
               </Badge>
             )}
-            <Button size="sm" variant="ghost" onClick={() => window.open(currentSeries.url, "_blank")}>
+            <Button size="sm" variant="ghost" onClick={() => window.open(getSourceUrl(source, currentSeries.url), "_blank")}>
               <ExternalLink className="w-3 h-3 mr-1" /> Source
             </Button>
             <Button size="sm" variant="ghost" onClick={() => { setCurrentSeries(null); setChapters([]); }}>
