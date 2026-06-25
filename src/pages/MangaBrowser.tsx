@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -202,7 +202,6 @@ import {
   manganatoChapters,
   manganatoPages,
 } from "@/lib/manga-sources-client";
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import JSZip from "jszip";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 
