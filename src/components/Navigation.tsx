@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv, Sparkles } from "lucide-react";
+import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -75,10 +76,10 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                 onClick={() => navigate("/")}
                 className="flex items-center gap-2 hover:opacity-80 active:opacity-70 transition-opacity"
               >
-                <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 gradient-warm rounded-lg shadow-md">
-                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                <div className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 gradient-warm rounded-lg shadow-md text-white">
+                  <Logo size={20} className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-lg sm:text-xl font-bold hidden sm:block">Bookshelf</span>
+                <span className="text-lg sm:text-xl font-bold hidden sm:block">ComicCloud</span>
               </button>
             </div>
 

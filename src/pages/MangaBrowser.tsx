@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Sparkles,
 } from "lucide-react";
 
 /**
@@ -26,7 +27,7 @@ import {
  * page images). The proxy enforces an allowlist server-side.
  */
 
-type Source = "comix" | "mangadex";
+type Source = "comix" | "mangadex" | "mangafire" | "mangafreak" | "mangapark";
 
 interface SearchResult {
   title: string;
@@ -48,6 +49,15 @@ const proxyText = async (url: string): Promise<string> => {
   return typeof data.data === "string" ? data.data : JSON.stringify(data.data);
 };
 
+const proxyJson = async (url: string): Promise<any> => {
+  const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+    body: { url, responseType: "json" },
+  });
+  if (error) throw error;
+  if (!data?.success) throw new Error(data?.error ?? "Proxy failed");
+  return data.data;
+};
+
 const absolutize = (href: string, base: string) => {
   try {
     return new URL(href, base).toString();
@@ -56,77 +66,141 @@ const absolutize = (href: string, base: string) => {
   }
 };
 
-// ---------- comix.to scrapers (best-effort, structure may change) ----------
-const comixSearch = async (q: string): Promise<SearchResult[]> => {
-  const url = `https://comix.to/?s=${encodeURIComponent(q)}`;
-  const html = await proxyText(url);
-  const doc = new DOMParser().parseFromString(html, "text/html");
+// ---------- MangaDex API helpers ----------
+const mangadexSearch = async (q: string): Promise<SearchResult[]> => {
+  const url = `https://api.mangadex.org/manga?title=${encodeURIComponent(q)}&limit=20&includes[]=cover_art`;
+  const data = await proxyJson(url);
   const out: SearchResult[] = [];
-  doc.querySelectorAll("article, .bs, .listupd .bsx").forEach((el) => {
-    const a = el.querySelector("a[href]") as HTMLAnchorElement | null;
-    const img = el.querySelector("img") as HTMLImageElement | null;
-    if (!a) return;
-    const href = absolutize(a.getAttribute("href") || "", url);
-    if (!/comix\.to\//.test(href)) return;
-    const title =
-      a.getAttribute("title") ||
-      el.querySelector(".tt, .title, h2, h3")?.textContent?.trim() ||
-      a.textContent?.trim() ||
-      "Untitled";
-    const cover =
-      img?.getAttribute("data-src") ||
-      img?.getAttribute("src") ||
-      undefined;
-    out.push({ title, url: href, cover });
+  if (data?.data) {
+    data.data.forEach((m: any) => {
+      const title = m.attributes.title.en || Object.values(m.attributes.title)[0] || "Untitled";
+      const coverRelation = m.relationships.find((r: any) => r.type === "cover_art");
+      const coverFileName = coverRelation?.attributes?.fileName;
+      const cover = coverFileName 
+        ? `https://uploads.mangadex.org/covers/${m.id}/${coverFileName}`
+        : undefined;
+      out.push({ title, url: m.id, cover });
+    });
+  }
+  return out;
+};
+
+const mangadexChapters = async (mangaId: string): Promise<ChapterRef[]> => {
+  const url = `https://api.mangadex.org/manga/${mangaId}/feed?translatedLanguage[]=en&order[chapter]=desc&limit=100`;
+  const data = await proxyJson(url);
+  const out: ChapterRef[] = [];
+  if (data?.data) {
+    data.data.forEach((c: any) => {
+      if (c.attributes.externalUrl) return;
+      
+      const chNum = c.attributes.chapter;
+      const chTitle = c.attributes.title;
+      const title = chTitle 
+        ? `Ch. ${chNum} - ${chTitle}`
+        : `Chapter ${chNum}`;
+      
+      out.push({ title, url: c.id });
+    });
+  }
+  return out;
+};
+
+const mangadexPages = async (chapterId: string): Promise<string[]> => {
+  const url = `https://api.mangadex.org/at-home/server/${chapterId}`;
+  const data = await proxyJson(url);
+  const hash = data?.chapter?.hash;
+  const pageFiles = data?.chapter?.data;
+  const baseUrl = data?.baseUrl;
+  if (!hash || !pageFiles || !baseUrl) {
+    throw new Error("This chapter does not have pages hosted on MangaDex.");
+  }
+  return pageFiles.map((f: string) => `${baseUrl}/data/${hash}/${f}`);
+};
+
+import { initComixClient, comixAxios } from "@/lib/comix-client";
+
+// ---------- comix.to API helpers using signed comixAxios client ----------
+const comixSearch = async (q: string): Promise<SearchResult[]> => {
+  await initComixClient();
+  const searchToken = "/manga"; // signature is computed based on the endpoint pathname
+  // The client Axios request interceptor intercepts this request, signs it, and attaches the signature as query param '_'
+  const response = await comixAxios.get(`/manga`, {
+    params: {
+      keyword: q,
+      "order[relevance]": "desc",
+      limit: 20,
+      page: 1
+    }
   });
-  // de-dup
-  const seen = new Set<string>();
-  return out.filter((r) => (seen.has(r.url) ? false : seen.add(r.url)));
+
+  const out: SearchResult[] = [];
+  const items = response.data?.result?.items || response.data?.items || [];
+  items.forEach((item: any) => {
+    out.push({
+      title: item.title || "Untitled",
+      url: `${item.hid || item.id}|${item.slug || ""}`, // Store hid and slug combined
+      cover: item.coverUrl || item.cover?.url || undefined,
+    });
+  });
+  return out;
 };
 
 const comixChapters = async (seriesUrl: string): Promise<ChapterRef[]> => {
-  const html = await proxyText(seriesUrl);
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  await initComixClient();
+  const [hid, slug] = seriesUrl.split("|");
+  const chaptersPath = `/manga/${hid}/chapters`;
+  const response = await comixAxios.get(chaptersPath, {
+    params: {
+      "order[number]": "desc",
+      limit: 100,
+      page: 1,
+      mangaSlug: slug || ""
+    }
+  });
+
   const out: ChapterRef[] = [];
-  doc.querySelectorAll("#chapterlist a, .eph-num a, .chbox a").forEach((a) => {
-    const href = absolutize((a as HTMLAnchorElement).getAttribute("href") || "", seriesUrl);
-    const title =
-      (a.querySelector(".chapternum")?.textContent?.trim()) ||
-      a.textContent?.trim() ||
-      "Chapter";
-    if (href.includes("comix.to")) out.push({ title, url: href });
+  const items = response.data?.result?.items || response.data?.items || [];
+  items.forEach((item: any) => {
+    out.push({
+      title: item.number !== undefined ? `Chapter ${item.number}` : item.title || "Chapter",
+      url: item.id || "",
+    });
   });
   return out;
 };
 
 const comixPages = async (chapterUrl: string): Promise<string[]> => {
-  const html = await proxyText(chapterUrl);
-  // Try the common embedded JSON: ts_reader.run({...})
-  const m = html.match(/ts_reader\.run\((\{[\s\S]*?\})\);/);
-  if (m) {
-    try {
-      const json = JSON.parse(m[1]);
-      const imgs: string[] = json?.sources?.[0]?.images ?? [];
-      if (imgs.length) return imgs;
-    } catch {
-      /* fall through */
-    }
-  }
-  const doc = new DOMParser().parseFromString(html, "text/html");
+  await initComixClient();
+  const pagesPath = `/chapters/${chapterUrl}`;
+  const response = await comixAxios.get(pagesPath);
+  
   const imgs: string[] = [];
-  doc.querySelectorAll("#readerarea img, .reader-area img").forEach((img) => {
-    const src =
-      (img as HTMLImageElement).getAttribute("data-src") ||
-      (img as HTMLImageElement).getAttribute("src");
-    if (src) imgs.push(absolutize(src, chapterUrl));
+  const imageItems = response.data?.result?.images || response.data?.images || [];
+  imageItems.forEach((img: any) => {
+    // If img is an object containing url, or a plain string
+    const url = typeof img === "object" ? img.url || img.image : img;
+    if (url) imgs.push(url);
   });
   return imgs;
 };
 
+import { searchAniListManga, updateAniListProgress } from "@/lib/anilist";
+import {
+  mangafireSearch,
+  mangafireChapters,
+  mangafirePages,
+  mangafreakSearch,
+  mangafreakChapters,
+  mangafreakPages,
+  mangaparkSearch,
+  mangaparkChapters,
+  mangaparkPages,
+} from "@/lib/manga-sources-client";
+
 const MangaBrowser = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [source, setSource] = useState<Source>("comix");
+  const [source, setSource] = useState<Source>("mangadex");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [chapters, setChapters] = useState<ChapterRef[]>([]);
@@ -134,6 +208,11 @@ const MangaBrowser = () => {
   const [currentChapter, setCurrentChapter] = useState<ChapterRef | null>(null);
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // AniList Sync state
+  const [aniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
+  const [aniListMediaId, setAniListMediaId] = useState<number | null>(null);
+  const [aniListSyncing, setAniListSyncing] = useState(false);
 
   const onSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -145,7 +224,18 @@ const MangaBrowser = () => {
     setCurrentChapter(null);
     setPages([]);
     try {
-      const found = source === "comix" ? await comixSearch(query) : [];
+      let found: SearchResult[] = [];
+      if (source === "comix") {
+        found = await comixSearch(query);
+      } else if (source === "mangadex") {
+        found = await mangadexSearch(query);
+      } else if (source === "mangafire") {
+        found = await mangafireSearch(query);
+      } else if (source === "mangafreak") {
+        found = await mangafreakSearch(query);
+      } else if (source === "mangapark") {
+        found = await mangaparkSearch(query);
+      }
       setResults(found);
       if (found.length === 0) {
         toast({ title: "No results", description: "Try a different title." });
@@ -167,9 +257,38 @@ const MangaBrowser = () => {
     setCurrentSeries(series);
     setCurrentChapter(null);
     setPages([]);
+    setAniListMediaId(null);
     try {
-      const list = await comixChapters(series.url);
+      let list: ChapterRef[] = [];
+      if (source === "comix") {
+        list = await comixChapters(series.url);
+      } else if (source === "mangadex") {
+        list = await mangadexChapters(series.url);
+      } else if (source === "mangafire") {
+        list = await mangafireChapters(series.url);
+      } else if (source === "mangafreak") {
+        list = await mangafreakChapters(series.url);
+      } else if (source === "mangapark") {
+        list = await mangaparkChapters(series.url);
+      }
       setChapters(list);
+
+      // Attempt to search and match on AniList
+      if (aniListToken && series.title) {
+        try {
+          const mediaList = await searchAniListManga(aniListToken, series.title);
+          if (mediaList && mediaList.length > 0) {
+            // Find a media item with close title matching
+            setAniListMediaId(mediaList[0].id);
+            toast({
+              title: "AniList Linked",
+              description: `Linked reading progress to: ${mediaList[0].title.english || mediaList[0].title.romaji}`,
+            });
+          }
+        } catch (e) {
+          console.error("AniList series matching failed:", e);
+        }
+      }
     } catch (err: any) {
       toast({
         variant: "destructive",
@@ -186,10 +305,45 @@ const MangaBrowser = () => {
     setCurrentChapter(chapter);
     setPages([]);
     try {
-      const imgs = await comixPages(chapter.url);
+      let imgs: string[] = [];
+      if (source === "comix") {
+        imgs = await comixPages(chapter.url);
+      } else if (source === "mangadex") {
+        imgs = await mangadexPages(chapter.url);
+      } else if (source === "mangafire") {
+        imgs = await mangafirePages(chapter.url);
+      } else if (source === "mangafreak") {
+        imgs = await mangafreakPages(chapter.url);
+      } else if (source === "mangapark") {
+        imgs = await mangaparkPages(chapter.url);
+      }
       if (imgs.length === 0) throw new Error("No pages found on this chapter page.");
       setPages(imgs);
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+
+      // Parse chapter number and update AniList progress
+      if (aniListToken && aniListMediaId) {
+        const match = chapter.title.match(/Chapter\s+(\d+(\.\d+)?)|Ch\.\s*(\d+(\.\d+)?)/i);
+        // Fallback: search for first number in title
+        const numMatch = match ? match[1] || match[3] : chapter.title.match(/\d+(\.\d+)?/)?.[0];
+        if (numMatch) {
+          const chapterNum = Math.floor(parseFloat(numMatch));
+          if (chapterNum > 0) {
+            setAniListSyncing(true);
+            try {
+              await updateAniListProgress(aniListToken, aniListMediaId, chapterNum);
+              toast({
+                title: "AniList Synced",
+                description: `Successfully updated progress to Chapter ${chapterNum} on AniList!`,
+              });
+            } catch (syncErr: any) {
+              console.error("AniList progress sync failed:", syncErr);
+            } finally {
+              setAniListSyncing(false);
+            }
+          }
+        }
+      }
     } catch (err: any) {
       toast({
         variant: "destructive",
@@ -271,12 +425,12 @@ const MangaBrowser = () => {
           <div>
             <h1 className="text-2xl font-bold">Manga & Manhwa</h1>
             <p className="text-sm text-muted-foreground">
-              Browse comix.to (and more) right inside your library
+              Browse MangaDex (and more) right inside your library
             </p>
           </div>
         </div>
 
-        <div className="flex gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-4">
           <Badge
             variant={source === "comix" ? "default" : "outline"}
             className="cursor-pointer"
@@ -284,8 +438,33 @@ const MangaBrowser = () => {
           >
             comix.to
           </Badge>
-          <Badge variant="outline" className="opacity-50 cursor-not-allowed">
-            MangaDex (soon)
+          <Badge
+            variant={source === "mangadex" ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setSource("mangadex")}
+          >
+            MangaDex
+          </Badge>
+          <Badge
+            variant={source === "mangafire" ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setSource("mangafire")}
+          >
+            MangaFire
+          </Badge>
+          <Badge
+            variant={source === "mangafreak" ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setSource("mangafreak")}
+          >
+            MangaFreak
+          </Badge>
+          <Badge
+            variant={source === "mangapark" ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setSource("mangapark")}
+          >
+            MangaPark
           </Badge>
         </div>
 
@@ -304,6 +483,12 @@ const MangaBrowser = () => {
           <div className="mb-4 p-3 rounded-lg border bg-card flex items-center gap-3">
             <BookOpen className="w-4 h-4 text-primary" />
             <p className="text-sm font-medium flex-1 truncate">{currentSeries.title}</p>
+            {aniListMediaId && (
+              <Badge variant="secondary" className="bg-sky-500/10 text-sky-400 border-0 flex gap-1 items-center shrink-0">
+                <Sparkles className="w-3 h-3 text-sky-400 animate-pulse" />
+                {aniListSyncing ? "Syncing..." : "AniList Linked"}
+              </Badge>
+            )}
             <Button size="sm" variant="ghost" onClick={() => window.open(currentSeries.url, "_blank")}>
               <ExternalLink className="w-3 h-3 mr-1" /> Source
             </Button>

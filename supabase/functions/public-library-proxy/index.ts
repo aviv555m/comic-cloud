@@ -58,15 +58,19 @@ function validateUrl(rawUrl: string): { ok: true; url: URL } | { ok: false; erro
 async function safeFetch(initialUrl: URL): Promise<Response> {
   let current = initialUrl;
   for (let i = 0; i < 5; i++) {
+    const headers: Record<string, string> = {
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "*/*",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+    };
+    if (current.hostname.endsWith("comix.to")) {
+      headers["Referer"] = "https://comix.to/";
+    }
     const res = await fetch(current.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-      },
+      headers,
       redirect: "manual",
     });
     if (res.status >= 300 && res.status < 400) {

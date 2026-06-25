@@ -12,10 +12,13 @@ export const PWAInstallPrompt = () => {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     // Check if already installed
-    if (window.matchMedia("(display-mode: standalone)").matches) {
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || 
+                          (window.navigator as any).standalone === true;
+    if (isStandalone) {
       setIsInstalled(true);
       return;
     }
@@ -26,16 +29,26 @@ export const PWAInstallPrompt = () => {
       return;
     }
 
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e as BeforeInstallPromptEvent);
-      // Show prompt after a short delay
-      setTimeout(() => setShowPrompt(true), 3000);
-    };
+    // Check if iOS
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    setIsIOS(ios);
 
-    window.addEventListener("beforeinstallprompt", handler);
+    if (ios) {
+      // iOS doesn't support beforeinstallprompt, so we trigger the modal manually after a delay
+      const timer = setTimeout(() => setShowPrompt(true), 3000);
+      return () => clearTimeout(timer);
+    } else {
+      const handler = (e: Event) => {
+        e.preventDefault();
+        setInstallPrompt(e as BeforeInstallPromptEvent);
+        // Show prompt after a short delay
+        setTimeout(() => setShowPrompt(true), 3000);
+      };
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+      window.addEventListener("beforeinstallprompt", handler);
+      return () => window.removeEventListener("beforeinstallprompt", handler);
+    }
   }, []);
 
   const handleInstall = async () => {
@@ -67,18 +80,39 @@ export const PWAInstallPrompt = () => {
             <Download className="w-5 h-5 text-primary" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-sm">Install Bookshelf</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              Install for offline access and a better experience
-            </p>
-            <div className="flex gap-2 mt-3">
-              <Button size="sm" onClick={handleInstall} className="flex-1">
-                Install
-              </Button>
-              <Button size="sm" variant="ghost" onClick={handleDismiss}>
+            <div className="flex justify-between items-start">
+              <h3 className="font-semibold text-sm">Install ComicCloud</h3>
+              <Button size="icon" variant="ghost" className="h-6 w-6 p-0 hover:bg-transparent" onClick={handleDismiss}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
+            {isIOS ? (
+              <div className="mt-2 space-y-2 text-xs text-muted-foreground leading-relaxed">
+                <p>Add to your Home Screen to open it as a standalone app:</p>
+                <ol className="list-decimal pl-4 space-y-2 font-medium text-foreground/90">
+                  <li>
+                    Tap the Share button <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-card-foreground text-[10px]">📤</span> at the bottom of Safari.
+                  </li>
+                  <li>
+                    Scroll down and select <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-card-foreground font-semibold text-[10px]">Add to Home Screen ➕</span>.
+                  </li>
+                  <li>
+                    Tap <span className="text-primary font-semibold">Add</span> in the top-right corner.
+                  </li>
+                </ol>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Install for offline access and a better experience
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <Button size="sm" onClick={handleInstall} className="flex-1">
+                    Install
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </CardContent>

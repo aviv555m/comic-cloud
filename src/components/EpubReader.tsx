@@ -8,9 +8,10 @@ interface EpubReaderProps {
   url: string;
   onLocationChange?: (location: string) => void;
   initialLocation?: string;
+  showControls?: boolean;
 }
 
-export const EpubReader = ({ url, onLocationChange, initialLocation }: EpubReaderProps) => {
+export const EpubReader = ({ url, onLocationChange, initialLocation, showControls = true }: EpubReaderProps) => {
   const viewerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<Book | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
@@ -106,35 +107,41 @@ export const EpubReader = ({ url, onLocationChange, initialLocation }: EpubReade
         style={{ height: "70vh" }}
       />
       
-      <div className="flex items-center gap-4">
-        <Button
-          onClick={goToPreviousPage}
-          disabled={!canGoBack}
-          variant="outline"
-        >
-          <ChevronLeft className="w-4 h-4 mr-2" />
-          Previous
-        </Button>
+      <div className={`flex flex-col items-center gap-3 w-full transition-all duration-300 ${
+        showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      }`}>
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={goToPreviousPage}
+            disabled={!canGoBack}
+            variant="outline"
+            size="sm"
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Previous
+          </Button>
 
-        <Button
-          onClick={goToNextPage}
-          disabled={!canGoForward}
-          variant="outline"
-        >
-          Next
-          <ChevronRight className="w-4 h-4 ml-2" />
-        </Button>
+          <Button
+            onClick={goToNextPage}
+            disabled={!canGoForward}
+            variant="outline"
+            size="sm"
+          >
+            Next
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+
+        {/* Chapter Navigation */}
+        {chapters.length > 0 && (
+          <ChapterNavigation
+            chapters={chapters}
+            currentCfi={currentCfi}
+            onChapterSelect={handleChapterSelect}
+            fileType="epub"
+          />
+        )}
       </div>
-
-      {/* Chapter Navigation */}
-      {chapters.length > 0 && (
-        <ChapterNavigation
-          chapters={chapters}
-          currentCfi={currentCfi}
-          onChapterSelect={handleChapterSelect}
-          fileType="epub"
-        />
-      )}
     </div>
   );
 };

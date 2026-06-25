@@ -53,6 +53,7 @@ const Reader = () => {
   const { isOnline, getOfflineFile, checkBookOfflineAsync } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
+  const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
   const [scale, setScale] = useState(1.0);
@@ -80,6 +81,21 @@ const Reader = () => {
 
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
+
+  const handleContentClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest('button') || 
+      target.closest('input') || 
+      target.closest('a') || 
+      target.closest('[role="button"]') ||
+      target.closest('.interactive-element') ||
+      target.closest('.chapter-nav-trigger')
+    ) {
+      return;
+    }
+    setShowControls(prev => !prev);
+  };
 
   useEffect(() => {
     const measure = () => {
@@ -557,7 +573,12 @@ const Reader = () => {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div ref={headerRef} className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <div 
+        ref={headerRef} 
+        className={`border-b bg-card/90 backdrop-blur-sm fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+          showControls ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
         <div className="container mx-auto px-2 sm:px-4 py-2">
           <div className="flex flex-col gap-2">
             {/* Top row: back button and title */}
@@ -678,7 +699,11 @@ const Reader = () => {
       </div>
 
       {/* Reader Content */}
-      <div className="container mx-auto px-1 sm:px-4 py-2 sm:py-8 overflow-x-hidden">
+      <div 
+        onClick={handleContentClick}
+        className="container mx-auto px-1 sm:px-4 pb-2 sm:py-8 overflow-x-hidden"
+        style={{ paddingTop: `${headerHeight || 80}px` }}
+      >
         {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-4 sm:gap-6">
             <Document
@@ -716,6 +741,7 @@ const Reader = () => {
                     setCurrentPage(page);
                     updateProgress(page, numPages || undefined);
                   }}
+                  showControls={showControls}
                 />
               )}
             </Document>
@@ -782,6 +808,7 @@ const Reader = () => {
               }
             }}
             initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
+            showControls={showControls}
           />
         )}
 
@@ -793,6 +820,8 @@ const Reader = () => {
               updateProgress(page);
             }}
             initialPage={book.last_page_read || 0}
+            showControls={showControls}
+            onToggleControls={() => setShowControls(prev => !prev)}
           />
         )}
 
@@ -871,7 +900,11 @@ const Reader = () => {
       )}
 
       {/* Reading Timer / Pomodoro */}
-      <div className="fixed bottom-4 right-4 z-40">
+      <div 
+        className={`fixed bottom-4 right-4 z-40 transition-all duration-300 ${
+          showControls ? "translate-y-0 opacity-100 scale-100" : "translate-y-12 opacity-0 scale-95 pointer-events-none"
+        }`}
+      >
         <ReadingTimer />
       </div>
     </div>

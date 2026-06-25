@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Loader2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
@@ -79,11 +80,11 @@ const Auth = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8 animate-fade-in">
-          <div className="inline-flex items-center justify-center w-16 h-16 mb-4 gradient-warm rounded-2xl shadow-lg">
-            <BookOpen className="w-8 h-8 text-white" />
+          <div className="inline-flex items-center justify-center w-16 h-16 mb-4 gradient-warm rounded-2xl shadow-lg text-white">
+            <Logo size={32} className="w-10 h-10" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Bookshelf</h1>
-          <p className="text-muted-foreground">Your personal digital library</p>
+          <h1 className="text-3xl font-bold mb-2">ComicCloud</h1>
+          <p className="text-muted-foreground">Your personal digital comic & manga library</p>
         </div>
 
         <Card className="glass-card border-0 animate-fade-in">

@@ -14,7 +14,8 @@ import { ImportBooksDialog } from "@/components/ImportBooksDialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown } from "lucide-react";
+import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown, WifiOff } from "lucide-react";
+import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
@@ -49,6 +50,15 @@ interface TagType {
 }
 
 const Library = () => {
+  const { isOnline } = useOfflineBooks();
+  const [activeTab, setActiveTab] = useState("library");
+
+  useEffect(() => {
+    if (!isOnline) {
+      setActiveTab("offline");
+    }
+  }, [isOnline]);
+
   const [user, setUser] = useState<User | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [filters, setFilters] = useState<FilterState>({
@@ -84,7 +94,9 @@ const Library = () => {
         fetchBooks(session.user.id);
         fetchTags(session.user.id);
       } else {
-        navigate("/auth");
+        if (navigator.onLine) {
+          navigate("/auth");
+        }
       }
     });
 
@@ -95,7 +107,9 @@ const Library = () => {
           fetchBooks(session.user.id);
           fetchTags(session.user.id);
         } else {
-          navigate("/auth");
+          if (navigator.onLine) {
+            navigate("/auth");
+          }
         }
       }
     );
@@ -104,6 +118,10 @@ const Library = () => {
   }, [navigate]);
 
   const fetchBooks = async (userId: string) => {
+    if (!userId || !navigator.onLine) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase
@@ -135,6 +153,7 @@ const Library = () => {
   };
 
   const fetchTags = async (userId: string) => {
+    if (!userId || !navigator.onLine) return;
     const { data } = await supabase
       .from("tags")
       .select("*")
@@ -143,6 +162,7 @@ const Library = () => {
   };
 
   const fetchBookTags = async (userId: string) => {
+    if (!userId || !navigator.onLine) return;
     const { data } = await supabase
       .from("book_tags")
       .select("book_id, tag_id")
@@ -157,6 +177,7 @@ const Library = () => {
   };
 
   const fetchBookRatings = async (userId: string) => {
+    if (!userId || !navigator.onLine) return;
     const { data } = await supabase
       .from("book_reviews")
       .select("book_id, rating")
@@ -170,6 +191,7 @@ const Library = () => {
   };
 
   const fetchReadingStats = async (userId: string) => {
+    if (!userId || !navigator.onLine) return;
     try {
       const { data: sessions } = await supabase
         .from("reading_sessions")
@@ -296,11 +318,11 @@ const Library = () => {
   // Books without a series
   const standaloneBooks = filteredBooks.filter((book) => !book.series);
 
-  if (!user) return null;
+  if (!user && isOnline) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      <Navigation userEmail={user.email} />
+      <Navigation userEmail={user?.email || "Offline Mode"} />
       
       <OfflineIndicator />
       
@@ -313,31 +335,49 @@ const Library = () => {
                 {books.length} {books.length === 1 ? "book" : "books"} in your collection
               </p>
             </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="lg" className="gap-2 w-full sm:w-auto h-11 sm:h-10">
-                  <Plus className="w-5 h-5" />
-                  Add Book
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onClick={() => setUploadOpen(true)} className="py-3 sm:py-2">
-                  <Upload className="w-4 h-4 mr-2" />
-                  Upload from Device
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setUrlDialogOpen(true)} className="py-3 sm:py-2">
-                  <Link className="w-4 h-4 mr-2" />
-                  Add from URL
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="py-3 sm:py-2">
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Import from Goodreads
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {isOnline && user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="lg" className="gap-2 w-full sm:w-auto h-11 sm:h-10">
+                    <Plus className="w-5 h-5" />
+                    Add Book
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => setUploadOpen(true)} className="py-3 sm:py-2">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload from Device
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setUrlDialogOpen(true)} className="py-3 sm:py-2">
+                    <Link className="w-4 h-4 mr-2" />
+                    Add from URL
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="py-3 sm:py-2">
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Import from Goodreads
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
 
-          <Tabs defaultValue="library" className="w-full">
+          {!isOnline && (
+            <div className="bg-amber-500/10 border border-amber-500/20 border-l-4 border-l-amber-500 p-4 mb-6 rounded-r-lg flex items-center justify-between shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/10 rounded-full text-amber-500">
+                  <WifiOff className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <p className="font-semibold text-amber-800 dark:text-amber-300 text-sm sm:text-base">No Internet Connection</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    You are offline. Showing downloaded books. You can continue reading your saved books.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-3 sm:mb-4 w-full sm:w-auto grid grid-cols-2 sm:inline-flex">
               <TabsTrigger value="library" className="gap-2 h-10 sm:h-9">
                 <LibraryIcon className="w-4 h-4" />
@@ -498,33 +538,37 @@ const Library = () => {
         </div>
       </main>
 
-      <UploadDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        onUploadComplete={() => user && fetchBooks(user.id)}
-        userId={user.id}
-      />
+      {user && (
+        <>
+          <UploadDialog
+            open={uploadOpen}
+            onOpenChange={setUploadOpen}
+            onUploadComplete={() => fetchBooks(user.id)}
+            userId={user.id}
+          />
 
-      <AddFromUrlDialog
-        open={urlDialogOpen}
-        onOpenChange={setUrlDialogOpen}
-        onSuccess={() => user && fetchBooks(user.id)}
-      />
+          <AddFromUrlDialog
+            open={urlDialogOpen}
+            onOpenChange={setUrlDialogOpen}
+            onSuccess={() => fetchBooks(user.id)}
+          />
 
-      <ImportBooksDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
-        onImport={handleImport}
-      />
+          <ImportBooksDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
+            onImport={handleImport}
+          />
+        </>
+      )}
 
-      {selectedBook && (
+      {selectedBook && user && (
         <BookDetailsDialog
           open={!!selectedBook}
           onOpenChange={(open) => !open && setSelectedBook(null)}
           book={selectedBook}
           canEdit={true}
-          onUpdate={() => user && fetchBooks(user.id)}
-          onDelete={() => user && fetchBooks(user.id)}
+          onUpdate={() => fetchBooks(user.id)}
+          onDelete={() => fetchBooks(user.id)}
         />
       )}
     </div>

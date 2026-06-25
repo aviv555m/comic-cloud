@@ -22,3 +22,31 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Capacitor & Android Binaries
+*.apk
+
+# Temporary files and debug scratch scripts
+scratch/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.app.json
+!tsconfig.node.json
+!components.json
+comix_*.html
+decrypted_*.json
+gX_*.json
+gZ_*.json
+extracted_*.json
+env-*.js
+secure-*.js
+public/secure-*.js
+print_keys_readable.js
+install_android_sdk.sh
+cc_nginx.conf
+vm_run.log
+comix_*.js
+scratch_*.js
+scratch_*.ts

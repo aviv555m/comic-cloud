@@ -9,6 +9,8 @@ interface ComicReaderProps {
   url: string;
   onPageChange?: (page: number) => void;
   initialPage?: number;
+  showControls?: boolean;
+  onToggleControls?: () => void;
 }
 
 interface ImageFile {
@@ -17,7 +19,13 @@ interface ImageFile {
   folder: string;
 }
 
-export const ComicReader = ({ url, onPageChange, initialPage = 0 }: ComicReaderProps) => {
+export const ComicReader = ({ 
+  url, 
+  onPageChange, 
+  initialPage = 0,
+  showControls = true,
+  onToggleControls
+}: ComicReaderProps) => {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [loading, setLoading] = useState(true);
@@ -114,11 +122,61 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0 }: ComicReaderP
     }
   };
 
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">(
+    (localStorage.getItem("comic_reading_mode") as "page" | "scroll") || "page"
+  );
+
+  useEffect(() => {
+    if (readingMode === "scroll" && !loading && images.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`comic-page-${currentPage}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "auto" });
+        }
+      }, 150);
+    }
+  }, [readingMode, loading]);
+
+  useEffect(() => {
+    if (readingMode !== "scroll" || loading || images.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const pageNum = parseInt(entry.target.getAttribute("data-page") || "0");
+            setCurrentPage(pageNum);
+            onPageChange?.(pageNum);
+          }
+        });
+      },
+      {
+        root: null,
+        rootMargin: "-20% 0px -60% 0px",
+        threshold: 0.1,
+      }
+    );
+
+    for (let i = 0; i < images.length; i++) {
+      const el = document.getElementById(`comic-page-${i}`);
+      if (el) observer.observe(el);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [readingMode, loading, images.length]);
+
   const goToPage = (page: number) => {
     if (page >= 0 && page < images.length) {
       setCurrentPage(page);
       onPageChange?.(page);
     }
+  };
+
+  const handleToggleReadingMode = (mode: "page" | "scroll") => {
+    setReadingMode(mode);
+    localStorage.setItem("comic_reading_mode", mode);
   };
 
   if (loading) {
@@ -137,22 +195,112 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0 }: ComicReaderP
     );
   }
 
+  if (readingMode === "scroll") {
+    return (
+      <div className="flex flex-col items-center w-full">
+        {/* Sticky Toolbar */}
+        <div 
+          className={`sticky z-40 bg-background/95 backdrop-blur-sm border rounded-full px-4 py-1.5 shadow-md flex items-center gap-3 pointer-events-auto transition-all duration-300 ${
+            showControls ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
+          }`} 
+          style={{ top: "80px" }}
+        >
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Scroll Mode
+          </span>
+          <span className="text-sm font-medium">
+            Page {currentPage + 1} of {images.length}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-xs"
+            onClick={() => handleToggleReadingMode("page")}
+          >
+            Switch to Page Mode
+          </Button>
+        </div>
+
+        {/* Seamless Webtoon Continuous list */}
+        <div 
+          className="flex flex-col gap-0 w-full max-w-3xl px-0 mt-4 cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleControls?.();
+          }}
+        >
+          {images.map((img, index) => (
+            <div
+              key={index}
+              id={`comic-page-${index}`}
+              data-page={index}
+              className="w-full h-auto bg-card overflow-hidden"
+            >
+              <img
+                src={img.data}
+                alt={`Page ${index + 1}`}
+                loading="lazy"
+                className="w-full h-auto select-none"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="relative max-w-4xl w-full">
+    <div className="flex flex-col items-center gap-4 w-full">
+      {/* Immersive Image Container with Navigation Overlays */}
+      <div className="relative max-w-4xl w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40">
         <img
           src={images[currentPage]?.data}
           alt={`Page ${currentPage + 1}`}
-          className="w-full h-auto rounded-lg shadow-2xl"
+          className="w-full h-auto"
         />
+        
+        {/* Navigation Tap Zones */}
+        <div className="absolute inset-0 flex">
+          {/* Left 30%: Previous page */}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (currentPage > 0) goToPage(currentPage - 1);
+            }}
+            className="w-[30%] h-full cursor-w-resize active:bg-white/5 transition-colors"
+            title="Previous Page"
+          />
+          {/* Center 40%: Toggle Controls */}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleControls?.();
+            }}
+            className="w-[40%] h-full cursor-pointer"
+            title="Toggle Menu"
+          />
+          {/* Right 30%: Next page */}
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              if (currentPage < images.length - 1) goToPage(currentPage + 1);
+            }}
+            className="w-[30%] h-full cursor-e-resize active:bg-white/5 transition-colors"
+            title="Next Page"
+          />
+        </div>
       </div>
 
-      <div className="flex flex-col items-center gap-3">
+      {/* Floating progress overlay at the bottom in Page Mode */}
+      <div className={`flex flex-col items-center gap-3 transition-all duration-300 ${
+        showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      }`}>
         <div className="flex items-center gap-4">
           <Button
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage === 0}
             variant="outline"
+            size="sm"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
@@ -166,9 +314,19 @@ export const ComicReader = ({ url, onPageChange, initialPage = 0 }: ComicReaderP
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= images.length - 1}
             variant="outline"
+            size="sm"
           >
             Next
             <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
+
+          <Button
+            onClick={() => handleToggleReadingMode("scroll")}
+            variant="outline"
+            size="sm"
+            className="ml-2 text-xs"
+          >
+            Scroll Mode
           </Button>
         </div>
 

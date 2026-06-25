@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv } from "lucide-react";
+import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -28,6 +29,7 @@ const navSections = [
   {
     label: "Reading",
     items: [
+      { path: "/manga", label: "Manga & Manhwa", icon: Sparkles },
       { path: "/journal", label: "Journal", icon: PenLine },
       { path: "/quotes", label: "Quotes", icon: Quote },
       { path: "/vocabulary", label: "Vocabulary", icon: BookMarked },
@@ -89,10 +91,10 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
       <SheetContent side="left" className="w-[80vw] max-w-[300px] p-0">
         <SheetHeader className="p-4 pb-2 border-b">
           <SheetTitle className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg">
-              <BookOpen className="w-4 h-4 text-white" />
+            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg text-white">
+              <Logo size={16} className="w-4.5 h-4.5" />
             </div>
-            <span className="text-base">Bookshelf</span>
+            <span className="text-base">ComicCloud</span>
           </SheetTitle>
         </SheetHeader>
 

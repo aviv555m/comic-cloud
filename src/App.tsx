@@ -34,6 +34,7 @@ import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { FloatingChatBubble } from "./components/FloatingChatBubble";
 import { useServiceWorker } from "./hooks/useServiceWorker";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
+import { OfflineAlertOverlay } from "./components/OfflineAlertOverlay";
 const queryClient = new QueryClient();
 
 // Apply saved theme on load
@@ -79,6 +80,7 @@ const AppContent = () => {
         </div>
       )}
       <BrowserRouter>
+        <OfflineAlertOverlay />
         <Routes>
           <Route path="/" element={<Library />} />
           <Route path="/auth" element={<Auth />} />
@@ -97,15 +99,15 @@ const AppContent = () => {
           <Route path="/clubs" element={<Clubs />} />
           <Route path="/clubs/:clubId" element={<ClubDetail />} />
           <Route path="/discover" element={<Discover />} />
-              <Route path="/reminders" element={<Reminders />} />
-              <Route path="/journal" element={<Journal />} />
-              <Route path="/quotes" element={<Quotes />} />
-              <Route path="/year-in-review" element={<YearInReview />} />
-              <Route path="/feed" element={<Feed />} />
-              <Route path="/bookshelf" element={<Bookshelf3D />} />
-              <Route path="/seanime" element={<SeanimeStream />} />
-              <Route path="/manga" element={<MangaBrowser />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/reminders" element={<Reminders />} />
+          <Route path="/journal" element={<Journal />} />
+          <Route path="/quotes" element={<Quotes />} />
+          <Route path="/year-in-review" element={<YearInReview />} />
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/bookshelf" element={<Bookshelf3D />} />
+          <Route path="/seanime" element={<SeanimeStream />} />
+          <Route path="/manga" element={<MangaBrowser />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
         <FloatingChatBubble />

@@ -13,9 +13,10 @@ interface OfflineBook {
 }
 
 const DB_NAME = 'comic-cloud-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BOOKS_STORE = 'offline-books';
 const FILES_STORE = 'offline-files';
+const LOCAL_FILES_STORE = 'local-files';
 
 export function useOfflineBooks() {
   const [offlineBooks, setOfflineBooks] = useState<OfflineBook[]>([]);
@@ -56,6 +57,10 @@ export function useOfflineBooks() {
         if (!db.objectStoreNames.contains(FILES_STORE)) {
           db.createObjectStore(FILES_STORE, { keyPath: 'bookId' });
         }
+
+        if (!db.objectStoreNames.contains(LOCAL_FILES_STORE)) {
+          db.createObjectStore(LOCAL_FILES_STORE, { keyPath: 'filePath' });
+        }
       };
     });
   }, []);
@@ -64,13 +69,42 @@ export function useOfflineBooks() {
   const loadOfflineBooks = useCallback(async () => {
     try {
       const db = await openDB();
-      const transaction = db.transaction(BOOKS_STORE, 'readonly');
-      const store = transaction.objectStore(BOOKS_STORE);
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readonly');
+      const booksStore = transaction.objectStore(BOOKS_STORE);
+      const filesStore = transaction.objectStore(FILES_STORE);
       
-      const request = store.getAll();
+      const request = booksStore.getAll();
       
-      request.onsuccess = () => {
-        setOfflineBooks(request.result || []);
+      request.onsuccess = async () => {
+        const booksList = request.result || [];
+        const processedBooks: OfflineBook[] = [];
+        
+        for (const book of booksList) {
+          const fileRequest = filesStore.get(book.id);
+          const fileRecord = await new Promise<any>((resolve) => {
+            fileRequest.onsuccess = () => resolve(fileRequest.result);
+            fileRequest.onerror = () => resolve(null);
+          });
+          
+          let coverUrl = book.cover_url;
+          if (fileRecord?.coverData) {
+            let binary = '';
+            const bytes = new Uint8Array(fileRecord.coverData);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const base64String = window.btoa(binary);
+            coverUrl = `data:image/jpeg;base64,${base64String}`;
+          }
+          
+          processedBooks.push({
+            ...book,
+            cover_url: coverUrl
+          });
+        }
+        
+        setOfflineBooks(processedBooks);
         setIsReady(true);
       };
     } catch (error) {

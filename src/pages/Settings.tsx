@@ -8,13 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Navigation } from "@/components/Navigation";
-import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download } from "lucide-react";
+import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download, Sparkles } from "lucide-react";
 import { ExportDialog } from "@/components/ExportDialog";
 import { BackupRestoreDialog } from "@/components/BackupRestoreDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Badge } from "@/components/ui/badge";
+import { ANILIST_AUTH_URL, fetchAniListUser } from "@/lib/anilist";
 // AdminPremiumToggle removed for security - premium status managed via secure user_subscriptions table
 
 const Settings = () => {
@@ -41,6 +42,64 @@ const Settings = () => {
   const [readingGoal, setReadingGoal] = useState(30);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showBackupDialog, setShowBackupDialog] = useState(false);
+
+  // AniList integration state
+  const [aniListToken, setAniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
+  const [aniListUser, setAniListUser] = useState<any | null>(null);
+  const [manualToken, setManualToken] = useState("");
+
+  useEffect(() => {
+    // Check if OAuth redirect hash contains access token
+    const hash = window.location.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash.substring(1));
+      const token = params.get("access_token");
+      if (token) {
+        localStorage.setItem("anilist_token", token);
+        setAniListToken(token);
+        // Clear hash from URL bar
+        window.history.replaceState(null, "", window.location.pathname);
+        toast({ title: "Connected to AniList!" });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aniListToken) {
+      fetchAniListUser(aniListToken)
+        .then(setAniListUser)
+        .catch((err) => {
+          console.error("Failed to fetch AniList user info:", err);
+          // If token expired/invalid, clear it
+          localStorage.removeItem("anilist_token");
+          setAniListToken(null);
+          toast({
+            variant: "destructive",
+            title: "AniList Connection Error",
+            description: err.message || "Failed to fetch profile details",
+          });
+        });
+    }
+  }, [aniListToken]);
+
+  const connectAniList = () => {
+    window.location.href = ANILIST_AUTH_URL;
+  };
+
+  const disconnectAniList = () => {
+    localStorage.removeItem("anilist_token");
+    setAniListToken(null);
+    setAniListUser(null);
+    toast({ title: "Disconnected from AniList" });
+  };
+
+  const saveManualToken = () => {
+    if (!manualToken.trim()) return;
+    localStorage.setItem("anilist_token", manualToken.trim());
+    setAniListToken(manualToken.trim());
+    setManualToken("");
+    toast({ title: "AniList token saved!" });
+  };
 
   const handleManageSubscription = async () => {
     try {
@@ -268,7 +327,7 @@ const Settings = () => {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-6">
+          <TabsList className="grid w-full grid-cols-6 mb-6">
             <TabsTrigger value="profile" className="gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
@@ -284,6 +343,10 @@ const Settings = () => {
             <TabsTrigger value="appearance" className="gap-2">
               <Palette className="w-4 h-4" />
               <span className="hidden sm:inline">Theme</span>
+            </TabsTrigger>
+            <TabsTrigger value="anilist" className="gap-2">
+              <Sparkles className="w-4 h-4 text-sky-400" />
+              <span className="hidden sm:inline">AniList</span>
             </TabsTrigger>
             <TabsTrigger value="data" className="gap-2">
               <Download className="w-4 h-4" />
@@ -554,6 +617,82 @@ const Settings = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="anilist">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-sky-400" />
+                  AniList Integration
+                </CardTitle>
+                <CardDescription>
+                  Connect your AniList account to sync your manga reading progress automatically.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {aniListToken ? (
+                  <>
+                    {aniListUser ? (
+                      <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border">
+                        <Avatar className="w-12 h-12">
+                          <AvatarImage src={aniListUser.avatar.large} />
+                          <AvatarFallback className="bg-sky-500 text-white font-medium">
+                            {aniListUser.name[0]?.toUpperCase() || "A"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm">{aniListUser.name}</p>
+                          <p className="text-xs text-muted-foreground">Connected to AniList</p>
+                        </div>
+                        <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-0">
+                          Connected
+                        </Badge>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-6">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      </div>
+                    )}
+                    <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10" onClick={disconnectAniList}>
+                      Disconnect Account
+                    </Button>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Connect your account to sync manga reading progress. You will be redirected to AniList to authorize the app.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button onClick={connectAniList} className="flex-1 bg-sky-500 hover:bg-sky-600 text-white">
+                        <Sparkles className="w-4 h-4 mr-2" /> Connect AniList
+                      </Button>
+                    </div>
+                    <div className="relative flex items-center justify-center py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <span className="relative px-3 bg-background text-xs text-muted-foreground uppercase">
+                        Or enter token manually
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="token-input">Access Token</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="token-input"
+                          type="password"
+                          placeholder="Paste AniList OAuth token here"
+                          value={manualToken}
+                          onChange={(e) => setManualToken(e.target.value)}
+                        />
+                        <Button onClick={saveManualToken}>Save</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="data">
