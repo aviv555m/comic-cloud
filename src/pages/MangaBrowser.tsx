@@ -334,6 +334,210 @@ const MangaBrowser = () => {
   const [aniListMediaId, setAniListMediaId] = useState<number | null>(null);
   const [aniListSyncing, setAniListSyncing] = useState(false);
 
+  // Multi-download and save states
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]); // list of chapter.url
+  const [processingChapters, setProcessingChapters] = useState<Record<string, { mode: 'save' | 'download', progress: string }>>({});
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState("");
+
+  const toggleSelectChapter = (url: string) => {
+    setSelectedChapters(prev =>
+      prev.includes(url) ? prev.filter(u => u !== url) : [...prev, url]
+    );
+  };
+
+  const selectAllChapters = () => {
+    if (selectedChapters.length === chapters.length) {
+      setSelectedChapters([]);
+    } else {
+      setSelectedChapters(chapters.map(c => c.url));
+    }
+  };
+
+  const processChapter = async (chapter: ChapterRef, shouldDownloadOffline: boolean) => {
+    const key = chapter.url;
+    setProcessingChapters(prev => ({
+      ...prev,
+      [key]: { mode: shouldDownloadOffline ? 'download' : 'save', progress: 'Fetching pages...' }
+    }));
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          variant: "destructive",
+          title: "Authentication required",
+          description: "Please sign in to save manga.",
+        });
+        return;
+      }
+
+      // 1. Fetch page urls
+      let imgs: string[] = [];
+      if (source === "comix") {
+        imgs = await comixPages(chapter.url);
+      } else if (source === "mangadex") {
+        imgs = await mangadexPages(chapter.url);
+      } else if (source === "mangafire") {
+        imgs = await mangafirePages(chapter.url);
+      } else if (source === "mangafreak") {
+        imgs = await mangafreakPages(chapter.url);
+      } else if (source === "mangapark") {
+        imgs = await mangaparkPages(chapter.url);
+      } else if (source === "manganato") {
+        imgs = await manganatoPages(chapter.url);
+      }
+
+      if (imgs.length === 0) throw new Error("No pages found on this chapter page.");
+
+      setProcessingChapters(prev => ({
+        ...prev,
+        [key]: { ...prev[key], progress: `Packaging 0/${imgs.length}...` }
+      }));
+
+      // 2. Package as CBZ
+      const zip = new JSZip();
+      for (let i = 0; i < imgs.length; i++) {
+        setProcessingChapters(prev => ({
+          ...prev,
+          [key]: { ...prev[key], progress: `Packaging ${i + 1}/${imgs.length}...` }
+        }));
+        const pageUrl = imgs[i];
+        try {
+          const buffer = await fetchImageAsArrayBuffer(pageUrl);
+          const ext = pageUrl.split('?')[0].split('.').pop() || 'jpg';
+          const validExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext.toLowerCase()) ? ext : 'jpg';
+          const fileName = `${String(i + 1).padStart(3, '0')}.${validExt}`;
+          zip.file(fileName, buffer);
+        } catch (fetchErr) {
+          console.error(`Failed to fetch page ${i + 1}:`, fetchErr);
+        }
+      }
+
+      setProcessingChapters(prev => ({
+        ...prev,
+        [key]: { ...prev[key], progress: 'Uploading...' }
+      }));
+
+      const cbzBlob = await zip.generateAsync({ type: 'blob' });
+      if (cbzBlob.size < 1000) {
+        throw new Error("Failed to package manga pages into CBZ.");
+      }
+
+      // 3. Upload CBZ to Supabase Storage
+      const fileName = `${user.id}/manga_${Date.now()}.cbz`;
+      const { error: uploadError } = await supabase.storage
+        .from("book-files")
+        .upload(fileName, cbzBlob, {
+          contentType: "application/x-cbz",
+          cacheControl: "3600",
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      // 4. Create signed URL
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+        .from("book-files")
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year
+
+      if (signedUrlError) throw signedUrlError;
+
+      const fileUrl = signedUrlData.signedUrl;
+
+      // 5. Save to Books
+      const { data: insertedBook, error: insertError } = await supabase
+        .from("books")
+        .insert({
+          user_id: user.id,
+          title: `${currentSeries?.title || 'Manga'} - ${chapter.title}`,
+          author: source.toUpperCase(),
+          file_url: fileUrl,
+          file_type: "cbz",
+          file_size: cbzBlob.size,
+          cover_url: currentSeries?.cover || null,
+          last_page_read: 0,
+          reading_progress: 0,
+          is_completed: false
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // 6. Offline download if requested
+      if (shouldDownloadOffline && insertedBook) {
+        setProcessingChapters(prev => ({
+          ...prev,
+          [key]: { ...prev[key], progress: 'Saving offline...' }
+        }));
+        await saveBookOffline({
+          id: insertedBook.id,
+          title: insertedBook.title,
+          author: insertedBook.author,
+          file_url: insertedBook.file_url,
+          file_type: insertedBook.file_type,
+          cover_url: insertedBook.cover_url,
+          last_page_read: 0
+        });
+      }
+
+      toast({
+        title: shouldDownloadOffline ? "Downloaded offline" : "Saved to Library",
+        description: `"${chapter.title}" processed successfully!`,
+      });
+    } catch (err: any) {
+      console.error("Chapter processing failed:", err);
+      toast({
+        variant: "destructive",
+        title: "Process failed",
+        description: `Failed to process "${chapter.title}": ${err.message}`,
+      });
+      throw err;
+    } finally {
+      setProcessingChapters(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const processMultipleChapters = async (chaptersToProcess: ChapterRef[], shouldDownloadOffline: boolean) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication required",
+        description: "Please sign in to save manga.",
+      });
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    let successCount = 0;
+    
+    for (let i = 0; i < chaptersToProcess.length; i++) {
+      const ch = chaptersToProcess[i];
+      setBulkProgress(`Processing ${i + 1}/${chaptersToProcess.length}: ${ch.title}`);
+      try {
+        await processChapter(ch, shouldDownloadOffline);
+        successCount++;
+      } catch (err) {
+        console.error(`Bulk processing failed for ${ch.title}:`, err);
+      }
+    }
+    
+    setIsBulkProcessing(false);
+    setBulkProgress("");
+    setSelectedChapters([]); // clear selection
+    
+    toast({
+      title: "Bulk operation complete",
+      description: `Successfully processed ${successCount} of ${chaptersToProcess.length} chapters.`,
+    });
+  };
+
   const onSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
@@ -376,6 +580,8 @@ const MangaBrowser = () => {
   const openSeries = async (series: SearchResult) => {
     setLoading(true);
     setChapters([]);
+    setSelectedChapters([]); // Reset selection on new series
+    setProcessingChapters({});
     setCurrentSeries(series);
     setCurrentChapter(null);
     setPages([]);
@@ -781,21 +987,140 @@ const MangaBrowser = () => {
           </div>
         )}
 
+        {/* Bulk processing state */}
+        {isBulkProcessing && (
+          <div className="mb-4 p-4 rounded-lg bg-violet-600/10 border border-violet-500/20 text-center animate-pulse">
+            <Loader2 className="w-5 h-5 mx-auto text-violet-400 mb-2 animate-spin" />
+            <p className="text-sm font-semibold text-violet-300">{bulkProgress}</p>
+          </div>
+        )}
+
+        {/* Bulk operations control bar */}
+        {chapters.length > 0 && !isBulkProcessing && (
+          <div className="mb-4 p-3 rounded-lg border bg-card flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="select-all"
+                checked={selectedChapters.length === chapters.length && chapters.length > 0}
+                onChange={selectAllChapters}
+                className="w-4.5 h-4.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+              />
+              <label htmlFor="select-all" className="text-sm font-medium cursor-pointer select-none">
+                Select All ({selectedChapters.length} / {chapters.length} selected)
+              </label>
+            </div>
+            
+            {selectedChapters.length > 0 && (
+              <div className="flex items-center gap-2 self-end sm:self-auto">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold flex items-center gap-1 hover:bg-violet-500/10 text-violet-400 border-violet-500/20"
+                  onClick={() => processMultipleChapters(chapters.filter(c => selectedChapters.includes(c.url)), false)}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Save Selected
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs font-semibold flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                  onClick={() => processMultipleChapters(chapters.filter(c => selectedChapters.includes(c.url)), true)}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Download Selected
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Chapters list */}
         {chapters.length > 0 && (
           <div className="grid gap-2 mb-6">
-            {chapters.map((c) => (
-              <Card
-                key={c.url}
-                className="cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => openChapter(c)}
-              >
-                <CardContent className="p-3 flex items-center justify-between">
-                  <span className="text-sm">{c.title}</span>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                </CardContent>
-              </Card>
-            ))}
+            {chapters.map((c) => {
+              const isSelected = selectedChapters.includes(c.url);
+              const processing = processingChapters[c.url];
+              
+              return (
+                <Card
+                  key={c.url}
+                  className={`transition-colors relative overflow-hidden ${
+                    isSelected ? 'border-violet-500/40 bg-violet-500/5' : 'hover:bg-accent/50'
+                  }`}
+                >
+                  <CardContent className="p-3 flex items-center justify-between gap-4">
+                    {/* Left: checkbox + title */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={isBulkProcessing || !!processing}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleSelectChapter(c.url);
+                        }}
+                        className="w-4.5 h-4.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer shrink-0 disabled:opacity-50"
+                      />
+                      <span 
+                        className="text-sm font-medium truncate cursor-pointer hover:text-violet-400 select-none flex-1 py-1"
+                        onClick={() => !isBulkProcessing && !processing && openChapter(c)}
+                      >
+                        {c.title}
+                      </span>
+                    </div>
+
+                    {/* Right: Actions or processing state */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {processing ? (
+                        <div className="flex items-center gap-1.5 text-xs text-violet-400 bg-violet-500/5 px-2.5 py-1 rounded-md border border-violet-500/10">
+                          <Loader2 className="w-3 h-3 animate-spin text-violet-400" />
+                          <span className="font-medium">{processing.progress}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={isBulkProcessing}
+                            className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
+                            title="Save to library"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              processChapter(c, false);
+                            }}
+                          >
+                            <BookOpen className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={isBulkProcessing}
+                            className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
+                            title="Download offline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              processChapter(c, true);
+                            }}
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={isBulkProcessing}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground rounded-md"
+                            onClick={() => openChapter(c)}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
 
