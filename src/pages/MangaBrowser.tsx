@@ -330,7 +330,13 @@ const MangaBrowser = () => {
   }, [navigate]);
 
   // AniList Sync state
-  const [aniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
+  const [aniListToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("anilist_token");
+    } catch (e) {
+      return null;
+    }
+  });
   const [aniListMediaId, setAniListMediaId] = useState<number | null>(null);
   const [aniListSyncing, setAniListSyncing] = useState(false);
 

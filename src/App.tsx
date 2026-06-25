@@ -39,19 +39,23 @@ const queryClient = new QueryClient();
 
 // Apply saved theme on load
 const applyTheme = () => {
-  const savedTheme = localStorage.getItem("theme") || "system";
-  if (savedTheme === "dark") {
-    document.documentElement.classList.add("dark");
-  } else if (savedTheme === "light") {
-    document.documentElement.classList.remove("dark");
-  } else {
-    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+  try {
+    const savedTheme = localStorage.getItem("theme") || "system";
+    if (savedTheme === "dark") {
       document.documentElement.classList.add("dark");
+    } else if (savedTheme === "light") {
+      document.documentElement.classList.remove("dark");
+    } else {
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark");
+      }
     }
+    
+    const fontSize = localStorage.getItem("fontSize") || "16";
+    document.documentElement.style.setProperty("--font-size-root", `${fontSize}px`);
+  } catch (e) {
+    console.warn("Failed to apply theme or load preferences from localStorage:", e);
   }
-  
-  const fontSize = localStorage.getItem("fontSize") || "16";
-  document.documentElement.style.setProperty("--font-size-root", `${fontSize}px`);
 };
 
 const AppContent = () => {

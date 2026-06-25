@@ -18,26 +18,30 @@ export const useServiceWorker = () => {
   }, []);
 
   const unregisterServiceWorkersInDev = async () => {
-    if (!("serviceWorker" in navigator)) return;
+    try {
+      if (!("serviceWorker" in navigator)) return;
 
-    // Avoid reload loops.
-    if (sessionStorage.getItem("sw_unregistered_once") === "1") return;
+      // Avoid reload loops.
+      if (sessionStorage.getItem("sw_unregistered_once") === "1") return;
 
-    const regs = await navigator.serviceWorker.getRegistrations();
-    if (regs.length === 0) return;
+      const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs.length === 0) return;
 
-    sessionStorage.setItem("sw_unregistered_once", "1");
+      sessionStorage.setItem("sw_unregistered_once", "1");
 
-    await Promise.all(regs.map((r) => r.unregister()));
+      await Promise.all(regs.map((r) => r.unregister()));
 
-    // Clear caches if available (prevents stale assets)
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
+      // Clear caches if available (prevents stale assets)
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+
+      // Reload to ensure the latest build is fetched.
+      window.location.reload();
+    } catch (e) {
+      console.warn("Failed to unregister service workers in dev environment:", e);
     }
-
-    // Reload to ensure the latest build is fetched.
-    window.location.reload();
   };
 
   const registerServiceWorker = async () => {

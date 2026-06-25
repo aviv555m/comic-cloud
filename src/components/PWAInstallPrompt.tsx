@@ -24,7 +24,10 @@ export const PWAInstallPrompt = () => {
     }
 
     // Check if user dismissed prompt before
-    const dismissed = localStorage.getItem("pwa-prompt-dismissed");
+    let dismissed = null;
+    try {
+      dismissed = localStorage.getItem("pwa-prompt-dismissed");
+    } catch (e) {}
     if (dismissed && Date.now() - parseInt(dismissed) < 7 * 24 * 60 * 60 * 1000) {
       return;
     }
@@ -67,7 +70,9 @@ export const PWAInstallPrompt = () => {
 
   const handleDismiss = () => {
     setShowPrompt(false);
-    localStorage.setItem("pwa-prompt-dismissed", Date.now().toString());
+    try {
+      localStorage.setItem("pwa-prompt-dismissed", Date.now().toString());
+    } catch (e) {}
   };
 
   if (!showPrompt || isInstalled) return null;

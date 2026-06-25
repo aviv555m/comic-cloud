@@ -44,7 +44,13 @@ const Settings = () => {
   const [showBackupDialog, setShowBackupDialog] = useState(false);
 
   // AniList integration state
-  const [aniListToken, setAniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
+  const [aniListToken, setAniListToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("anilist_token");
+    } catch (e) {
+      return null;
+    }
+  });
   const [aniListUser, setAniListUser] = useState<any | null>(null);
   const [manualToken, setManualToken] = useState("");
 

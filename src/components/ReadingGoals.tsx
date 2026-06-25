@@ -21,10 +21,18 @@ interface ReadingGoalsProps {
 
 export const ReadingGoals = ({ currentStreak, todayMinutes, weeklyMinutes }: ReadingGoalsProps) => {
   const [dailyGoal, setDailyGoal] = useState(() => {
-    return parseInt(localStorage.getItem("dailyReadingGoal") || "30");
+    try {
+      return parseInt(localStorage.getItem("dailyReadingGoal") || "30");
+    } catch (e) {
+      return 30;
+    }
   });
   const [weeklyDaysGoal, setWeeklyDaysGoal] = useState(() => {
-    return parseInt(localStorage.getItem("weeklyDaysGoal") || "5");
+    try {
+      return parseInt(localStorage.getItem("weeklyDaysGoal") || "5");
+    } catch (e) {
+      return 5;
+    }
   });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [tempDaily, setTempDaily] = useState(dailyGoal);

@@ -4,10 +4,33 @@ import type { Database } from '../integrations/supabase/types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// Safe storage wrapper to prevent SecurityError in sandbox/incognito/blocked-cookie environments
+const getSafeStorage = (): Storage => {
+  try {
+    const testKey = "__storage_test__";
+    window.localStorage.setItem(testKey, testKey);
+    window.localStorage.removeItem(testKey);
+    return window.localStorage;
+  } catch (e) {
+    console.warn("localStorage is not available, using in-memory mock storage", e);
+    const mockStorage: Record<string, string> = {};
+    return {
+      getItem: (key: string) => mockStorage[key] || null,
+      setItem: (key: string, value: string) => { mockStorage[key] = value; },
+      removeItem: (key: string) => { delete mockStorage[key]; },
+      clear: () => { for (const key in mockStorage) delete mockStorage[key]; },
+      key: (index: number) => Object.keys(mockStorage)[index] || null,
+      get length() { return Object.keys(mockStorage).length; }
+    } as Storage;
+  }
+};
+
+const safeLocalStorage = getSafeStorage();
+
 // Original remote Supabase client
 export const originalSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: safeLocalStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
@@ -110,12 +133,21 @@ if (typeof window !== 'undefined') {
 
 // Local Database JSON storage
 export function getTableData(table: string): any[] {
-  const data = localStorage.getItem(`local_db_${table}`);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = safeLocalStorage.getItem(`local_db_${table}`);
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    console.warn(`Failed to read local table ${table}:`, e);
+    return [];
+  }
 }
 
 export function setTableData(table: string, data: any[]) {
-  localStorage.setItem(`local_db_${table}`, JSON.stringify(data));
+  try {
+    safeLocalStorage.setItem(`local_db_${table}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Failed to save local table ${table}:`, e);
+  }
 }
 
 function mergeRemoteData(table: string, remoteRows: any[]) {
@@ -520,25 +552,37 @@ class MockQueryBuilder {
 
 // Helpers for auth
 function getLocalUsers(): any[] {
-  const users = localStorage.getItem('local_users');
-  return users ? JSON.parse(users) : [];
+  try {
+    const users = safeLocalStorage.getItem('local_users');
+    return users ? JSON.parse(users) : [];
+  } catch (e) {
+    return [];
+  }
 }
 
 function saveLocalUsers(users: any[]) {
-  localStorage.setItem('local_users', JSON.stringify(users));
+  try {
+    safeLocalStorage.setItem('local_users', JSON.stringify(users));
+  } catch (e) {}
 }
 
 function getLocalSession() {
-  const session = localStorage.getItem('local_session');
-  return session ? JSON.parse(session) : null;
+  try {
+    const session = safeLocalStorage.getItem('local_session');
+    return session ? JSON.parse(session) : null;
+  } catch (e) {
+    return null;
+  }
 }
 
 function saveLocalSession(session: any) {
-  if (session) {
-    localStorage.setItem('local_session', JSON.stringify(session));
-  } else {
-    localStorage.removeItem('local_session');
-  }
+  try {
+    if (session) {
+      safeLocalStorage.setItem('local_session', JSON.stringify(session));
+    } else {
+      safeLocalStorage.removeItem('local_session');
+    }
+  } catch (e) {}
 }
 
 let authListeners: Array<(event: string, session: any) => void> = [];

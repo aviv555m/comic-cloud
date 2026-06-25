@@ -122,9 +122,13 @@ export const ComicReader = ({
     }
   };
 
-  const [readingMode, setReadingMode] = useState<"page" | "scroll">(
-    (localStorage.getItem("comic_reading_mode") as "page" | "scroll") || "page"
-  );
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">(() => {
+    try {
+      return (localStorage.getItem("comic_reading_mode") as "page" | "scroll") || "page";
+    } catch (e) {
+      return "page";
+    }
+  });
 
   useEffect(() => {
     if (readingMode === "scroll" && !loading && images.length > 0) {
@@ -176,7 +180,9 @@ export const ComicReader = ({
 
   const handleToggleReadingMode = (mode: "page" | "scroll") => {
     setReadingMode(mode);
-    localStorage.setItem("comic_reading_mode", mode);
+    try {
+      localStorage.setItem("comic_reading_mode", mode);
+    } catch (e) {}
   };
 
   if (loading) {
