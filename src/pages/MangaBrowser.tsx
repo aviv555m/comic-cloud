@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Sparkles,
   Download,
+  Plus,
 } from "lucide-react";
 
 /**
@@ -259,13 +260,15 @@ const fetchImageAsArrayBuffer = async (imgUrl: string): Promise<ArrayBuffer> => 
       }
       return response.data;
     }
+  } else {
+    try {
+      const proxyUrl = `/api-image-proxy?url=${encodeURIComponent(imgUrl)}`;
+      const res = await fetch(proxyUrl);
+      if (res.ok) return await res.arrayBuffer();
+    } catch (e) {
+      console.warn("Failed to fetch image via local proxy:", e);
+    }
   }
-  
-  const corsUrl = `https://corsproxy.io/?${encodeURIComponent(imgUrl)}`;
-  try {
-    const res = await fetch(corsUrl);
-    if (res.ok) return await res.arrayBuffer();
-  } catch {}
   
   const resDirect = await fetch(imgUrl);
   return await resDirect.arrayBuffer();
@@ -328,6 +331,84 @@ const MangaBrowser = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Load series from query parameters if redirected from the library screen
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const seriesUrl = params.get("url");
+    const seriesSource = params.get("source");
+    const seriesTitle = params.get("title");
+    
+    if (seriesUrl && seriesSource) {
+      const srcVal = seriesSource.toLowerCase() as Source;
+      setSource(srcVal);
+      openSeries({
+        title: seriesTitle || "Loading Manga...",
+        url: seriesUrl,
+      }, srcVal);
+    }
+  }, []);
+
+  const saveSeriesToLibrary = async () => {
+    if (!currentSeries) return;
+
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication Required",
+        description: "Please sign in or register to add series to your library.",
+      });
+      navigate("/auth");
+      return;
+    }
+    
+    try {
+      const { data: existing } = await supabase
+        .from("books")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("series", currentSeries.title)
+        .eq("file_type", "manga")
+        .maybeSingle();
+
+      if (existing) {
+        toast({
+          title: "Already Saved",
+          description: `"${currentSeries.title}" is already in your library.`,
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from("books")
+        .insert({
+          user_id: user.id,
+          title: currentSeries.title,
+          author: source.toUpperCase(),
+          series: currentSeries.title,
+          file_url: currentSeries.url,
+          file_type: "manga",
+          cover_url: currentSeries.cover || null,
+          last_page_read: 0,
+          reading_progress: 0,
+          is_completed: false
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Saved to Library",
+        description: `"${currentSeries.title}" has been saved to your library for easy access.`,
+      });
+    } catch (e: any) {
+      console.error("Failed to save series:", e);
+      toast({
+        variant: "destructive",
+        title: "Save failed",
+        description: e.message || "An error occurred while saving the series.",
+      });
+    }
+  };
 
   // AniList Sync state
   const [aniListToken] = useState<string | null>(() => {
@@ -458,6 +539,7 @@ const MangaBrowser = () => {
           user_id: user.id,
           title: `${currentSeries?.title || 'Manga'} - ${chapter.title}`,
           author: source.toUpperCase(),
+          series: currentSeries?.title || null,
           file_url: fileUrl,
           file_type: "cbz",
           file_size: cbzBlob.size,
@@ -583,7 +665,8 @@ const MangaBrowser = () => {
     }
   };
 
-  const openSeries = async (series: SearchResult) => {
+  const openSeries = async (series: SearchResult, overrideSource?: Source) => {
+    const activeSource = overrideSource || source;
     setLoading(true);
     setChapters([]);
     setSelectedChapters([]); // Reset selection on new series
@@ -594,17 +677,17 @@ const MangaBrowser = () => {
     setAniListMediaId(null);
     try {
       let list: ChapterRef[] = [];
-      if (source === "comix") {
+      if (activeSource === "comix") {
         list = await comixChapters(series.url);
-      } else if (source === "mangadex") {
+      } else if (activeSource === "mangadex") {
         list = await mangadexChapters(series.url);
-      } else if (source === "mangafire") {
+      } else if (activeSource === "mangafire") {
         list = await mangafireChapters(series.url);
-      } else if (source === "mangafreak") {
+      } else if (activeSource === "mangafreak") {
         list = await mangafreakChapters(series.url);
-      } else if (source === "mangapark") {
+      } else if (activeSource === "mangapark") {
         list = await mangaparkChapters(series.url);
-      } else if (source === "manganato") {
+      } else if (activeSource === "manganato") {
         list = await manganatoChapters(series.url);
       }
       setChapters(list);
@@ -762,6 +845,7 @@ const MangaBrowser = () => {
           user_id: user.id,
           title: `${currentSeries.title} - ${currentChapter.title}`,
           author: source.toUpperCase(),
+          series: currentSeries.title,
           file_url: fileUrl,
           file_type: "cbz",
           file_size: cbzBlob.size,
@@ -975,21 +1059,76 @@ const MangaBrowser = () => {
         </form>
 
         {currentSeries && (
-          <div className="mb-4 p-3 rounded-lg border bg-card flex items-center gap-3">
-            <BookOpen className="w-4 h-4 text-primary" />
-            <p className="text-sm font-medium flex-1 truncate">{currentSeries.title}</p>
-            {aniListMediaId && (
-              <Badge variant="secondary" className="bg-sky-500/10 text-sky-400 border-0 flex gap-1 items-center shrink-0">
-                <Sparkles className="w-3 h-3 text-sky-400 animate-pulse" />
-                {aniListSyncing ? "Syncing..." : "AniList Linked"}
-              </Badge>
-            )}
-            <Button size="sm" variant="ghost" onClick={() => window.open(getSourceUrl(source, currentSeries.url), "_blank")}>
-              <ExternalLink className="w-3 h-3 mr-1" /> Source
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => { setCurrentSeries(null); setChapters([]); }}>
-              Back
-            </Button>
+          <div className="mb-6 p-4 sm:p-6 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-950/40 via-background/50 to-muted/40 backdrop-blur-md shadow-lg flex flex-col md:flex-row gap-5 items-start">
+            {/* Cover Image */}
+            <div className="w-28 h-40 sm:w-36 sm:h-52 rounded-xl overflow-hidden bg-muted border border-violet-500/10 shadow-md shrink-0 self-center md:self-auto">
+              {currentSeries.cover ? (
+                <img
+                  src={currentSeries.cover}
+                  alt={currentSeries.title}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <BookOpen className="w-10 h-10 text-muted-foreground/40" />
+                </div>
+              )}
+            </div>
+
+            {/* Info details */}
+            <div className="flex-1 min-w-0 flex flex-col justify-between h-auto md:h-52 py-1 w-full">
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <Badge variant="outline" className="bg-violet-500/10 text-violet-300 border-violet-500/20 uppercase tracking-wider text-[10px]">
+                    {source}
+                  </Badge>
+                  {aniListMediaId && (
+                    <Badge variant="secondary" className="bg-sky-500/10 text-sky-400 border-0 flex gap-1 items-center">
+                      <Sparkles className="w-3 h-3 text-sky-400 animate-pulse" />
+                      {aniListSyncing ? "Syncing..." : "AniList Linked"}
+                    </Badge>
+                  )}
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 leading-tight tracking-tight">
+                  {currentSeries.title}
+                </h2>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                  {chapters.length} {chapters.length === 1 ? "chapter" : "chapters"} available
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex flex-wrap gap-2.5 mt-4 pt-4 border-t border-violet-500/10 w-full">
+                <Button
+                  size="sm"
+                  onClick={saveSeriesToLibrary}
+                  className="gradient-warm hover:opacity-90 text-white font-semibold flex items-center gap-1.5 h-9 px-4 shadow-md"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add to Library</span>
+                </Button>
+
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="border-violet-500/20 hover:bg-violet-500/10 h-9"
+                  onClick={() => window.open(getSourceUrl(source, currentSeries.url), "_blank")}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1.5" /> Open Source
+                </Button>
+
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="hover:bg-muted/65 text-muted-foreground hover:text-foreground h-9 ml-auto md:ml-0"
+                  onClick={() => { setCurrentSeries(null); setChapters([]); }}
+                >
+                  Back to List
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

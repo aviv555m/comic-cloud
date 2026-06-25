@@ -9,6 +9,52 @@ export default defineConfig(({ mode }) => ({
     port: 8081,
     allowedHosts: ["cc.displayname.top"],
     proxy: {
+      "/api-image-proxy": {
+        target: "https://comix.to", // Fallback
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-image-proxy/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            const urlObj = new URL(req.url || "", "http://localhost");
+            const targetUrl = urlObj.searchParams.get("url");
+            if (targetUrl) {
+              try {
+                const targetObj = new URL(targetUrl);
+                proxyReq.path = targetObj.pathname + targetObj.search;
+                
+                // Inject correct Referer/Origin headers based on target hostname
+                const host = targetObj.hostname.toLowerCase();
+                if (host.includes("comix.to")) {
+                  proxyReq.setHeader("referer", "https://comix.to/");
+                } else if (host.includes("manganato.com") || host.includes("chapmanganato.to") || host.includes("googleusercontent.com") || host.includes("blogspot.com")) {
+                  proxyReq.setHeader("referer", "https://chapmanganato.to/");
+                } else if (host.includes("mangafire.to") || host.includes("mstcdn.xyz")) {
+                  proxyReq.setHeader("referer", "https://mangafire.to/");
+                } else if (host.includes("mangafreak.me")) {
+                  proxyReq.setHeader("referer", "https://ww2.mangafreak.me/");
+                } else if (host.includes("mangapark.io") || host.includes("mpcdn.net")) {
+                  proxyReq.setHeader("referer", "https://mangapark.io/");
+                }
+                
+                proxyReq.setHeader("Host", targetObj.host);
+              } catch (e) {
+                console.error("Proxy URL rewrite error:", e);
+              }
+            }
+          });
+        },
+        router: (req) => {
+          const urlObj = new URL(req.url || "", "http://localhost");
+          const targetUrl = urlObj.searchParams.get("url");
+          if (targetUrl) {
+            try {
+              const targetObj = new URL(targetUrl);
+              return `${targetObj.protocol}//${targetObj.host}`;
+            } catch {}
+          }
+          return "https://comix.to";
+        }
+      },
       "/api-comix": {
         target: "https://comix.to",
         changeOrigin: true,

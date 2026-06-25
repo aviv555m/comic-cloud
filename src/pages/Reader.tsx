@@ -332,6 +332,11 @@ const Reader = () => {
 
       if (error) throw error;
       
+      if (data.file_type === "manga") {
+        navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${data.author.toLowerCase()}&title=${encodeURIComponent(data.title)}`);
+        return;
+      }
+      
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");

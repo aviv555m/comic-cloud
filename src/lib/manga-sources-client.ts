@@ -30,9 +30,8 @@ const LoadDoc = (html: string): Document => {
   return parser.parseFromString(html, "text/html");
 };
 
-// Environment-aware proxy text fetcher
 export async function proxyFetchText(targetUrl: string, headers?: Record<string, string>): Promise<string> {
-  if (isDev) {
+  if (!isNative) {
     let proxiedUrl = targetUrl;
     if (targetUrl.startsWith('https://mangafire.to')) {
       proxiedUrl = targetUrl.replace('https://mangafire.to', '/api-mangafire');
@@ -47,7 +46,7 @@ export async function proxyFetchText(targetUrl: string, headers?: Record<string,
     }
     const res = await fetch(proxiedUrl, { headers });
     return res.text();
-  } else if (isNative) {
+  } else {
     const response = await CapacitorHttp.get({
       url: targetUrl,
       headers: {
@@ -59,11 +58,6 @@ export async function proxyFetchText(targetUrl: string, headers?: Record<string,
       throw new Error(`Proxy request failed with status ${response.status}`);
     }
     return typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
-  } else {
-    // Web Production CORS Proxy
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(proxyUrl, { headers });
-    return res.text();
   }
 }
 
@@ -74,7 +68,7 @@ export async function proxyFetchJson(
   body?: any,
   headers?: Record<string, string>
 ): Promise<any> {
-  if (isDev) {
+  if (!isNative) {
     let proxiedUrl = targetUrl;
     if (targetUrl.startsWith('https://mangafire.to')) {
       proxiedUrl = targetUrl.replace('https://mangafire.to', '/api-mangafire');
@@ -96,7 +90,7 @@ export async function proxyFetchJson(
       body: body ? JSON.stringify(body) : undefined,
     });
     return res.json();
-  } else if (isNative) {
+  } else {
     const options = {
       url: targetUrl,
       method,
@@ -112,18 +106,6 @@ export async function proxyFetchJson(
       throw new Error(`Proxy request failed with status ${response.status}`);
     }
     return response.data;
-  } else {
-    // Web Production CORS Proxy
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-    const res = await fetch(proxyUrl, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers,
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    return res.json();
   }
 }
 
