@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -261,6 +262,11 @@ const Reader = () => {
   }, [book]);
 
   const fetchBook = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user && Capacitor.isNativePlatform()) {
+      navigate("/auth");
+      return;
+    }
     setCheckingOffline(true);
     
     try {
@@ -331,14 +337,28 @@ const Reader = () => {
       setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       setIsReadingOffline(false); // Explicitly set to false for online reads
       
-      // Use public URL for files (bucket is public)
-      if (data.file_type === 'pdf' || data.file_type === 'epub') {
-        setSignedUrl(data.file_url);
+      // Dynamically generate a fresh signed URL if online to avoid expired URL issues
+      let fileUrl = data.file_url;
+      const fileParts = fileUrl.split('/book-files/');
+      const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
+      if (filePath) {
+        try {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from('book-files')
+            .createSignedUrl(decodeURIComponent(filePath), 60 * 60 * 4); // 4 hours
+          if (!signedError && signedData?.signedUrl) {
+            fileUrl = signedData.signedUrl;
+          }
+        } catch (err) {
+          console.error("Failed to generate fresh signed URL:", err);
+        }
       }
+
+      setSignedUrl(fileUrl);
       
       // If it's a text file, fetch and display content
       if (data.file_type === 'txt') {
-        const response = await fetch(data.file_url);
+        const response = await fetch(fileUrl);
         const text = await response.text();
         setTextContent(text);
       }

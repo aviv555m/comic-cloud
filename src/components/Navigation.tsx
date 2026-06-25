@@ -61,7 +61,26 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
     }
   };
 
-  const userInitial = username?.charAt(0).toUpperCase() || userEmail?.charAt(0).toUpperCase() || "U";
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUser(session?.user || null);
+    });
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setCurrentUser(session?.user || null);
+      }
+    );
+    
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const activeEmail = userEmail || currentUser?.email;
+  const isGuest = !activeEmail;
+
+  const userInitial = username?.charAt(0).toUpperCase() || activeEmail?.charAt(0).toUpperCase() || "U";
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -71,7 +90,7 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
           <div className="flex items-center justify-between">
             {/* Left: hamburger + logo */}
             <div className="flex items-center gap-1 sm:gap-2">
-              <MobileNavDrawer userEmail={userEmail} username={username} avatarUrl={avatarUrl} />
+              <MobileNavDrawer userEmail={activeEmail || undefined} username={username} avatarUrl={avatarUrl} />
               <button
                 onClick={() => navigate("/")}
                 className="flex items-center gap-2 hover:opacity-80 active:opacity-70 transition-opacity"
@@ -85,122 +104,166 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
 
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-1">
-              {[
-                { path: "/", icon: Home, label: "Library" },
-                { path: "/public", icon: BookOpen, label: "Browse" },
-                { path: "/lists", icon: List, label: "Lists" },
-                { path: "/challenges", icon: Trophy, label: "Goals" },
-                { path: "/statistics", icon: BarChart3, label: "Stats" },
-              ].map(item => (
-                <Button
-                  key={item.path}
-                  variant={isActive(item.path) ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => navigate(item.path)}
-                  className="gap-1.5 px-2.5"
-                >
-                  <item.icon className="w-4 h-4" />
-                  <span className="hidden lg:inline">{item.label}</span>
-                </Button>
-              ))}
-
-              <Button
-                variant={isActive("/chat") ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => navigate("/chat")}
-                className="gap-1.5 px-2.5"
-              >
-                <MessageSquare className="w-4 h-4" />
-                <span className="hidden lg:inline">Chat</span>
-                {!isSubscribed && <Crown className="w-3 h-3 text-amber-500 ml-0.5" />}
-              </Button>
-
-              {/* Profile dropdown - simplified */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={avatarUrl || undefined} />
-                      <AvatarFallback className="gradient-warm text-white text-sm">
-                        {userInitial}
-                      </AvatarFallback>
-                    </Avatar>
+              {isGuest ? (
+                <>
+                  <Button
+                    variant={isActive("/public") ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => navigate("/public")}
+                    className="gap-1.5 px-2.5"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>Public Library</span>
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel>
-                    <p className="text-sm font-medium">{username || "My Account"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/journal")}>Journal</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/quotes")}>Quotes</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/vocabulary")}>Vocabulary</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/clubs")}>Book Clubs</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/feed")}>Activity Feed</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/discover")}>Discover</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/achievements")}>Achievements</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/year-in-review")}>Year in Review</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/bookshelf")}>3D Bookshelf</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/manga")}>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Manga & Manhwa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/seanime")}>
-                    <Tv className="mr-2 h-4 w-4" />
-                    Seanime Stream
-                    {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/pricing")}>
-                    <Crown className="mr-2 h-3 w-3 text-amber-500" />
-                    {isSubscribed ? "Your Plan" : "Upgrade"}
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
-                    <LogOut className="mr-2 h-4 w-4" />Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <Button
+                    variant={isActive("/manga") ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => navigate("/manga")}
+                    className="gap-1.5 px-2.5"
+                  >
+                    <Sparkles className="w-4 h-4 text-violet-400" />
+                    <span>Manga & Manhwa</span>
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => navigate("/auth")}
+                    className="ml-2 bg-violet-600 hover:bg-violet-700 text-white font-medium shadow-md"
+                  >
+                    Sign In
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {[
+                    { path: "/", icon: Home, label: "Library" },
+                    { path: "/public", icon: BookOpen, label: "Browse" },
+                    { path: "/lists", icon: List, label: "Lists" },
+                    { path: "/challenges", icon: Trophy, label: "Goals" },
+                    { path: "/statistics", icon: BarChart3, label: "Stats" },
+                  ].map(item => (
+                    <Button
+                      key={item.path}
+                      variant={isActive(item.path) ? "secondary" : "ghost"}
+                      size="sm"
+                      onClick={() => navigate(item.path)}
+                      className="gap-1.5 px-2.5"
+                    >
+                      <item.icon className="w-4 h-4" />
+                      <span className="hidden lg:inline">{item.label}</span>
+                    </Button>
+                  ))}
+
+                  <Button
+                    variant={isActive("/chat") ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => navigate("/chat")}
+                    className="gap-1.5 px-2.5"
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    <span className="hidden lg:inline">Chat</span>
+                    {!isSubscribed && <Crown className="w-3 h-3 text-amber-500 ml-0.5" />}
+                  </Button>
+
+                  {/* Profile dropdown - simplified */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-1">
+                        <Avatar className="h-9 w-9">
+                          <AvatarImage src={avatarUrl || undefined} />
+                          <AvatarFallback className="gradient-warm text-white text-sm">
+                            {userInitial}
+                          </AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel>
+                        <p className="text-sm font-medium">{username || "My Account"}</p>
+                        <p className="text-xs text-muted-foreground truncate">{activeEmail}</p>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate("/journal")}>Journal</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/quotes")}>Quotes</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/vocabulary")}>Vocabulary</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate("/clubs")}>Book Clubs</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/feed")}>Activity Feed</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/discover")}>Discover</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate("/achievements")}>Achievements</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/year-in-review")}>Year in Review</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/bookshelf")}>3D Bookshelf</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/manga")}>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Manga & Manhwa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/seanime")}>
+                        <Tv className="mr-2 h-4 w-4" />
+                        Seanime Stream
+                        {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/pricing")}>
+                        <Crown className="mr-2 h-3 w-3 text-amber-500" />
+                        {isSubscribed ? "Your Plan" : "Upgrade"}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
+                        <LogOut className="mr-2 h-4 w-4" />Sign out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
             </div>
 
             {/* Mobile: avatar dropdown */}
             <div className="md:hidden">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                    <Avatar className="h-9 w-9">
-                      <AvatarImage src={avatarUrl || undefined} />
-                      <AvatarFallback className="gradient-warm text-white text-sm">
-                        {userInitial}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                  <DropdownMenuLabel>
-                    <p className="text-sm font-medium">{username || "My Account"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/manga")} className="py-3">
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Manga & Manhwa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/seanime")} className="py-3">
-                    <Tv className="mr-2 h-4 w-4" />
-                    Seanime Stream
-                    {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">Settings</DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive py-3">
-                    <LogOut className="mr-2 h-4 w-4" />Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {isGuest ? (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => navigate("/auth")}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-medium shadow-md"
+                >
+                  Sign In
+                </Button>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage src={avatarUrl || undefined} />
+                        <AvatarFallback className="gradient-warm text-white text-sm">
+                          {userInitial}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel>
+                      <p className="text-sm font-medium">{username || "My Account"}</p>
+                      <p className="text-xs text-muted-foreground truncate">{activeEmail}</p>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate("/manga")} className="py-3">
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Manga & Manhwa
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/seanime")} className="py-3">
+                      <Tv className="mr-2 h-4 w-4" />
+                      Seanime Stream
+                      {!isSubscribed && <Crown className="ml-auto h-3 w-3 text-amber-500" />}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/settings")} className="py-3">Settings</DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive py-3">
+                      <LogOut className="mr-2 h-4 w-4" />Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         </div>

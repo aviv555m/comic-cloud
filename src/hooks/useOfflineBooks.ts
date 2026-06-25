@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface OfflineBook {
   id: string;
@@ -68,6 +69,12 @@ export function useOfflineBooks() {
   // Load offline books list
   const loadOfflineBooks = useCallback(async () => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        setOfflineBooks([]);
+        setIsReady(true);
+        return;
+      }
       const db = await openDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readonly');
       const booksStore = transaction.objectStore(BOOKS_STORE);
@@ -120,6 +127,8 @@ export function useOfflineBooks() {
   // Async check if book exists in IndexedDB (doesn't depend on state)
   const checkBookOfflineAsync = useCallback(async (bookId: string): Promise<boolean> => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return false;
       const db = await openDB();
       const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const store = transaction.objectStore(BOOKS_STORE);
@@ -146,6 +155,15 @@ export function useOfflineBooks() {
     cover_url: string | null;
     last_page_read: number | null;
   }) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      toast({
+        variant: 'destructive',
+        title: 'Sign in required',
+        description: 'You must have an account to save books offline.',
+      });
+      return;
+    }
     setDownloadingBooks(prev => new Set(prev).add(book.id));
 
     try {
@@ -157,8 +175,8 @@ export function useOfflineBooks() {
 
         try {
           const { supabase } = await import('@/integrations/supabase/client');
-          const match = url.match(/book-files\/(?:sign|public)\/([^?]+)/);
-          const path = match?.[1];
+          const parts = url.split('/book-files/');
+          const path = parts[1] ? parts[1].split('?')[0] : null;
           if (path) {
             const { data } = await supabase.storage
               .from('book-files')
@@ -248,6 +266,8 @@ export function useOfflineBooks() {
   // Remove book from offline storage
   const removeBookOffline = useCallback(async (bookId: string) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
       const db = await openDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
@@ -273,6 +293,8 @@ export function useOfflineBooks() {
   // Get offline file for reading
   const getOfflineFile = useCallback(async (bookId: string): Promise<Blob | null> => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return null;
       const db = await openDB();
       const transaction = db.transaction(FILES_STORE, 'readonly');
       const store = transaction.objectStore(FILES_STORE);
@@ -315,6 +337,8 @@ export function useOfflineBooks() {
   // Clear all offline data
   const clearAllOfflineData = useCallback(async () => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
       const db = await openDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       

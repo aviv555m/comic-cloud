@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
+import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -306,6 +307,27 @@ const MangaBrowser = () => {
   const [pages, setPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+      if (!session?.user && Capacitor.isNativePlatform()) {
+        navigate("/auth");
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user || null);
+        if (!session?.user && Capacitor.isNativePlatform()) {
+          navigate("/auth");
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   // AniList Sync state
   const [aniListToken] = useState<string | null>(localStorage.getItem("anilist_token"));
@@ -589,27 +611,41 @@ const MangaBrowser = () => {
             </div>
             
             <div className="flex items-center gap-1.5 mr-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 px-2.5 text-xs flex items-center gap-1"
-                onClick={() => saveChapter(false)}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Save to Bookshelf</span>
-                <span className="sm:hidden">Save</span>
-              </Button>
-              <Button
-                size="sm"
-                className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
-                onClick={() => saveChapter(true)}
-                disabled={saving}
-              >
-                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">Download Offline</span>
-                <span className="sm:hidden">Download</span>
-              </Button>
+              {!user ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2.5 text-xs flex items-center gap-1 border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                  onClick={() => navigate("/auth")}
+                >
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  <span>Sign in to save</span>
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 px-2.5 text-xs flex items-center gap-1"
+                    onClick={() => saveChapter(false)}
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">Save to Bookshelf</span>
+                    <span className="sm:hidden">Save</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={() => saveChapter(true)}
+                    disabled={saving}
+                  >
+                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    <span className="hidden sm:inline">Download Offline</span>
+                    <span className="sm:hidden">Download</span>
+                  </Button>
+                </>
+              )}
             </div>
 
             <Button

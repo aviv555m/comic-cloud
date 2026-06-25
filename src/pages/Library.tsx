@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Capacitor } from "@capacitor/core";
 import { Navigation } from "@/components/Navigation";
 import { BookCard } from "@/components/BookCard";
 import { UploadDialog } from "@/components/UploadDialog";
@@ -60,6 +61,7 @@ const Library = () => {
   }, [isOnline]);
 
   const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [books, setBooks] = useState<Book[]>([]);
   const [filters, setFilters] = useState<FilterState>({
     search: "",
@@ -94,10 +96,14 @@ const Library = () => {
         fetchBooks(session.user.id);
         fetchTags(session.user.id);
       } else {
-        if (navigator.onLine) {
+        const isApp = Capacitor.isNativePlatform();
+        if (isApp) {
           navigate("/auth");
+        } else {
+          navigate("/public");
         }
       }
+      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -107,10 +113,14 @@ const Library = () => {
           fetchBooks(session.user.id);
           fetchTags(session.user.id);
         } else {
-          if (navigator.onLine) {
+          const isApp = Capacitor.isNativePlatform();
+          if (isApp) {
             navigate("/auth");
+          } else {
+            navigate("/public");
           }
         }
+        setAuthLoading(false);
       }
     );
 
@@ -318,7 +328,15 @@ const Library = () => {
   // Books without a series
   const standaloneBooks = filteredBooks.filter((book) => !book.series);
 
-  if (!user && isOnline) return null;
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BookOpen className="w-12 h-12 text-muted-foreground animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">

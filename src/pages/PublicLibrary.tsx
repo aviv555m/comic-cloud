@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
+import { Capacitor } from "@capacitor/core";
 import { BookCard } from "@/components/BookCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Search, BookOpen, ArrowLeft } from "lucide-react";
+import { Search, BookOpen, ArrowLeft, Sparkles } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 
 interface Book {
@@ -32,11 +33,17 @@ const PublicLibrary = () => {
     // Check auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
+      if (!session?.user && Capacitor.isNativePlatform()) {
+        navigate("/auth");
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user || null);
+        if (!session?.user && Capacitor.isNativePlatform()) {
+          navigate("/auth");
+        }
       }
     );
 
@@ -101,9 +108,37 @@ const PublicLibrary = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
-      {user && <Navigation userEmail={user.email} />}
+      <Navigation userEmail={user?.email || undefined} />
       
       <main className="container mx-auto px-4 py-8">
+        {!user && (
+          <div className="glass-card p-6 rounded-xl border border-violet-500/20 bg-gradient-to-r from-violet-950/40 to-muted/40 mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white mb-1">Welcome to ComicCloud!</h2>
+              <p className="text-sm text-muted-foreground">
+                Browse our community public library for free, or jump straight into the Manga & Manhwa browser.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="default"
+                onClick={() => navigate("/manga")}
+                className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5 shadow-lg"
+              >
+                <Sparkles className="w-4 h-4 text-violet-200 animate-pulse" />
+                Go to Manga
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => navigate("/auth")}
+                className="border-violet-500/30 hover:bg-violet-500/10"
+              >
+                Sign In / Register
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-6 mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="w-full sm:w-auto">
