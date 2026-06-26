@@ -13,6 +13,7 @@ interface OfflineBook {
   cachedAt: number;
   fileSize: number;
   series?: string | null;
+  file_url?: string | null;
 }
 
 const DB_NAME = 'comic-cloud-offline';
@@ -238,6 +239,7 @@ export function useOfflineBooks() {
         cachedAt: Date.now(),
         fileSize: arrayBuffer.byteLength,
         series: book.series || null,
+        file_url: book.file_url || null,
       };
       booksStore.put(offlineBook);
       

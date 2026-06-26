@@ -267,6 +267,7 @@ async function handleBookInsertionOffline(book: any) {
         cachedAt: Date.now(),
         fileSize: 0,
         series: book.series || null,
+        file_url: book.file_url || null,
       };
       booksStore.put(offlineBook);
 
@@ -346,6 +347,7 @@ async function handleBookInsertionOffline(book: any) {
       cachedAt: Date.now(),
       fileSize: fileBlob.size,
       series: book.series || null,
+      file_url: book.file_url || null,
     };
     booksStore.put(offlineBook);
 
