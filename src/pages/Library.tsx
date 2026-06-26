@@ -257,6 +257,7 @@ const Library = () => {
   // Filter and sort books
   const filteredBooks = books
     .filter((book) => {
+      if (book.file_type === "cbz") return false;
       const query = filters.search.toLowerCase();
       const matchesSearch = 
         book.title.toLowerCase().includes(query) ||

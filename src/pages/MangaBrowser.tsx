@@ -541,6 +541,31 @@ const MangaBrowser = () => {
 
       const fileUrl = signedUrlData.signedUrl;
 
+      // Auto-save series to library if not exists
+      if (currentSeries) {
+        const { data: existingSeries } = await supabase
+          .from("books")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("title", currentSeries.title)
+          .eq("file_type", "manga")
+          .maybeSingle();
+
+        if (!existingSeries) {
+          await supabase.from("books").insert({
+            user_id: user.id,
+            title: currentSeries.title,
+            author: source.toUpperCase(),
+            cover_url: currentSeries.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
+            file_url: currentSeries.url,
+            file_type: "manga",
+            is_completed: false,
+            reading_progress: 0,
+            last_page_read: 0,
+          });
+        }
+      }
+
       // 5. Save to Books
       const { data: insertedBook, error: insertError } = await supabase
         .from("books")
@@ -952,6 +977,31 @@ const MangaBrowser = () => {
 
       const fileUrl = signedUrlData.signedUrl;
 
+      // Auto-save series to library if not exists
+      if (currentSeries) {
+        const { data: existingSeries } = await supabase
+          .from("books")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("title", currentSeries.title)
+          .eq("file_type", "manga")
+          .maybeSingle();
+
+        if (!existingSeries) {
+          await supabase.from("books").insert({
+            user_id: user.id,
+            title: currentSeries.title,
+            author: source.toUpperCase(),
+            cover_url: currentSeries.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
+            file_url: currentSeries.url,
+            file_type: "manga",
+            is_completed: false,
+            reading_progress: 0,
+            last_page_read: 0,
+          });
+        }
+      }
+
       // 4. Save to Books table
       const { data: insertedBook, error: insertError } = await supabase
         .from("books")
@@ -1074,7 +1124,7 @@ const MangaBrowser = () => {
             </Button>
           </div>
         </div>
-        <div className="max-w-3xl mx-auto flex flex-col items-center gap-2 py-4">
+        <div className="max-w-3xl mx-auto flex flex-col items-center gap-0 py-4">
           {pages.map((src, i) => (
             <img
               key={i}

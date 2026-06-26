@@ -229,6 +229,63 @@ async function processLocalUrls(rows: any[]) {
 // Automatically registers locally inserted book offline if its local file exists
 async function handleBookInsertionOffline(book: any) {
   try {
+    if (book.file_type === 'manga') {
+      let coverBlob: ArrayBuffer | null = null;
+      if (book.cover_url) {
+        try {
+          const fetchUrl = book.cover_url.startsWith('/')
+            ? `${window.location.origin}${book.cover_url}`
+            : book.cover_url;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 6000);
+          try {
+            const response = await fetch(fetchUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+              coverBlob = await response.arrayBuffer();
+            }
+          } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            console.warn("[Local DB] Cover pre-fetch failed for manga:", fetchErr);
+          }
+        } catch (coverErr) {
+          console.warn("[Local DB] Failed to pre-fetch cover for manga:", coverErr);
+        }
+      }
+
+      const db = await openLocalDB();
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+      
+      const booksStore = transaction.objectStore(BOOKS_STORE);
+      const offlineBook = {
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        file_type: book.file_type,
+        cover_url: book.cover_url,
+        last_page_read: null,
+        cachedAt: Date.now(),
+        fileSize: 0,
+        series: book.series || null,
+      };
+      booksStore.put(offlineBook);
+
+      const filesStore = transaction.objectStore(FILES_STORE);
+      filesStore.put({
+        bookId: book.id,
+        data: new ArrayBuffer(1),
+        coverData: coverBlob,
+        contentType: 'application/x-manga',
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+      console.log(`[Local DB] Successfully registered local manga series card ${book.id} offline`);
+      return;
+    }
+
     if (!book.file_url) return;
     const match = book.file_url.match(/\/local-file-route\/([^?]+)/);
     const filePath = match ? decodeURIComponent(match[1]) : null;

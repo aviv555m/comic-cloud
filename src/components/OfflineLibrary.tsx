@@ -58,6 +58,7 @@ export const OfflineLibrary = () => {
   }
 
   const filteredBooks = offlineBooks.filter((book) => {
+    if (book.file_type === "cbz") return false;
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
     return (
@@ -158,7 +159,13 @@ export const OfflineLibrary = () => {
               <Card 
                 key={book.id}
                 className="group cursor-pointer hover:shadow-lg transition-all duration-300 overflow-hidden"
-                onClick={() => navigate(`/reader/${book.id}`)}
+                onClick={() => {
+                  if (book.file_type === "manga") {
+                    navigate(`/manga?url=${encodeURIComponent(book.file_url || "")}&source=${book.author?.toLowerCase() || ""}&title=${encodeURIComponent(book.title)}`);
+                  } else {
+                    navigate(`/reader/${book.id}`);
+                  }
+                }}
               >
                 <CardContent className="p-0 relative">
                   {/* Cover */}
