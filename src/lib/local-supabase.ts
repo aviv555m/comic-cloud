@@ -377,8 +377,9 @@ class MockQueryBuilder {
   }
 
   select(fields: string = '*') {
-    this.operation = 'select';
-    this.selectFields = fields;
+    if (this.operation === 'select') {
+      this.selectFields = fields;
+    }
     return this;
   }
 
