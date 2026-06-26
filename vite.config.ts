@@ -85,6 +85,14 @@ export default defineConfig(({ mode }) => ({
       name: "image-proxy-middleware",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
+          // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
+          if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
+            res.statusCode = 403;
+            res.setHeader("Content-Type", "text/plain");
+            res.end("Forbidden");
+            return;
+          }
+
           if (req.url && req.url.startsWith("/api-image-proxy")) {
             const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
             const targetUrl = urlObj.searchParams.get("url");

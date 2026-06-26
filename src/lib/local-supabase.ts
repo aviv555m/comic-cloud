@@ -507,6 +507,15 @@ class MockQueryBuilder {
 
         setTableData(this.tableName, data);
         
+        // Propagate to remote database in background if online and authenticated
+        originalSupabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            originalSupabase.from(this.tableName as any).insert(inserted).catch(err => {
+              console.warn(`[Sync] Background remote insert failed for ${this.tableName}:`, err);
+            });
+          }
+        }).catch(() => {});
+        
         const returnData = Array.isArray(this.payload) ? inserted : inserted[0];
         return { data: returnData, error: null };
       }
@@ -531,6 +540,17 @@ class MockQueryBuilder {
 
         setTableData(this.tableName, data);
         
+        // Propagate to remote database in background if online and authenticated
+        if (updatedRows.length > 0) {
+          originalSupabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+              originalSupabase.from(this.tableName as any).upsert(updatedRows).catch(err => {
+                console.warn(`[Sync] Background remote update failed for ${this.tableName}:`, err);
+              });
+            }
+          }).catch(() => {});
+        }
+        
         const returnData = this.isSingle || this.isMaybeSingle ? (updatedRows[0] || null) : updatedRows;
         return { data: returnData, error: null };
       }
@@ -554,6 +574,18 @@ class MockQueryBuilder {
         }
 
         setTableData(this.tableName, remaining);
+        
+        // Propagate to remote database in background if online and authenticated
+        if (deleted.length > 0) {
+          const idsToDelete = deleted.map(r => r.id);
+          originalSupabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+              originalSupabase.from(this.tableName as any).delete().in('id', idsToDelete).catch(err => {
+                console.warn(`[Sync] Background remote delete failed for ${this.tableName}:`, err);
+              });
+            }
+          }).catch(() => {});
+        }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (deleted[0] || null) : deleted;
         return { data: returnData, error: null };
@@ -774,12 +806,20 @@ const localAuthProxy = {
   getSession: async () => {
     const session = getLocalSession();
     if (session) {
+      if (session.user) {
+        // Trigger background clone of remote data to stay up-to-date!
+        cloneRemoteData(session.user.id).catch(console.error);
+      }
       return { data: { session }, error: null };
     }
     // Try remote client
     const { data, error } = await originalSupabase.auth.getSession();
     if (data && data.session) {
       saveLocalSession(data.session);
+      if (data.session.user) {
+        // Trigger background clone of remote data to stay up-to-date!
+        cloneRemoteData(data.session.user.id).catch(console.error);
+      }
       return { data: { session: data.session }, error: null };
     }
     return { data: { session: null }, error: null };
@@ -814,6 +854,18 @@ const localStorageProxy = {
         const fullPath = `${bucket}/${filePath}`;
         await saveLocalFile(fullPath, file);
         console.log(`[Storage] Uploaded ${fullPath} locally to IndexedDB`);
+        
+        // Propagate file upload to remote Supabase storage in background if authenticated
+        originalSupabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            originalSupabase.storage.from(bucket).upload(filePath, file, options).then(() => {
+              console.log(`[Storage] Successfully synced ${fullPath} to remote storage`);
+            }).catch(err => {
+              console.warn(`[Storage] Failed to sync ${fullPath} to remote storage:`, err);
+            });
+          }
+        }).catch(() => {});
+
         return { data: { path: filePath }, error: null };
       } catch (e: any) {
         console.error('[Storage] Local upload failed:', e);
@@ -829,6 +881,16 @@ const localStorageProxy = {
         for (const p of paths) {
           store.delete(`${bucket}/${p}`);
         }
+        
+        // Propagate deletion to remote Supabase storage in background if authenticated
+        originalSupabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            originalSupabase.storage.from(bucket).remove(paths).catch(err => {
+              console.warn(`[Storage] Failed to remove ${paths} from remote storage:`, err);
+            });
+          }
+        }).catch(() => {});
+
         return { data: null, error: null };
       } catch (e: any) {
         return { data: null, error: e };
