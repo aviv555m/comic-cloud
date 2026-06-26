@@ -77,6 +77,18 @@ export function useOfflineBooks() {
             }
           });
           
+          if (!fileRecord || !fileRecord.data) {
+            try {
+              const writeDb = await openLocalDB();
+              const writeTx = writeDb.transaction(BOOKS_STORE, 'readwrite');
+              const writeStore = writeTx.objectStore(BOOKS_STORE);
+              writeStore.delete(book.id);
+            } catch (err) {
+              console.warn("Failed to delete corrupted offline book metadata:", err);
+            }
+            continue;
+          }
+
           let coverUrl = book.cover_url;
           if (fileRecord?.coverData) {
             let binary = '';

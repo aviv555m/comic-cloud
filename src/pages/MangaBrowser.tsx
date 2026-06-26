@@ -715,9 +715,13 @@ const MangaBrowser = () => {
           request.onsuccess = () => {
             const list = request.result || [];
             const matched = list.filter((b: any) => {
+              const cleanSeriesTitle = series.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+              const cleanBookSeries = b.series ? b.series.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+              const cleanBookTitle = b.title ? b.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
               return (
-                (b.series && b.series.toLowerCase() === series.title.toLowerCase()) ||
-                b.title.toLowerCase().startsWith(series.title.toLowerCase())
+                (cleanBookSeries && cleanBookSeries === cleanSeriesTitle) ||
+                cleanBookTitle.startsWith(cleanSeriesTitle) ||
+                cleanBookTitle.includes(cleanSeriesTitle)
               );
             });
             resolve(matched.map((b: any) => ({
@@ -1220,11 +1224,11 @@ const MangaBrowser = () => {
             {chapters.map((c) => {
               const isSelected = selectedChapters.includes(c.url);
               const processing = processingChapters[c.url];
-              const isDownloaded = c.url.startsWith("offline:") || offlineBooks.some(b => 
-                b.title.toLowerCase().includes(c.title.toLowerCase()) && 
-                (b.series?.toLowerCase() === currentSeries?.title?.toLowerCase() || 
-                 b.title.toLowerCase().startsWith(currentSeries?.title?.toLowerCase() || ""))
-              );
+              const isDownloaded = c.url.startsWith("offline:") || offlineBooks.some(b => {
+                const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
+                const expectedTitle = `${currentSeries?.title || ""} - ${c.title}`.trim().toLowerCase();
+                return cleanBookTitle === expectedTitle;
+              });
               
               return (
                 <Card
