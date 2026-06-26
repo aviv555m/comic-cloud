@@ -63,7 +63,7 @@ const Reader = () => {
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
-  const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -299,7 +299,7 @@ const Reader = () => {
               if (data) {
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
-                setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+                setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
               } else {
                 // Try reading from offline books store
                 const offlineMeta = await getOfflineBookAsync(bookId);
@@ -383,7 +383,7 @@ const Reader = () => {
       
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
-      setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+      setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
       setIsReadingOffline(false); // Explicitly set to false for online reads
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues

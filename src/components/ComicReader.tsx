@@ -124,9 +124,9 @@ export const ComicReader = ({
 
   const [readingMode, setReadingMode] = useState<"page" | "scroll">(() => {
     try {
-      return (localStorage.getItem("comic_reading_mode") as "page" | "scroll") || "page";
+      return (localStorage.getItem("comic_reading_mode") as "page" | "scroll") || "scroll";
     } catch (e) {
-      return "page";
+      return "scroll";
     }
   });
 
@@ -229,7 +229,7 @@ export const ComicReader = ({
 
         {/* Seamless Webtoon Continuous list */}
         <div 
-          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto"
+          className="flex flex-col gap-2 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto"
           onClick={(e) => {
             e.stopPropagation();
             onToggleControls?.();

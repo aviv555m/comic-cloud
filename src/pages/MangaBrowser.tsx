@@ -546,7 +546,7 @@ const MangaBrowser = () => {
         .from("books")
         .insert({
           user_id: user.id,
-          title: `${currentSeries?.title || 'Manga'} - ${chapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
+          title: `${chapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
           author: source.toUpperCase(),
           series: currentSeries?.title || null,
           file_url: fileUrl,
@@ -779,7 +779,13 @@ const MangaBrowser = () => {
       const matchedOfflineBook = offlineBooks.find(b => {
         const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
         const expectedTitle = `${currentSeries?.title || ""} - ${chapter.title}`.trim().toLowerCase();
-        return cleanBookTitle === expectedTitle;
+        const cleanChapterTitle = chapter.title.trim().toLowerCase();
+        const cleanBookSeries = b.series ? b.series.trim().toLowerCase() : "";
+        const cleanSeriesTitle = currentSeries?.title ? currentSeries.title.trim().toLowerCase() : "";
+        return (
+          cleanBookTitle === expectedTitle ||
+          (cleanBookTitle === cleanChapterTitle && (cleanBookSeries === cleanSeriesTitle || !cleanBookSeries))
+        );
       });
       if (matchedOfflineBook) {
         bookId = matchedOfflineBook.id;
@@ -951,7 +957,7 @@ const MangaBrowser = () => {
         .from("books")
         .insert({
           user_id: user.id,
-          title: `${currentSeries.title} - ${currentChapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
+          title: `${currentChapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
           author: source.toUpperCase(),
           series: currentSeries.title,
           file_url: fileUrl,
@@ -1068,7 +1074,7 @@ const MangaBrowser = () => {
             </Button>
           </div>
         </div>
-        <div className="max-w-3xl mx-auto flex flex-col items-center gap-1 py-4">
+        <div className="max-w-3xl mx-auto flex flex-col items-center gap-2 py-4">
           {pages.map((src, i) => (
             <img
               key={i}
@@ -1295,7 +1301,13 @@ const MangaBrowser = () => {
               const isDownloaded = c.url.startsWith("offline:") || offlineBooks.some(b => {
                 const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
                 const expectedTitle = `${currentSeries?.title || ""} - ${c.title}`.trim().toLowerCase();
-                return cleanBookTitle === expectedTitle;
+                const cleanChapterTitle = c.title.trim().toLowerCase();
+                const cleanBookSeries = b.series ? b.series.trim().toLowerCase() : "";
+                const cleanSeriesTitle = currentSeries?.title ? currentSeries.title.trim().toLowerCase() : "";
+                return (
+                  cleanBookTitle === expectedTitle ||
+                  (cleanBookTitle === cleanChapterTitle && (cleanBookSeries === cleanSeriesTitle || !cleanBookSeries))
+                );
               });
               
               return (
