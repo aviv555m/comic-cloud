@@ -207,6 +207,7 @@ import {
 import JSZip from "jszip";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { openLocalDB } from "@/lib/local-supabase";
+import { downloadQueue, useDownloadJobs } from "@/lib/download-manager";
 
 const fetchImageAsArrayBuffer = async (imgUrl: string): Promise<ArrayBuffer> => {
   const isNative = Capacitor.isNativePlatform();
@@ -755,7 +756,19 @@ const MangaBrowser = () => {
 
   // Multi-download and save states
   const [selectedChapters, setSelectedChapters] = useState<string[]>([]); // list of chapter.url
-  const [processingChapters, setProcessingChapters] = useState<Record<string, { mode: 'save' | 'download', progress: string }>>({});
+  const jobs = useDownloadJobs();
+  const processingChapters = useMemo(() => {
+    const mapping: Record<string, { mode: 'save' | 'download'; progress: string }> = {};
+    jobs.forEach(job => {
+      if (job.status === 'downloading' || job.status === 'pending') {
+        mapping[job.id] = {
+          mode: job.mode,
+          progress: job.statusText
+        };
+      }
+    });
+    return mapping;
+  }, [jobs]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [bulkProgress, setBulkProgress] = useState("");
 
@@ -774,206 +787,40 @@ const MangaBrowser = () => {
   };
 
   const processChapter = async (chapter: ChapterRef, shouldDownloadOffline: boolean) => {
-    const key = chapter.url;
-    setProcessingChapters(prev => ({
-      ...prev,
-      [key]: { mode: shouldDownloadOffline ? 'download' : 'save', progress: 'Fetching pages...' }
-    }));
+    if (!currentSeries) return;
+    
+    downloadQueue.addJob(
+      chapter,
+      currentSeries.title,
+      source,
+      shouldDownloadOffline ? 'download' : 'save',
+      currentSeries.cover
+    );
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          variant: "destructive",
-          title: "Authentication required",
-          description: "Please sign in to save manga.",
-        });
-        return;
-      }
-
-      // 1. Fetch page urls
-      let imgs: string[] = [];
-      if (source === "comix") {
-        imgs = await comixPages(chapter.url);
-      } else if (source === "mangadex") {
-        imgs = await mangadexPages(chapter.url);
-      } else if (source === "mangafire") {
-        imgs = await mangafirePages(chapter.url);
-      } else if (source === "mangafreak") {
-        imgs = await mangafreakPages(chapter.url);
-      } else if (source === "mangapark") {
-        imgs = await mangaparkPages(chapter.url);
-      } else if (source === "manganato") {
-        imgs = await manganatoPages(chapter.url);
-      }
-
-      if (imgs.length === 0) throw new Error("No pages found on this chapter page.");
-
-      setProcessingChapters(prev => ({
-        ...prev,
-        [key]: { ...prev[key], progress: `Packaging 0/${imgs.length}...` }
-      }));
-
-      // 2. Package as CBZ
-      const zip = new JSZip();
-      for (let i = 0; i < imgs.length; i++) {
-        setProcessingChapters(prev => ({
-          ...prev,
-          [key]: { ...prev[key], progress: `Packaging ${i + 1}/${imgs.length}...` }
-        }));
-        const pageUrl = imgs[i];
-        try {
-          const buffer = await fetchImageAsArrayBuffer(pageUrl);
-          const ext = pageUrl.split('?')[0].split('.').pop() || 'jpg';
-          const validExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext.toLowerCase()) ? ext : 'jpg';
-          const fileName = `${String(i + 1).padStart(3, '0')}.${validExt}`;
-          zip.file(fileName, buffer);
-        } catch (fetchErr) {
-          console.error(`Failed to fetch page ${i + 1}:`, fetchErr);
-        }
-      }
-
-      setProcessingChapters(prev => ({
-        ...prev,
-        [key]: { ...prev[key], progress: 'Uploading...' }
-      }));
-
-      const cbzBlob = await zip.generateAsync({ type: 'blob' });
-      if (cbzBlob.size < 1000) {
-        throw new Error("Failed to package manga pages into CBZ.");
-      }
-
-      // 3. Upload CBZ to Supabase Storage
-      const fileName = `${user.id}/manga_${Date.now()}.cbz`;
-      const { error: uploadError } = await supabase.storage
-        .from("book-files")
-        .upload(fileName, cbzBlob, {
-          contentType: "application/x-cbz",
-          cacheControl: "3600",
-          upsert: true
-        });
-
-      if (uploadError) throw uploadError;
-
-      // 4. Create signed URL
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from("book-files")
-        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year
-
-      if (signedUrlError) throw signedUrlError;
-
-      const fileUrl = signedUrlData.signedUrl;
-
-      // Auto-save series to library if not exists
-      if (currentSeries) {
-        const { data: existingSeries } = await supabase
-          .from("books")
-          .select("id")
-          .eq("user_id", user.id)
-          .eq("title", currentSeries.title)
-          .eq("file_type", "manga")
-          .maybeSingle();
-
-        if (!existingSeries) {
-          await supabase.from("books").insert({
-            user_id: user.id,
-            title: currentSeries.title,
-            author: source.toUpperCase(),
-            cover_url: currentSeries.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
-            file_url: currentSeries.url,
-            file_type: "manga",
-            is_completed: false,
-            reading_progress: 0,
-            last_page_read: 0,
-          });
-        }
-      }
-
-      // 5. Save to Books
-      const { data: insertedBook, error: insertError } = await supabase
-        .from("books")
-        .insert({
-          user_id: user.id,
-          title: `${chapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
-          author: source.toUpperCase(),
-          series: currentSeries?.title || null,
-          file_url: fileUrl,
-          file_type: "cbz",
-          file_size: cbzBlob.size,
-          cover_url: currentSeries?.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
-          last_page_read: 0,
-          reading_progress: 0,
-          is_completed: false
-        })
-        .select()
-        .single();
-
-      if (insertError) throw insertError;
-
-      // 6. Offline download if requested
-      if (shouldDownloadOffline && insertedBook) {
-        setProcessingChapters(prev => ({
-          ...prev,
-          [key]: { ...prev[key], progress: 'Saving offline...' }
-        }));
-        // Since local-supabase automatically registers books offline on insertion,
-        // we just give a small delay for a smooth UI transition.
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-
-      toast({
-        title: shouldDownloadOffline ? "Downloaded offline" : "Saved to Library",
-        description: `"${chapter.title}" processed successfully!`,
-      });
-    } catch (err: any) {
-      console.error("Chapter processing failed:", err);
-      toast({
-        variant: "destructive",
-        title: "Process failed",
-        description: `Failed to process "${chapter.title}": ${err.message}`,
-      });
-      throw err;
-    } finally {
-      setProcessingChapters(prev => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-    }
+    toast({
+      title: "Download Started",
+      description: `"${chapter.title}" has been added to the background queue.`,
+    });
   };
 
   const processMultipleChapters = async (chaptersToProcess: ChapterRef[], shouldDownloadOffline: boolean) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Authentication required",
-        description: "Please sign in to save manga.",
-      });
-      return;
-    }
+    if (!currentSeries) return;
 
-    setIsBulkProcessing(true);
-    let successCount = 0;
-    
-    for (let i = 0; i < chaptersToProcess.length; i++) {
-      const ch = chaptersToProcess[i];
-      setBulkProgress(`Processing ${i + 1}/${chaptersToProcess.length}: ${ch.title}`);
-      try {
-        await processChapter(ch, shouldDownloadOffline);
-        successCount++;
-      } catch (err) {
-        console.error(`Bulk processing failed for ${ch.title}:`, err);
-      }
-    }
-    
-    setIsBulkProcessing(false);
-    setBulkProgress("");
+    chaptersToProcess.forEach(ch => {
+      downloadQueue.addJob(
+        ch,
+        currentSeries.title,
+        source,
+        shouldDownloadOffline ? 'download' : 'save',
+        currentSeries.cover
+      );
+    });
+
     setSelectedChapters([]); // clear selection
     
     toast({
-      title: "Bulk operation complete",
-      description: `Successfully processed ${successCount} of ${chaptersToProcess.length} chapters.`,
+      title: "Downloads Queued",
+      description: `Added ${chaptersToProcess.length} chapters to the background download queue.`,
     });
   };
 
@@ -1021,7 +868,6 @@ const MangaBrowser = () => {
     setLoading(true);
     setChapters([]);
     setSelectedChapters([]); // Reset selection on new series
-    setProcessingChapters({});
     setCurrentSeries(series);
     setCurrentChapter(null);
     setPages([]);

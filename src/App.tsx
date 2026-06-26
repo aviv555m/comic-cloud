@@ -38,6 +38,7 @@ import Achievements from "./pages/Achievements";
 import Vocabulary from "./pages/Vocabulary";
 import Clubs from "./pages/Clubs";
 import ClubDetail from "./pages/ClubDetail";
+import { DownloadProgressOverlay } from "@/components/DownloadProgressOverlay";
 import Discover from "./pages/Discover";
 import Reminders from "./pages/Reminders";
 import Journal from "./pages/Journal";
@@ -92,7 +93,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.22"; // Hardcoded current native app version
+          const currentTag = "v1.0.23"; // Hardcoded current native app version
           
           if (latestTag && latestTag !== currentTag) {
             setLatestReleaseInfo({
@@ -215,6 +216,7 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
         <FloatingChatBubble />
+        <DownloadProgressOverlay />
       </BrowserRouter>
     </>
   );
