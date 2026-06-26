@@ -49,7 +49,6 @@ import Bookshelf3D from "./pages/Bookshelf3D";
 import SeanimeStream from "./pages/SeanimeStream";
 import MangaBrowser from "./pages/MangaBrowser";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
-import { FloatingChatBubble } from "./components/FloatingChatBubble";
 import { useServiceWorker } from "./hooks/useServiceWorker";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { OfflineAlertOverlay } from "./components/OfflineAlertOverlay";
@@ -93,7 +92,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.25"; // Hardcoded current native app version
+          const currentTag = "v1.0.26"; // Hardcoded current native app version
           
           if (latestTag && latestTag !== currentTag) {
             setLatestReleaseInfo({
@@ -215,7 +214,6 @@ const AppContent = () => {
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-        <FloatingChatBubble />
         <DownloadProgressOverlay />
       </BrowserRouter>
     </>

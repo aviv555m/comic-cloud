@@ -288,7 +288,7 @@ export const ComicReader = ({
         </div>
 
         {/* Floating progress overlay for Comic Reader */}
-        <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
+        <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
           <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5">
             <div className="flex justify-between items-center text-xs font-semibold">
               <span className="truncate text-violet-300 max-w-[70%]">
@@ -447,7 +447,7 @@ export const ComicReader = ({
       </div>
 
       {/* Floating progress overlay for Comic Reader (Page Mode) */}
-      <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
+      <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
         <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5">
           <div className="flex justify-between items-center text-xs font-semibold">
             <span className="truncate text-violet-300 max-w-[70%]">

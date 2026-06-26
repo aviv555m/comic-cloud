@@ -1346,25 +1346,27 @@ const MangaBrowser = () => {
         </div>
 
         {/* Floating progress overlay for inline reader */}
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto">
-          <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="flex justify-between items-center text-xs font-semibold">
-              <span className="truncate text-violet-300 max-w-[70%]">
-                {currentSeries?.title ? `${currentSeries.title} - ` : ""}{currentChapter.title}
-              </span>
-              <span className="text-muted-foreground shrink-0">
-                Page {currentPage} of {pages.length}
-              </span>
-            </div>
-            {/* Visual progress bar */}
-            <div className="w-full bg-violet-950/40 rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-200"
-                style={{ width: `${(currentPage / pages.length) * 100}%` }}
-              />
+        {currentPage < pages.length && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto">
+            <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+              <div className="flex justify-between items-center text-xs font-semibold">
+                <span className="truncate text-violet-300 max-w-[70%]">
+                  {currentSeries?.title ? `${currentSeries.title} - ` : ""}{currentChapter.title}
+                </span>
+                <span className="text-muted-foreground shrink-0">
+                  Page {currentPage} of {pages.length}
+                </span>
+              </div>
+              {/* Visual progress bar */}
+              <div className="w-full bg-violet-950/40 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-200"
+                  style={{ width: `${(currentPage / pages.length) * 100}%` }}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
