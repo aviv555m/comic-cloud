@@ -316,7 +316,7 @@ const MangaBrowser = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
-      if (!session?.user && Capacitor.isNativePlatform()) {
+      if (!session?.user && Capacitor.isNativePlatform() && navigator.onLine) {
         navigate("/auth");
       }
     });
@@ -324,7 +324,7 @@ const MangaBrowser = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user || null);
-        if (!session?.user && Capacitor.isNativePlatform()) {
+        if (!session?.user && Capacitor.isNativePlatform() && navigator.onLine) {
           navigate("/auth");
         }
       }

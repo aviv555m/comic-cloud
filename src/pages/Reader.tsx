@@ -51,7 +51,7 @@ const Reader = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isOnline, getOfflineFile, checkBookOfflineAsync } = useOfflineBooks();
+  const { isOnline, getOfflineFile, checkBookOfflineAsync, getOfflineBookAsync } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
   const [showControls, setShowControls] = useState(true);
@@ -263,7 +263,7 @@ const Reader = () => {
 
   const fetchBook = async () => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user && Capacitor.isNativePlatform()) {
+    if (!session?.user && Capacitor.isNativePlatform() && navigator.onLine) {
       navigate("/auth");
       return;
     }
@@ -300,9 +300,53 @@ const Reader = () => {
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
                 setReadingMode(data.reading_mode as "page" | "scroll" || "page");
+              } else {
+                // Try reading from offline books store
+                const offlineMeta = await getOfflineBookAsync(bookId);
+                if (offlineMeta) {
+                  setBook({
+                    id: offlineMeta.id,
+                    title: offlineMeta.title,
+                    author: offlineMeta.author,
+                    series: offlineMeta.series || null,
+                    cover_url: offlineMeta.cover_url,
+                    file_url: "",
+                    file_type: offlineMeta.file_type,
+                    is_public: false,
+                    is_completed: false,
+                    reading_progress: 0,
+                    last_page_read: offlineMeta.last_page_read || 0,
+                    total_pages: null,
+                    file_size: offlineMeta.fileSize,
+                    created_at: new Date(offlineMeta.cachedAt).toISOString(),
+                    user_id: "",
+                  } as any);
+                  setCurrentPage(offlineMeta.last_page_read || 1);
+                }
               }
             } catch {
-              // If we can't fetch from DB, that's okay for offline mode
+              // Try reading from offline books store
+              const offlineMeta = await getOfflineBookAsync(bookId);
+              if (offlineMeta) {
+                setBook({
+                  id: offlineMeta.id,
+                  title: offlineMeta.title,
+                  author: offlineMeta.author,
+                  series: offlineMeta.series || null,
+                  cover_url: offlineMeta.cover_url,
+                  file_url: "",
+                  file_type: offlineMeta.file_type,
+                  is_public: false,
+                  is_completed: false,
+                  reading_progress: 0,
+                  last_page_read: offlineMeta.last_page_read || 0,
+                  total_pages: null,
+                  file_size: offlineMeta.fileSize,
+                  created_at: new Date(offlineMeta.cachedAt).toISOString(),
+                  user_id: "",
+                } as any);
+                setCurrentPage(offlineMeta.last_page_read || 1);
+              }
             }
             
             toast({

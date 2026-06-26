@@ -42,17 +42,9 @@ export function useOfflineBooks() {
     };
   }, []);
 
-  // Reusing openLocalDB from local-supabase
-
   // Load offline books list
   const loadOfflineBooks = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
-        setOfflineBooks([]);
-        setIsReady(true);
-        return;
-      }
       const db = await openLocalDB();
       const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const booksStore = transaction.objectStore(BOOKS_STORE);
@@ -123,8 +115,6 @@ export function useOfflineBooks() {
   // Async check if book exists in IndexedDB (doesn't depend on state)
   const checkBookOfflineAsync = useCallback(async (bookId: string): Promise<boolean> => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return false;
       const db = await openLocalDB();
       const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const store = transaction.objectStore(BOOKS_STORE);
@@ -138,6 +128,25 @@ export function useOfflineBooks() {
       });
     } catch {
       return false;
+    }
+  }, []);
+
+  // Async get offline book metadata directly from IndexedDB
+  const getOfflineBookAsync = useCallback(async (bookId: string): Promise<OfflineBook | null> => {
+    try {
+      const db = await openLocalDB();
+      const transaction = db.transaction(BOOKS_STORE, 'readonly');
+      const store = transaction.objectStore(BOOKS_STORE);
+      
+      return new Promise((resolve) => {
+        const request = store.get(bookId);
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => resolve(null);
+      });
+    } catch {
+      return null;
     }
   }, []);
 
@@ -271,16 +280,14 @@ export function useOfflineBooks() {
   // Remove book from offline storage
   const removeBookOffline = useCallback(async (bookId: string) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
       const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
       transaction.objectStore(BOOKS_STORE).delete(bookId);
       transaction.objectStore(FILES_STORE).delete(bookId);
       
-      await new Promise((resolve, reject) => {
-        transaction.oncomplete = resolve;
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
       
@@ -298,8 +305,6 @@ export function useOfflineBooks() {
   // Get offline file for reading
   const getOfflineFile = useCallback(async (bookId: string): Promise<Blob | null> => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return null;
       const db = await openLocalDB();
       const transaction = db.transaction(FILES_STORE, 'readonly');
       const store = transaction.objectStore(FILES_STORE);
@@ -342,16 +347,14 @@ export function useOfflineBooks() {
   // Clear all offline data
   const clearAllOfflineData = useCallback(async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
       const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
       transaction.objectStore(BOOKS_STORE).clear();
       transaction.objectStore(FILES_STORE).clear();
       
-      await new Promise((resolve, reject) => {
-        transaction.oncomplete = resolve;
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
       
@@ -375,6 +378,7 @@ export function useOfflineBooks() {
     getOfflineFile,
     isBookOffline,
     checkBookOfflineAsync,
+    getOfflineBookAsync,
     isBookDownloading,
     getTotalStorageUsed,
     clearAllOfflineData,

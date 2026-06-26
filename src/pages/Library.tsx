@@ -95,7 +95,7 @@ const Library = () => {
         setUser(session.user);
         fetchBooks(session.user.id);
         fetchTags(session.user.id);
-      } else {
+      } else if (navigator.onLine) {
         navigate("/auth");
       }
       setAuthLoading(false);
@@ -107,7 +107,7 @@ const Library = () => {
           setUser(session.user);
           fetchBooks(session.user.id);
           fetchTags(session.user.id);
-        } else {
+        } else if (navigator.onLine) {
           navigate("/auth");
         }
         setAuthLoading(false);
@@ -326,7 +326,7 @@ const Library = () => {
     );
   }
 
-  if (!user) return null;
+  if (!user && isOnline) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted">
