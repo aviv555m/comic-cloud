@@ -54,6 +54,67 @@ export function useOfflineBooks() {
       
       request.onsuccess = async () => {
         const booksList = request.result || [];
+        
+        // Auto-migration: create missing series cards for downloaded cbz chapters if they don't exist
+        const cbzBooks = booksList.filter((b: any) => b.file_type === 'cbz');
+        const mangaBooks = booksList.filter((b: any) => b.file_type === 'manga');
+        
+        const missingSeries: string[] = [];
+        for (const cbz of cbzBooks) {
+          if (cbz.series) {
+            const hasMangaCard = mangaBooks.some(m => m.title.toLowerCase().trim() === cbz.series.toLowerCase().trim());
+            if (!hasMangaCard && !missingSeries.includes(cbz.series)) {
+              missingSeries.push(cbz.series);
+            }
+          }
+        }
+        
+        if (missingSeries.length > 0) {
+          try {
+            const writeDb = await openLocalDB();
+            const writeTx = writeDb.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+            const writeBooks = writeTx.objectStore(BOOKS_STORE);
+            const writeFiles = writeTx.objectStore(FILES_STORE);
+            
+            for (const seriesName of missingSeries) {
+              const seriesId = `manga-series-${seriesName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+              const sampleBook = cbzBooks.find(b => b.series === seriesName);
+              const coverUrl = sampleBook ? sampleBook.cover_url : null;
+              const source = sampleBook ? sampleBook.author || 'comix' : 'comix';
+              
+              const newSeriesCard = {
+                id: seriesId,
+                title: seriesName,
+                author: source,
+                file_type: 'manga',
+                cover_url: coverUrl,
+                last_page_read: null,
+                cachedAt: Date.now(),
+                fileSize: 0,
+                series: null,
+                file_url: sampleBook ? sampleBook.file_url : null,
+              };
+              
+              writeBooks.put(newSeriesCard);
+              writeFiles.put({
+                bookId: seriesId,
+                data: new ArrayBuffer(1),
+                contentType: 'application/x-manga',
+              });
+              
+              booksList.push(newSeriesCard);
+            }
+            
+            await new Promise<void>((resolve, reject) => {
+              writeTx.oncomplete = () => resolve();
+              writeTx.onerror = () => reject(writeTx.error);
+            });
+            console.log("[Migration] Generated missing offline series cards successfully");
+          } catch (migrationErr) {
+            console.error("[Migration] Failed to generate missing offline series cards:", migrationErr);
+          }
+        }
+
         const processedBooks: OfflineBook[] = [];
         
         for (const book of booksList) {

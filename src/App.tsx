@@ -85,7 +85,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.19"; // Hardcoded current native app version
+          const currentTag = "v1.0.20"; // Hardcoded current native app version
           
           if (latestTag && latestTag !== currentTag) {
             setLatestReleaseInfo({
