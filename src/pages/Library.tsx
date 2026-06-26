@@ -118,7 +118,7 @@ const Library = () => {
   }, [navigate]);
 
   const fetchBooks = async (userId: string) => {
-    if (!userId || !navigator.onLine) {
+    if (!userId) {
       setLoading(false);
       return;
     }
@@ -153,7 +153,7 @@ const Library = () => {
   };
 
   const fetchTags = async (userId: string) => {
-    if (!userId || !navigator.onLine) return;
+    if (!userId) return;
     const { data } = await supabase
       .from("tags")
       .select("*")
@@ -162,7 +162,7 @@ const Library = () => {
   };
 
   const fetchBookTags = async (userId: string) => {
-    if (!userId || !navigator.onLine) return;
+    if (!userId) return;
     const { data } = await supabase
       .from("book_tags")
       .select("book_id, tag_id")
@@ -177,7 +177,7 @@ const Library = () => {
   };
 
   const fetchBookRatings = async (userId: string) => {
-    if (!userId || !navigator.onLine) return;
+    if (!userId) return;
     const { data } = await supabase
       .from("book_reviews")
       .select("book_id, rating")
@@ -191,7 +191,7 @@ const Library = () => {
   };
 
   const fetchReadingStats = async (userId: string) => {
-    if (!userId || !navigator.onLine) return;
+    if (!userId) return;
     try {
       const { data: sessions } = await supabase
         .from("reading_sessions")

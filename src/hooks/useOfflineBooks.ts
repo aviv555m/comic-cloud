@@ -12,6 +12,7 @@ interface OfflineBook {
   last_page_read: number | null;
   cachedAt: number;
   fileSize: number;
+  series?: string | null;
 }
 
 const DB_NAME = 'comic-cloud-offline';
@@ -137,6 +138,7 @@ export function useOfflineBooks() {
     file_type: string;
     cover_url: string | null;
     last_page_read: number | null;
+    series?: string | null;
   }) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) {
@@ -214,6 +216,7 @@ export function useOfflineBooks() {
         last_page_read: book.last_page_read,
         cachedAt: Date.now(),
         fileSize: arrayBuffer.byteLength,
+        series: book.series || null,
       };
       booksStore.put(offlineBook);
       

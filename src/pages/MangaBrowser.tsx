@@ -19,6 +19,7 @@ import {
   Sparkles,
   Download,
   Plus,
+  Check,
 } from "lucide-react";
 
 /**
@@ -204,6 +205,7 @@ import {
 } from "@/lib/manga-sources-client";
 import JSZip from "jszip";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+import { openLocalDB } from "@/lib/local-supabase";
 
 const fetchImageAsArrayBuffer = async (imgUrl: string): Promise<ArrayBuffer> => {
   const isNative = Capacitor.isNativePlatform();
@@ -299,7 +301,7 @@ const getSourceUrl = (source: Source, seriesUrl: string): string => {
 const MangaBrowser = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { saveBookOffline } = useOfflineBooks();
+  const { saveBookOffline, offlineBooks } = useOfflineBooks();
   const [source, setSource] = useState<Source>("mangadex");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -702,10 +704,46 @@ const MangaBrowser = () => {
         }
       }
     } catch (err: any) {
+      console.warn("Could not load chapters online, checking offline...", err);
+      try {
+        const db = await openLocalDB();
+        const transaction = db.transaction("offline-books", "readonly");
+        const store = transaction.objectStore("offline-books");
+        const request = store.getAll();
+        
+        const offlineChapters = await new Promise<ChapterRef[]>((resolve) => {
+          request.onsuccess = () => {
+            const list = request.result || [];
+            const matched = list.filter((b: any) => {
+              return (
+                (b.series && b.series.toLowerCase() === series.title.toLowerCase()) ||
+                b.title.toLowerCase().startsWith(series.title.toLowerCase())
+              );
+            });
+            resolve(matched.map((b: any) => ({
+              title: b.title,
+              url: `offline:${b.id}`
+            })));
+          };
+          request.onerror = () => resolve([]);
+        });
+
+        if (offlineChapters.length > 0) {
+          setChapters(offlineChapters);
+          toast({
+            title: "Loaded offline chapters",
+            description: `Showing ${offlineChapters.length} downloaded chapters.`,
+          });
+          return;
+        }
+      } catch (offlineErr) {
+        console.error("Failed to load offline chapters:", offlineErr);
+      }
+
       toast({
         variant: "destructive",
         title: "Couldn't load chapters",
-        description: err.message ?? "",
+        description: "You are offline and have no chapters downloaded for this series.",
       });
     } finally {
       setLoading(false);
@@ -713,6 +751,11 @@ const MangaBrowser = () => {
   };
 
   const openChapter = async (chapter: ChapterRef) => {
+    if (chapter.url.startsWith("offline:")) {
+      const bookId = chapter.url.split("offline:")[1];
+      navigate(`/reader/${bookId}`);
+      return;
+    }
     setLoading(true);
     setCurrentChapter(chapter);
     setPages([]);
@@ -1177,6 +1220,11 @@ const MangaBrowser = () => {
             {chapters.map((c) => {
               const isSelected = selectedChapters.includes(c.url);
               const processing = processingChapters[c.url];
+              const isDownloaded = c.url.startsWith("offline:") || offlineBooks.some(b => 
+                b.title.toLowerCase().includes(c.title.toLowerCase()) && 
+                (b.series?.toLowerCase() === currentSeries?.title?.toLowerCase() || 
+                 b.title.toLowerCase().startsWith(currentSeries?.title?.toLowerCase() || ""))
+              );
               
               return (
                 <Card
@@ -1205,7 +1253,7 @@ const MangaBrowser = () => {
                         {c.title}
                       </span>
                     </div>
-
+ 
                     {/* Right: Actions or processing state */}
                     <div className="flex items-center gap-2 shrink-0">
                       {processing ? (
@@ -1215,32 +1263,40 @@ const MangaBrowser = () => {
                         </div>
                       ) : (
                         <>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={isBulkProcessing}
-                            className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
-                            title="Save to library"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              processChapter(c, false);
-                            }}
-                          >
-                            <BookOpen className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            disabled={isBulkProcessing}
-                            className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
-                            title="Download offline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              processChapter(c, true);
-                            }}
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
+                          {isDownloaded ? (
+                            <span className="text-xs text-green-500 font-semibold bg-green-500/10 px-2 py-1 rounded border border-green-500/20 flex items-center gap-1 mr-1">
+                              <Check className="w-3.5 h-3.5" /> Offline
+                            </span>
+                          ) : (
+                            <>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isBulkProcessing}
+                                className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
+                                title="Save to library"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  processChapter(c, false);
+                                }}
+                              >
+                                <BookOpen className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isBulkProcessing}
+                                className="h-8 w-8 text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 rounded-md"
+                                title="Download offline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  processChapter(c, true);
+                                }}
+                              >
+                                <Download className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
                           <Button
                             size="icon"
                             variant="ghost"
