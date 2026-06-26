@@ -922,6 +922,7 @@ const Reader = () => {
             initialPage={book.last_page_read || 0}
             showControls={showControls}
             onToggleControls={() => setShowControls(prev => !prev)}
+            chapterTitle={book?.title}
           />
         )}
 
