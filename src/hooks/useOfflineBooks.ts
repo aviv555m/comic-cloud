@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { openLocalDB } from '@/lib/local-supabase';
 
 interface OfflineBook {
   id: string;
@@ -40,31 +41,7 @@ export function useOfflineBooks() {
     };
   }, []);
 
-  // Open IndexedDB
-  const openDB = useCallback((): Promise<IDBDatabase> => {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-      
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        
-        if (!db.objectStoreNames.contains(BOOKS_STORE)) {
-          db.createObjectStore(BOOKS_STORE, { keyPath: 'id' });
-        }
-        
-        if (!db.objectStoreNames.contains(FILES_STORE)) {
-          db.createObjectStore(FILES_STORE, { keyPath: 'bookId' });
-        }
-
-        if (!db.objectStoreNames.contains(LOCAL_FILES_STORE)) {
-          db.createObjectStore(LOCAL_FILES_STORE, { keyPath: 'filePath' });
-        }
-      };
-    });
-  }, []);
+  // Reusing openLocalDB from local-supabase
 
   // Load offline books list
   const loadOfflineBooks = useCallback(async () => {
@@ -75,7 +52,7 @@ export function useOfflineBooks() {
         setIsReady(true);
         return;
       }
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const booksStore = transaction.objectStore(BOOKS_STORE);
       
@@ -88,7 +65,7 @@ export function useOfflineBooks() {
         for (const book of booksList) {
           const fileRecord = await new Promise<any>(async (resolve) => {
             try {
-              const readDb = await openDB();
+              const readDb = await openLocalDB();
               const readTx = readDb.transaction(FILES_STORE, 'readonly');
               const readStore = readTx.objectStore(FILES_STORE);
               const fileRequest = readStore.get(book.id);
@@ -124,7 +101,7 @@ export function useOfflineBooks() {
       console.error('Failed to load offline books:', error);
       setIsReady(true);
     }
-  }, [openDB]);
+  }, []);
 
   useEffect(() => {
     loadOfflineBooks();
@@ -135,7 +112,7 @@ export function useOfflineBooks() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return false;
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction(BOOKS_STORE, 'readonly');
       const store = transaction.objectStore(BOOKS_STORE);
       
@@ -149,7 +126,7 @@ export function useOfflineBooks() {
     } catch {
       return false;
     }
-  }, [openDB]);
+  }, []);
 
   // Save book for offline reading
   const saveBookOffline = useCallback(async (book: {
@@ -216,7 +193,7 @@ export function useOfflineBooks() {
         }
       }
       
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
       // Save book metadata
@@ -267,14 +244,14 @@ export function useOfflineBooks() {
         return next;
       });
     }
-  }, [openDB, loadOfflineBooks, toast]);
+  }, [loadOfflineBooks, toast]);
 
   // Remove book from offline storage
   const removeBookOffline = useCallback(async (bookId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
       transaction.objectStore(BOOKS_STORE).delete(bookId);
@@ -294,14 +271,14 @@ export function useOfflineBooks() {
     } catch (error) {
       console.error('Failed to remove offline book:', error);
     }
-  }, [openDB, loadOfflineBooks, toast]);
+  }, [loadOfflineBooks, toast]);
 
   // Get offline file for reading
   const getOfflineFile = useCallback(async (bookId: string): Promise<Blob | null> => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return null;
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction(FILES_STORE, 'readonly');
       const store = transaction.objectStore(FILES_STORE);
       
@@ -323,7 +300,7 @@ export function useOfflineBooks() {
       console.error('Failed to get offline file:', error);
       return null;
     }
-  }, [openDB]);
+  }, []);
 
   // Check if book is available offline
   const isBookOffline = useCallback((bookId: string): boolean => {
@@ -345,7 +322,7 @@ export function useOfflineBooks() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return;
-      const db = await openDB();
+      const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
       transaction.objectStore(BOOKS_STORE).clear();
@@ -365,7 +342,7 @@ export function useOfflineBooks() {
     } catch (error) {
       console.error('Failed to clear offline data:', error);
     }
-  }, [openDB, toast]);
+  }, [toast]);
 
   return {
     offlineBooks,

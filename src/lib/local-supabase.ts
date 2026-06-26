@@ -43,11 +43,26 @@ const LOCAL_FILES_STORE = 'local-files';
 const BOOKS_STORE = 'offline-books';
 const FILES_STORE = 'offline-files';
 
+let cachedDB: IDBDatabase | null = null;
+
 export function openLocalDB(): Promise<IDBDatabase> {
+  if (cachedDB) {
+    return Promise.resolve(cachedDB);
+  }
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      cachedDB = request.result;
+      cachedDB.onversionchange = () => {
+        cachedDB?.close();
+        cachedDB = null;
+      };
+      cachedDB.onclose = () => {
+        cachedDB = null;
+      };
+      resolve(cachedDB);
+    };
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(BOOKS_STORE)) {
@@ -64,16 +79,16 @@ export function openLocalDB(): Promise<IDBDatabase> {
 }
 
 export async function saveLocalFile(filePath: string, fileData: Blob | ArrayBuffer) {
-  const db = await openLocalDB();
-  const transaction = db.transaction(LOCAL_FILES_STORE, 'readwrite');
-  const store = transaction.objectStore(LOCAL_FILES_STORE);
-  
   let data: ArrayBuffer;
   if (fileData instanceof Blob) {
     data = await fileData.arrayBuffer();
   } else {
     data = fileData;
   }
+
+  const db = await openLocalDB();
+  const transaction = db.transaction(LOCAL_FILES_STORE, 'readwrite');
+  const store = transaction.objectStore(LOCAL_FILES_STORE);
   
   store.put({
     filePath,
