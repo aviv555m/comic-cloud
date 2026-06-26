@@ -182,14 +182,21 @@ export function useOfflineBooks() {
       // Optionally cache cover image
       let coverBlob: ArrayBuffer | null = null;
       if (book.cover_url) {
+        const fetchUrl = book.cover_url.startsWith('/') 
+          ? `${window.location.origin}${book.cover_url}` 
+          : book.cover_url;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
         try {
-          const coverResponse = await fetch(book.cover_url);
+          const coverResponse = await fetch(fetchUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
           if (coverResponse.ok) {
             const coverBlobData = await coverResponse.blob();
             coverBlob = await coverBlobData.arrayBuffer();
           }
         } catch (e) {
-          console.log('Failed to cache cover, continuing without it');
+          clearTimeout(timeoutId);
+          console.log('Failed to cache cover, continuing without it:', e);
         }
       }
       

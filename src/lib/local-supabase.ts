@@ -243,10 +243,7 @@ async function handleBookInsertionOffline(book: any) {
     let coverBlob: ArrayBuffer | null = null;
     if (book.cover_url) {
       try {
-        if (book.cover_url.startsWith('data:')) {
-          const response = await fetch(book.cover_url);
-          coverBlob = await response.arrayBuffer();
-        } else if (book.cover_url.includes('/local-file-route/')) {
+        if (book.cover_url.includes('/local-file-route/')) {
           const coverMatch = book.cover_url.match(/\/local-file-route\/([^?]+)/);
           const coverPath = coverMatch ? decodeURIComponent(coverMatch[1]) : null;
           if (coverPath) {
@@ -254,6 +251,23 @@ async function handleBookInsertionOffline(book: any) {
             if (coverFile) {
               coverBlob = await coverFile.arrayBuffer();
             }
+          }
+        } else {
+          // Fetch remote cover (or proxied cover, or data URI)
+          const fetchUrl = book.cover_url.startsWith('/')
+            ? `${window.location.origin}${book.cover_url}`
+            : book.cover_url;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 6000);
+          try {
+            const response = await fetch(fetchUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (response.ok) {
+              coverBlob = await response.arrayBuffer();
+            }
+          } catch (fetchErr) {
+            clearTimeout(timeoutId);
+            console.warn("[Local DB] Cover pre-fetch timed out or failed:", fetchErr);
           }
         }
       } catch (coverErr) {

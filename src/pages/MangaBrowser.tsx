@@ -387,7 +387,7 @@ const MangaBrowser = () => {
           series: currentSeries.title,
           file_url: currentSeries.url,
           file_type: "manga",
-          cover_url: currentSeries.cover || null,
+          cover_url: currentSeries.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
           last_page_read: 0,
           reading_progress: 0,
           is_completed: false
@@ -536,13 +536,13 @@ const MangaBrowser = () => {
         .from("books")
         .insert({
           user_id: user.id,
-          title: `${currentSeries?.title || 'Manga'} - ${chapter.title}`,
+          title: `${currentSeries?.title || 'Manga'} - ${chapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
           author: source.toUpperCase(),
           series: currentSeries?.title || null,
           file_url: fileUrl,
           file_type: "cbz",
           file_size: cbzBlob.size,
-          cover_url: currentSeries?.cover || null,
+          cover_url: currentSeries?.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
           last_page_read: 0,
           reading_progress: 0,
           is_completed: false
@@ -558,15 +558,9 @@ const MangaBrowser = () => {
           ...prev,
           [key]: { ...prev[key], progress: 'Saving offline...' }
         }));
-        await saveBookOffline({
-          id: insertedBook.id,
-          title: insertedBook.title,
-          author: insertedBook.author,
-          file_url: insertedBook.file_url,
-          file_type: insertedBook.file_type,
-          cover_url: insertedBook.cover_url,
-          last_page_read: 0
-        });
+        // Since local-supabase automatically registers books offline on insertion,
+        // we just give a small delay for a smooth UI transition.
+        await new Promise(resolve => setTimeout(resolve, 800));
       }
 
       toast({
@@ -842,13 +836,13 @@ const MangaBrowser = () => {
         .from("books")
         .insert({
           user_id: user.id,
-          title: `${currentSeries.title} - ${currentChapter.title}`,
+          title: `${currentSeries.title} - ${currentChapter.title}${shouldDownloadOffline ? ' [Offline]' : ''}`,
           author: source.toUpperCase(),
           series: currentSeries.title,
           file_url: fileUrl,
           file_type: "cbz",
           file_size: cbzBlob.size,
-          cover_url: currentSeries.cover || null,
+          cover_url: currentSeries.cover ? `/api-image-proxy?url=${encodeURIComponent(currentSeries.cover)}` : null,
           last_page_read: 0,
           reading_progress: 0,
           is_completed: false
@@ -860,14 +854,12 @@ const MangaBrowser = () => {
 
       // 5. If download is requested, download it offline to IndexedDB
       if (shouldDownloadOffline && insertedBook) {
-        await saveBookOffline({
-          id: insertedBook.id,
-          title: insertedBook.title,
-          author: insertedBook.author,
-          file_url: insertedBook.file_url,
-          file_type: insertedBook.file_type,
-          cover_url: insertedBook.cover_url,
-          last_page_read: 0
+        // Since local-supabase automatically registers books offline on insertion,
+        // we just give a small delay for a smooth UI transition.
+        await new Promise(resolve => setTimeout(resolve, 800));
+        toast({
+          title: "Downloaded offline",
+          description: `"${currentSeries.title} - ${currentChapter.title}" is now available offline.`,
         });
       } else {
         toast({
