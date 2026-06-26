@@ -4,8 +4,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Download, Sparkles } from "lucide-react";
+
+interface UpdatePluginType {
+  downloadAndInstall(options: { url: string }): Promise<{ success: boolean }>;
+}
+const UpdatePlugin = registerPlugin<UpdatePluginType>("UpdatePlugin");
+
 import {
   Dialog,
   DialogContent,
@@ -73,6 +79,7 @@ const AppContent = () => {
   const { isUpdateAvailable, updateServiceWorker } = useServiceWorker();
   const [nativeUpdateAvailable, setNativeUpdateAvailable] = useState(false);
   const [latestReleaseInfo, setLatestReleaseInfo] = useState<{ tag: string; body: string } | null>(null);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
   useEffect(() => {
     applyTheme();
@@ -85,7 +92,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.20"; // Hardcoded current native app version
+          const currentTag = "v1.0.21"; // Hardcoded current native app version
           
           if (latestTag && latestTag !== currentTag) {
             setLatestReleaseInfo({
@@ -150,14 +157,27 @@ const AppContent = () => {
                 Later
               </Button>
               <Button 
-                onClick={() => {
-                  window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_system");
-                  setNativeUpdateAvailable(false);
+                disabled={isInstallingUpdate}
+                onClick={async () => {
+                  setIsInstallingUpdate(true);
+                  try {
+                    await UpdatePlugin.downloadAndInstall({
+                      url: "https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk"
+                    });
+                    setNativeUpdateAvailable(false);
+                  } catch (err: any) {
+                    console.error("Installation failed:", err);
+                    alert("Failed to start automatic update installation. Falling back to browser download...");
+                    window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_system");
+                    setNativeUpdateAvailable(false);
+                  } finally {
+                    setIsInstallingUpdate(false);
+                  }
                 }}
                 className="bg-violet-600 hover:bg-violet-700 text-white font-semibold flex items-center gap-1.5 shadow-lg shadow-violet-500/20 text-xs"
               >
                 <Download className="w-3.5 h-3.5" />
-                Update
+                {isInstallingUpdate ? "Downloading..." : "Update"}
               </Button>
             </DialogFooter>
           </DialogContent>
