@@ -79,13 +79,21 @@ const Reader = () => {
   const [siblingBooks, setSiblingBooks] = useState<Book[]>([]);
 
   const getChapterNumber = (title: string): number => {
-    const match = title.match(/(?:ch|chapter)\s*([0-9.]+)/i);
+    const match = title.match(/(?:ch|chapter)\.?[^\d]*([0-9.]+)/i);
     if (match && match[1]) {
-      return parseFloat(match[1]);
+      const val = parseFloat(match[1]);
+      if (!isNaN(val)) return val;
     }
-    const anyNum = title.match(/([0-9.]+)/);
+    const cleanTitle = title.replace(/(?:vol|volume)\.?[^\d]*[0-9.]+/i, "");
+    const anyNum = cleanTitle.match(/([0-9.]+)/);
     if (anyNum && anyNum[1]) {
-      return parseFloat(anyNum[1]);
+      const val = parseFloat(anyNum[1]);
+      if (!isNaN(val)) return val;
+    }
+    const fallbackNum = title.match(/([0-9.]+)/);
+    if (fallbackNum && fallbackNum[1]) {
+      const val = parseFloat(fallbackNum[1]);
+      if (!isNaN(val)) return val;
     }
     return 0;
   };
