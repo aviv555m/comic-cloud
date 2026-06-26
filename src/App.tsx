@@ -3,7 +3,18 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Download, Sparkles } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import Library from "./pages/Library";
 import Auth from "./pages/Auth";
 import Reader from "./pages/Reader";
@@ -60,9 +71,35 @@ const applyTheme = () => {
 
 const AppContent = () => {
   const { isUpdateAvailable, updateServiceWorker } = useServiceWorker();
+  const [nativeUpdateAvailable, setNativeUpdateAvailable] = useState(false);
+  const [latestReleaseInfo, setLatestReleaseInfo] = useState<{ tag: string; body: string } | null>(null);
 
   useEffect(() => {
     applyTheme();
+
+    // Check for native app updates once upon app opening
+    if (Capacitor.isNativePlatform()) {
+      const checkNativeUpdate = async () => {
+        try {
+          const res = await fetch("https://api.github.com/repos/aviv555m/comic-cloud/releases/latest");
+          if (!res.ok) return;
+          const data = await res.json();
+          const latestTag = data.tag_name;
+          const currentTag = "v1.0.19"; // Hardcoded current native app version
+          
+          if (latestTag && latestTag !== currentTag) {
+            setLatestReleaseInfo({
+              tag: latestTag,
+              body: data.body || ""
+            });
+            setNativeUpdateAvailable(true);
+          }
+        } catch (e) {
+          console.warn("Failed to check for native updates:", e);
+        }
+      };
+      checkNativeUpdate();
+    }
   }, []);
 
   return (
@@ -82,6 +119,49 @@ const AppContent = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {nativeUpdateAvailable && latestReleaseInfo && (
+        <Dialog open={nativeUpdateAvailable} onOpenChange={setNativeUpdateAvailable}>
+          <DialogContent className="max-w-[90vw] sm:max-w-md bg-card/95 backdrop-blur-md border-violet-500/20 text-card-foreground">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl font-bold">
+                <Sparkles className="w-5 h-5 text-violet-400 animate-pulse" />
+                <span>New Update Available!</span>
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground text-sm mt-1">
+                A new version <span className="text-violet-400 font-semibold">{latestReleaseInfo.tag}</span> is ready for download. Update now to get the latest features and fixes!
+              </DialogDescription>
+            </DialogHeader>
+            {latestReleaseInfo.body && (
+              <div className="my-3 p-3 rounded-lg bg-muted/50 max-h-40 overflow-y-auto text-xs space-y-1 font-mono border border-border/50">
+                <p className="font-semibold text-violet-300 mb-1 text-[10px] uppercase tracking-wider">Release Notes:</p>
+                <div className="whitespace-pre-line text-muted-foreground">
+                  {latestReleaseInfo.body}
+                </div>
+              </div>
+            )}
+            <DialogFooter className="flex sm:justify-end gap-2 mt-4">
+              <Button 
+                variant="ghost" 
+                onClick={() => setNativeUpdateAvailable(false)}
+                className="text-xs"
+              >
+                Later
+              </Button>
+              <Button 
+                onClick={() => {
+                  window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_system");
+                  setNativeUpdateAvailable(false);
+                }}
+                className="bg-violet-600 hover:bg-violet-700 text-white font-semibold flex items-center gap-1.5 shadow-lg shadow-violet-500/20 text-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Update
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       <BrowserRouter>
         <OfflineAlertOverlay />

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv } from "lucide-react";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv, Download } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -194,7 +195,19 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
           </nav>
 
           {/* Sign out / Sign in */}
-          <div className="p-2 border-t">
+          <div className="p-2 border-t flex flex-col gap-1">
+            {!Capacitor.isNativePlatform() && (
+              <button
+                onClick={() => {
+                  window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_blank");
+                  setOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-violet-400 hover:bg-violet-500/10 transition-colors"
+              >
+                <Download className="w-4 h-4 shrink-0 text-violet-400" />
+                <span className="text-sm font-medium">Download Android App</span>
+              </button>
+            )}
             {isGuest ? (
               <button
                 onClick={() => handleNavigation("/auth")}

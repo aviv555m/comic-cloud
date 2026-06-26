@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv, Sparkles } from "lucide-react";
+import { BookOpen, LogOut, MessageSquare, BarChart3, Settings, Home, Crown, List, Trophy, Tv, Sparkles, Download } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import { Logo } from "./Logo";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -104,6 +105,17 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
 
             {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-1">
+              {!Capacitor.isNativePlatform() && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_blank")}
+                  className="gap-1.5 px-2.5 mr-1 border-violet-500/30 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download App</span>
+                </Button>
+              )}
               {isGuest ? (
                 <>
                   <Button
