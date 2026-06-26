@@ -301,7 +301,7 @@ const getSourceUrl = (source: Source, seriesUrl: string): string => {
 const MangaBrowser = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { saveBookOffline, offlineBooks } = useOfflineBooks();
+  const { saveBookOffline, offlineBooks, getOfflineFile } = useOfflineBooks();
   const [source, setSource] = useState<Source>("mangadex");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -309,6 +309,14 @@ const MangaBrowser = () => {
   const [currentSeries, setCurrentSeries] = useState<SearchResult | null>(null);
   const [currentChapter, setCurrentChapter] = useState<ChapterRef | null>(null);
   const [pages, setPages] = useState<string[]>([]);
+  const [localPageUrls, setLocalPageUrls] = useState<string[]>([]);
+
+  // Revoke object URLs to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      localPageUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [localPageUrls]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -755,14 +763,74 @@ const MangaBrowser = () => {
   };
 
   const openChapter = async (chapter: ChapterRef) => {
-    if (chapter.url.startsWith("offline:")) {
-      const bookId = chapter.url.split("offline:")[1];
-      navigate(`/reader/${bookId}`);
-      return;
-    }
+    // Revoke previous object URLs
+    localPageUrls.forEach(url => URL.revokeObjectURL(url));
+    setLocalPageUrls([]);
+
     setLoading(true);
     setCurrentChapter(chapter);
     setPages([]);
+
+    // Check if there is an offline book associated with this chapter
+    let bookId: string | null = null;
+    if (chapter.url.startsWith("offline:")) {
+      bookId = chapter.url.split("offline:")[1];
+    } else {
+      const matchedOfflineBook = offlineBooks.find(b => {
+        const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
+        const expectedTitle = `${currentSeries?.title || ""} - ${chapter.title}`.trim().toLowerCase();
+        return cleanBookTitle === expectedTitle;
+      });
+      if (matchedOfflineBook) {
+        bookId = matchedOfflineBook.id;
+      }
+    }
+
+    if (bookId) {
+      try {
+        const cbzBlob = await getOfflineFile(bookId);
+        if (!cbzBlob) {
+          throw new Error("Offline chapter file not found.");
+        }
+        
+        // Unzip pages using JSZip
+        const zip = await JSZip.loadAsync(cbzBlob);
+        const fileNames = Object.keys(zip.files)
+          .filter(name => !zip.files[name].dir && /\.(jpe?g|png|webp)$/i.test(name))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+          
+        const pageUrls: string[] = [];
+        for (const name of fileNames) {
+          const file = zip.files[name];
+          const fileBlob = await file.async("blob");
+          const url = URL.createObjectURL(fileBlob);
+          pageUrls.push(url);
+        }
+        
+        if (pageUrls.length === 0) {
+          throw new Error("No images found in offline chapter file.");
+        }
+        
+        setPages(pageUrls);
+        setLocalPageUrls(pageUrls);
+        window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+        setLoading(false);
+        return;
+      } catch (err: any) {
+        console.error("Failed to load offline chapter, falling back to online:", err);
+        if (chapter.url.startsWith("offline:")) {
+          toast({
+            variant: "destructive",
+            title: "Failed to open offline chapter",
+            description: err.message || "An error occurred.",
+          });
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
+    // Otherwise load online
     try {
       let imgs: string[] = [];
       if (source === "comix") {
