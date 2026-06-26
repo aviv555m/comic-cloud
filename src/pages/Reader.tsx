@@ -27,6 +27,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+import { openLocalDB } from "@/lib/local-supabase";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
@@ -45,6 +46,7 @@ interface Book {
   last_page_read: number;
   total_pages: number | null;
   user_id: string;
+  series?: string | null;
 }
 
 const Reader = () => {
@@ -74,6 +76,96 @@ const Reader = () => {
   const [isReadingOffline, setIsReadingOffline] = useState(false);
   const [checkingOffline, setCheckingOffline] = useState(true);
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
+  const [siblingBooks, setSiblingBooks] = useState<Book[]>([]);
+
+  const getChapterNumber = (title: string): number => {
+    const match = title.match(/(?:ch|chapter)\s*([0-9.]+)/i);
+    if (match && match[1]) {
+      return parseFloat(match[1]);
+    }
+    const anyNum = title.match(/([0-9.]+)/);
+    if (anyNum && anyNum[1]) {
+      return parseFloat(anyNum[1]);
+    }
+    return 0;
+  };
+
+  const fetchSiblingBooks = async (seriesName: string, userId: string) => {
+    try {
+      let booksList: any[] = [];
+      
+      // 1. Try querying Supabase (proxies locally if offline)
+      try {
+        const { data, error } = await supabase
+          .from("books")
+          .select("*")
+          .eq("series", seriesName)
+          .eq("file_type", "cbz");
+          
+        if (!error && data && data.length > 0) {
+          booksList = data;
+        }
+      } catch (e) {
+        console.warn("Supabase sibling query failed, will try IndexedDB:", e);
+      }
+      
+      // 2. Also fetch from IndexedDB offline-books store to ensure offline downloads are listed
+      try {
+        const db = await openLocalDB();
+        const transaction = db.transaction("offline-books", "readonly");
+        const store = transaction.objectStore("offline-books");
+        const request = store.getAll();
+        
+        const idbBooks = await new Promise<any[]>((resolve) => {
+          request.onsuccess = () => {
+            const list = request.result || [];
+            const cleanSeries = seriesName.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+            const matched = list.filter((b: any) => {
+              if (b.file_type !== "cbz") return false;
+              const cleanBookSeries = b.series ? b.series.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+              const cleanBookTitle = b.title ? b.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+              return cleanBookSeries === cleanSeries || cleanBookTitle.includes(cleanSeries);
+            });
+            resolve(matched);
+          };
+          request.onerror = () => resolve([]);
+        });
+        
+        const existingIds = new Set(booksList.map(b => b.id));
+        for (const idbBook of idbBooks) {
+          if (!existingIds.has(idbBook.id)) {
+            booksList.push({
+              id: idbBook.id,
+              title: idbBook.title,
+              author: idbBook.author,
+              series: idbBook.series,
+              file_url: idbBook.file_url || "",
+              file_type: idbBook.file_type,
+              last_page_read: idbBook.last_page_read || 0,
+              total_pages: null,
+              user_id: userId || "",
+            });
+          }
+        }
+      } catch (idbErr) {
+        console.warn("IndexedDB sibling query failed:", idbErr);
+      }
+      
+      // Sort chronologically using getChapterNumber
+      const sorted = [...booksList].sort((a, b) => {
+        const numA = getChapterNumber(a.title);
+        const numB = getChapterNumber(b.title);
+        if (numA !== numB) {
+          return numA - numB;
+        }
+        return a.title.localeCompare(b.title, undefined, { numeric: true });
+      });
+      
+      setSiblingBooks(sorted);
+    } catch (err) {
+      console.error("fetchSiblingBooks failed:", err);
+    }
+  };
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
   const startPageRef = useRef<number>(1);
@@ -300,6 +392,9 @@ const Reader = () => {
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
                 setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
+                if (data.series) {
+                  fetchSiblingBooks(data.series, data.user_id);
+                }
               } else {
                 // Try reading from offline books store
                 const offlineMeta = await getOfflineBookAsync(bookId);
@@ -322,6 +417,9 @@ const Reader = () => {
                     user_id: "",
                   } as any);
                   setCurrentPage(offlineMeta.last_page_read || 1);
+                  if (offlineMeta.series) {
+                    fetchSiblingBooks(offlineMeta.series, "");
+                  }
                 }
               }
             } catch {
@@ -346,6 +444,9 @@ const Reader = () => {
                   user_id: "",
                 } as any);
                 setCurrentPage(offlineMeta.last_page_read || 1);
+                if (offlineMeta.series) {
+                  fetchSiblingBooks(offlineMeta.series, "");
+                }
               }
             }
             
@@ -385,6 +486,9 @@ const Reader = () => {
       setCurrentPage(data.last_page_read || 1);
       setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
       setIsReadingOffline(false); // Explicitly set to false for online reads
+      if (data.series) {
+        fetchSiblingBooks(data.series, data.user_id);
+      }
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
       let fileUrl = data.file_url;
@@ -667,6 +771,10 @@ const Reader = () => {
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
 
+  const currentBookIndex = siblingBooks.findIndex(b => b.id === book.id);
+  const prevBook = currentBookIndex > 0 ? siblingBooks[currentBookIndex - 1] : null;
+  const nextBook = currentBookIndex >= 0 && currentBookIndex < siblingBooks.length - 1 ? siblingBooks[currentBookIndex + 1] : null;
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -923,6 +1031,8 @@ const Reader = () => {
             showControls={showControls}
             onToggleControls={() => setShowControls(prev => !prev)}
             chapterTitle={book?.title}
+            onPrevChapter={prevBook ? () => navigate(`/reader/${prevBook.id}`) : undefined}
+            onNextChapter={nextBook ? () => navigate(`/reader/${nextBook.id}`) : undefined}
           />
         )}
 

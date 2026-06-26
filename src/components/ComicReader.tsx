@@ -12,6 +12,8 @@ interface ComicReaderProps {
   showControls?: boolean;
   onToggleControls?: () => void;
   chapterTitle?: string;
+  onPrevChapter?: () => void;
+  onNextChapter?: () => void;
 }
 
 interface ImageFile {
@@ -26,7 +28,9 @@ export const ComicReader = ({
   initialPage = 0,
   showControls = true,
   onToggleControls,
-  chapterTitle
+  chapterTitle,
+  onPrevChapter,
+  onNextChapter
 }: ComicReaderProps) => {
   const [images, setImages] = useState<ImageFile[]>([]);
   const [currentPage, setCurrentPage] = useState(initialPage);
@@ -231,7 +235,7 @@ export const ComicReader = ({
 
         {/* Seamless Webtoon Continuous list */}
         <div 
-          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto"
+          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto animate-fade-in"
           onClick={(e) => {
             e.stopPropagation();
             onToggleControls?.();
@@ -252,6 +256,35 @@ export const ComicReader = ({
               />
             </div>
           ))}
+
+          {/* Sibling Chapter Buttons at the end of the scrolling list */}
+          {(onPrevChapter || onNextChapter) && (
+            <div className="flex justify-center gap-4 py-8 px-4 border-t mt-4">
+              {onPrevChapter && (
+                <Button 
+                  variant="outline" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPrevChapter();
+                  }}
+                  className="flex items-center gap-1 border-violet-500/20 text-violet-400 hover:bg-violet-500/10"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Previous Chapter
+                </Button>
+              )}
+              {onNextChapter && (
+                <Button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNextChapter();
+                  }}
+                  className="flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  Next Chapter <ChevronRight className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Floating progress overlay for Comic Reader */}
@@ -320,6 +353,18 @@ export const ComicReader = ({
         </div>
       </div>
 
+      {currentPage === images.length - 1 && onNextChapter && (
+        <div className="w-[90%] sm:w-full max-w-4xl bg-violet-950/20 border border-violet-500/20 backdrop-blur-sm rounded-xl p-6 text-center flex flex-col items-center gap-3 animate-in fade-in zoom-in-95 duration-300 mt-2 mx-auto">
+          <p className="text-sm text-violet-300 font-medium">You have completed this chapter!</p>
+          <Button 
+            onClick={onNextChapter}
+            className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5 shadow-lg shadow-violet-500/20"
+          >
+            Read Next Chapter <ChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+
       {/* Floating progress overlay at the bottom in Page Mode */}
       <div className={`flex flex-col items-center gap-3 transition-all duration-300 ${
         showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
@@ -372,6 +417,32 @@ export const ComicReader = ({
             }}
             fileType="cbz"
           />
+        )}
+
+        {/* Sibling Chapter Buttons in Page Mode */}
+        {(onPrevChapter || onNextChapter) && (
+          <div className="flex items-center gap-4 mt-2">
+            {onPrevChapter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onPrevChapter}
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Previous Chapter
+              </Button>
+            )}
+            {onNextChapter && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onNextChapter}
+                className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
+              >
+                Next Chapter <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

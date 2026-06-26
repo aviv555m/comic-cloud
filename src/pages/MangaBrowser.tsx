@@ -891,7 +891,15 @@ const MangaBrowser = () => {
       } else if (activeSource === "manganato") {
         list = await manganatoChapters(series.url);
       }
-      setChapters(list);
+      const sortedList = [...list].sort((a, b) => {
+        const numA = getChapterNumber(a.title);
+        const numB = getChapterNumber(b.title);
+        if (numA !== numB) {
+          return numA - numB;
+        }
+        return a.title.localeCompare(b.title, undefined, { numeric: true });
+      });
+      setChapters(sortedList);
 
       // Attempt to search and match on AniList
       if (aniListToken && series.title) {
@@ -940,7 +948,15 @@ const MangaBrowser = () => {
         });
 
         if (offlineChapters.length > 0) {
-          setChapters(offlineChapters);
+          const sortedOfflineChapters = [...offlineChapters].sort((a, b) => {
+            const numA = getChapterNumber(a.title);
+            const numB = getChapterNumber(b.title);
+            if (numA !== numB) {
+              return numA - numB;
+            }
+            return a.title.localeCompare(b.title, undefined, { numeric: true });
+          });
+          setChapters(sortedOfflineChapters);
           toast({
             title: "Loaded offline chapters",
             description: `Showing ${offlineChapters.length} downloaded chapters.`,
