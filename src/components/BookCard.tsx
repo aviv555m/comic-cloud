@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Globe, Lock, CheckCircle2, CloudOff } from "lucide-react";
+import { BookOpen, Globe, Lock, CheckCircle2, CloudOff, DownloadCloud, Trash2, Loader2, MoreVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Capacitor } from "@capacitor/core";
@@ -31,20 +33,43 @@ export const BookCard = ({
   author,
   series,
   coverUrl,
+  fileUrl,
   fileType,
   isPublic,
   isCompleted = false,
   readingProgress = 0,
+  lastPageRead = 0,
   onClick,
   onLongPress,
 }: BookCardProps) => {
-  const { isBookOffline } = useOfflineBooks();
+  const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
   const isOffline = isBookOffline(id);
+  const isDownloading = isBookDownloading(id);
   const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
   const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressActiveRef = useRef(false);
   const startCoordsRef = useRef({ x: 0, y: 0 });
   const wasDraggedRef = useRef(false);
+
+  const handleOfflineAction = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!fileUrl) return;
+
+    if (isOffline) {
+      await removeBookOffline(id);
+    } else {
+      await saveBookOffline({
+        id,
+        title,
+        author: author || null,
+        file_url: fileUrl,
+        file_type: fileType,
+        cover_url: coverUrl || null,
+        last_page_read: lastPageRead || 0,
+        series: series || null,
+      });
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -221,8 +246,43 @@ export const BookCard = ({
             </div>
           )}
 
+          {/* Options Menu */}
+          {fileUrl && (
+            <div 
+              className="absolute top-2 left-2 z-10" 
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseUp={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
+            >
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 border-0">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                  {isOffline ? (
+                    <DropdownMenuItem onClick={handleOfflineAction} className="text-red-500">
+                      <Trash2 className="w-4 h-4 mr-2" /> Remove Download
+                    </DropdownMenuItem>
+                  ) : isDownloading ? (
+                    <DropdownMenuItem disabled>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading...
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={handleOfflineAction}>
+                      <DownloadCloud className="w-4 h-4 mr-2" /> Download Offline
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
+
           {/* Status badges */}
-          <div className="absolute top-2 right-2 flex flex-col gap-1">
+          <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">
             {isOffline && (
               <Badge variant="secondary" className="bg-green-500/90 text-white border-0 text-xs">
                 <CloudOff className="w-3 h-3" />
