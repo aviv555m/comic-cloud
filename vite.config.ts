@@ -93,12 +93,16 @@ export default defineConfig(({ mode }) => ({
             return;
           }
 
+          const allowedOrigins = ["https://cc.displayname.top", "http://localhost:8081", "capacitor://localhost", "http://localhost"];
+          const reqOrigin = req.headers.origin as string;
+          const allowedOrigin = reqOrigin && allowedOrigins.includes(reqOrigin) ? reqOrigin : "https://cc.displayname.top";
+
           // Handle CORS preflight for upload API
           if (req.url && req.url.startsWith("/api/upload") && req.method === "OPTIONS") {
             res.statusCode = 204;
-            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
             res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-            res.setHeader("Access-Control-Allow-Headers", "*");
+            res.setHeader("Access-Control-Allow-Headers", "x-file-path, content-type, authorization");
             res.end();
             return;
           }
@@ -115,6 +119,13 @@ export default defineConfig(({ mode }) => ({
             const cleanFilePath = decodeURIComponent(filePathHeader);
             const uploadDir = path.resolve(__dirname, "./public/uploads");
             const distDir = path.resolve(__dirname, "./dist/uploads");
+            
+            const destPathCheck = path.join(uploadDir, cleanFilePath);
+            if (!destPathCheck.startsWith(uploadDir)) {
+              res.statusCode = 403;
+              res.end("Forbidden: invalid file path");
+              return;
+            }
             
             const fs = require("fs");
             
@@ -136,7 +147,19 @@ export default defineConfig(({ mode }) => ({
             const writeStreamPublic = fs.createWriteStream(publicDest);
             const writeStreamDist = fs.createWriteStream(distDest);
 
+            let bytesWritten = 0;
+            const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB
+
             req.on("data", (chunk) => {
+              bytesWritten += chunk.length;
+              if (bytesWritten > MAX_FILE_SIZE) {
+                req.destroy();
+                res.statusCode = 413;
+                res.end("File too large");
+                fs.unlink(publicDest, () => {});
+                fs.unlink(distDest, () => {});
+                return;
+              }
               writeStreamPublic.write(chunk);
               writeStreamDist.write(chunk);
             });
@@ -146,8 +169,8 @@ export default defineConfig(({ mode }) => ({
               writeStreamDist.end();
               res.statusCode = 200;
               res.setHeader("Content-Type", "application/json");
-              res.setHeader("Access-Control-Allow-Origin", "*");
-              res.setHeader("Access-Control-Allow-Headers", "*");
+              res.setHeader("Access-Control-Allow-Origin", allowedOrigin);
+              res.setHeader("Access-Control-Allow-Headers", "x-file-path, content-type, authorization");
               res.end(JSON.stringify({ url: `/uploads/${cleanFilePath}` }));
             });
 

@@ -38,13 +38,13 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.94";
+const CURRENT_VERSION = "v1.0.95";
 if (typeof window !== 'undefined') {
   try {
-    const lastVersion = localStorage.getItem("app_version");
+    const lastVersion = safeLocalStorage.getItem("app_version");
     if (lastVersion !== CURRENT_VERSION) {
-      localStorage.setItem("app_version", CURRENT_VERSION);
-      localStorage.setItem("app_outdated", "false");
+      safeLocalStorage.setItem("app_version", CURRENT_VERSION);
+      safeLocalStorage.setItem("app_outdated", "false");
     }
   } catch (e) {
     console.warn("Failed to reset outdated flag on upgrade:", e);
@@ -418,7 +418,21 @@ async function handleBookInsertionOffline(book: any) {
 }
 
 // Clone function to pull remote Supabase data locally
+let cloneInProgress = false;
 export async function cloneRemoteData(userId: string) {
+  if (cloneInProgress) {
+    console.log('[Clone] Clone already in progress, skipping.');
+    return;
+  }
+  cloneInProgress = true;
+  try {
+    await _cloneRemoteData(userId);
+  } finally {
+    cloneInProgress = false;
+  }
+}
+
+async function _cloneRemoteData(userId: string) {
   const BACKUP_TABLES = [
     "profiles",
     "books",
@@ -525,7 +539,7 @@ interface SyncItem {
 // Read pending offline sync items
 function getSyncQueue(): SyncItem[] {
   try {
-    const q = localStorage.getItem("local_db_sync_queue");
+    const q = safeLocalStorage.getItem("local_db_sync_queue");
     return q ? JSON.parse(q) : [];
   } catch (e) {
     return [];
@@ -535,7 +549,7 @@ function getSyncQueue(): SyncItem[] {
 // Save offline sync queue
 function setSyncQueue(queue: SyncItem[]) {
   try {
-    localStorage.setItem("local_db_sync_queue", JSON.stringify(queue));
+    safeLocalStorage.setItem("local_db_sync_queue", JSON.stringify(queue));
   } catch (e) {}
 }
 
@@ -561,13 +575,21 @@ export async function processSyncQueue() {
   if (isSyncing) return;
   if (!navigator.onLine) return;
 
+  isSyncing = true;
+  try {
+    await _processSyncQueue();
+  } finally {
+    isSyncing = false;
+  }
+}
+
+async function _processSyncQueue() {
   const { data: { session } } = await originalSupabase.auth.getSession();
   if (!session?.user) return; // Must be authenticated to sync
 
   const queue = getSyncQueue();
   if (queue.length === 0) return;
 
-  isSyncing = true;
   console.log(`[Sync] Processing ${queue.length} offline changes...`);
 
   const remainingQueue: SyncItem[] = [];
@@ -599,7 +621,6 @@ export async function processSyncQueue() {
   }
 
   setSyncQueue(remainingQueue);
-  isSyncing = false;
 }
 
 // Add window online listener to auto-sync when network reconnects
@@ -665,7 +686,8 @@ class MockQueryBuilder {
   }
 
   ilike(field: string, pattern: string) {
-    const cleanPattern = pattern.replace(/%/g, '.*');
+    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cleanPattern = escaped.replace(/%/g, '.*');
     const regex = new RegExp(`^${cleanPattern}$`, 'i');
     this.filters.push(row => {
       const val = row[field];
@@ -1325,7 +1347,7 @@ export const supabase = new Proxy({
   }
 }, {
   get: (target, prop) => {
-    if (typeof window !== 'undefined' && localStorage.getItem("app_outdated") === "true") {
+    if (typeof window !== 'undefined' && safeLocalStorage.getItem("app_outdated") === "true") {
       if (prop === 'from') {
         return (table: string) => ({
           select: () => Promise.resolve({ data: [], error: { message: "Outdated version" } }),

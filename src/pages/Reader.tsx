@@ -75,6 +75,14 @@ const Reader = () => {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (signedUrl && signedUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(signedUrl);
+      }
+    };
+  }, [signedUrl]);
+
+  useEffect(() => {
     if (book?.file_type === 'pdf') {
       setShowOverlayPage(true);
       if (pageNumTimerRef.current) {
@@ -369,7 +377,7 @@ const Reader = () => {
       const text = selection?.toString().trim();
       
       if (text && text.length > 0 && book?.file_type === 'pdf') {
-        const range = selection?.getRangeAt(0);
+        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
         const rect = range?.getBoundingClientRect();
         
         if (rect) {
@@ -557,7 +565,7 @@ const Reader = () => {
       if (error) throw error;
       
       if (data.file_type === "manga") {
-        navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${data.author.toLowerCase()}&title=${encodeURIComponent(data.title)}`);
+        navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}`);
         return;
       }
       

@@ -47,6 +47,12 @@ export const BookCard = ({
   const wasDraggedRef = useRef(false);
 
   useEffect(() => {
+    return () => {
+      if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!coverUrl) {
       setResolvedCover(undefined);
       return;
@@ -107,7 +113,7 @@ export const BookCard = ({
           } catch (err) {}
         }
       }
-    }, 600); // 600ms hold
+    }, 400); // 400ms hold
   };
 
   const handlePressEnd = (e: React.TouchEvent | React.MouseEvent) => {
@@ -172,7 +178,21 @@ export const BookCard = ({
       onTouchStart={handlePressStart}
       onTouchEnd={handlePressEnd}
       onTouchMove={handleTouchMove}
-      onContextMenu={(e) => e.preventDefault()}
+      onTouchCancel={handlePressCancel}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        if (touchTimeoutRef.current) {
+          clearTimeout(touchTimeoutRef.current);
+          touchTimeoutRef.current = null;
+        }
+        if (onLongPress) {
+          onLongPress();
+          longPressActiveRef.current = true;
+          if (navigator.vibrate) {
+            try { navigator.vibrate(40); } catch(err) {}
+          }
+        }
+      }}
     >
       <CardContent className="p-0">
         <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
