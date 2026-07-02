@@ -590,8 +590,9 @@ const Reader = () => {
       if (currentlyOnline && fileUrl && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
         try {
           const testRes = await fetch(fileUrl, { method: 'HEAD' });
-          if (testRes.status === 404) {
-            console.log("[Reader] File not found on server (404). Checking local offline cache for upload...");
+          const contentType = testRes.headers.get('content-type') || '';
+          if (testRes.status === 404 || contentType.includes('text/html')) {
+            console.log("[Reader] File not found on server (404 or HTML fallback). Checking local offline cache for upload...");
             const fileBlob = await getOfflineFile(data.id);
             if (fileBlob) {
               console.log("[Reader] Found local file blob. Syncing to server disk...");
@@ -604,7 +605,11 @@ const Reader = () => {
                 body: fileBlob
               });
               if (uploadRes.ok) {
-                console.log("[Reader] Self-healing file upload succeeded.");
+                console.log("[Reader] Self-healing file upload succeeded. Retrying loader...");
+                const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + 'healed=' + Date.now();
+                setSignedUrl(fileUrl + cacheBuster);
+                setLoading(false);
+                return;
               }
             }
           }
