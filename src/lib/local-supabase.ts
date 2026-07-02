@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.88";
+const CURRENT_VERSION = "v1.0.89";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -635,6 +635,15 @@ class MockQueryBuilder {
 
   neq(field: string, value: any) {
     this.filters.push(row => row[field] !== value);
+    return this;
+  }
+
+  not(field: string, operator: string, value: any) {
+    if (operator === 'is' && value === null) {
+      this.filters.push(row => row[field] !== null && row[field] !== undefined);
+    } else {
+      this.filters.push(row => row[field] !== value);
+    }
     return this;
   }
 
