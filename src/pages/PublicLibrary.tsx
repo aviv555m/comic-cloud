@@ -243,6 +243,7 @@ const PublicLibrary = () => {
                 author={book.author || undefined}
                 series={book.series || undefined}
                 coverUrl={book.cover_url || undefined}
+                fileUrl={book.file_url}
                 fileType={book.file_type}
                 isPublic={book.is_public}
                 onClick={() => navigate(`/reader/${book.id}`)}

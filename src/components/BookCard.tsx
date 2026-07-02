@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface BookCardProps {
   id: string;
@@ -43,6 +44,7 @@ export const BookCard = ({
   onLongPress,
 }: BookCardProps) => {
   const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
+  const { toast } = useToast();
   const isOffline = isBookOffline(id);
   const isDownloading = isBookDownloading(id);
   const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
@@ -53,7 +55,14 @@ export const BookCard = ({
 
   const handleOfflineAction = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!fileUrl) return;
+    if (!fileUrl && !isOffline) {
+      toast({
+        title: "Cannot Download",
+        description: "This book doesn't have an offline file available.",
+        variant: "destructive"
+      });
+      return;
+    }
 
     if (isOffline) {
       await removeBookOffline(id);
@@ -246,10 +255,9 @@ export const BookCard = ({
             </div>
           )}
 
-          {/* Options Menu */}
-          {fileUrl && (
+          {/* Status badges and Options Menu */}
+          <div className="absolute top-2 right-2 flex flex-col gap-1 z-10 items-end">
             <div 
-              className="absolute top-2 left-2 z-10" 
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               onMouseUp={(e) => e.stopPropagation()}
@@ -262,7 +270,7 @@ export const BookCard = ({
                     <MoreVertical className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                   {isOffline ? (
                     <DropdownMenuItem onClick={handleOfflineAction} className="text-red-500">
                       <Trash2 className="w-4 h-4 mr-2" /> Remove Download
@@ -279,10 +287,8 @@ export const BookCard = ({
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-          )}
 
-          {/* Status badges */}
-          <div className="absolute top-2 right-2 flex flex-col gap-1 z-10">
+
             {isOffline && (
               <Badge variant="secondary" className="bg-green-500/90 text-white border-0 text-xs">
                 <CloudOff className="w-3 h-3" />
