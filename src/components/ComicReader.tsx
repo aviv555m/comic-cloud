@@ -36,7 +36,25 @@ export const ComicReader = ({
   const [currentPage, setCurrentPage] = useState(initialPage);
   const [loading, setLoading] = useState(true);
   const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [showOverlayPage, setShowOverlayPage] = useState(false);
+  const pageNumTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setShowOverlayPage(true);
+    if (pageNumTimerRef.current) {
+      clearTimeout(pageNumTimerRef.current);
+    }
+    pageNumTimerRef.current = setTimeout(() => {
+      setShowOverlayPage(false);
+    }, 2000);
+    return () => {
+      if (pageNumTimerRef.current) {
+        clearTimeout(pageNumTimerRef.current);
+      }
+    };
+  }, [currentPage]);
 
   useEffect(() => {
     loadComicArchive();
@@ -313,6 +331,12 @@ export const ComicReader = ({
 
   return (
     <div className="flex flex-col items-center gap-4 w-full">
+      {/* Floating Temporary Page Number Overlay */}
+      {showOverlayPage && images.length > 0 && (
+        <div className="fixed bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-50 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
+          Page {currentPage + 1} of {images.length}
+        </div>
+      )}
       {/* Immersive Image Container with Navigation Overlays */}
       <div className="relative max-w-4xl w-[90%] sm:w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40 mx-auto">
         <img

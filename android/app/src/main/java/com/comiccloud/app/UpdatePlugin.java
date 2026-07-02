@@ -40,6 +40,10 @@ public class UpdatePlugin extends Plugin {
                     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
                     connection.setInstanceFollowRedirects(true);
+                    connection.setUseCaches(false);
+                    connection.setDefaultUseCaches(false);
+                    connection.setRequestProperty("Cache-Control", "no-cache");
+                    connection.setRequestProperty("Pragma", "no-cache");
                     connection.connect();
 
                     if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
@@ -90,5 +94,37 @@ public class UpdatePlugin extends Plugin {
                 }
             }
         }).start();
+    }
+
+    @PluginMethod
+    public void startBackgroundService(PluginCall call) {
+        try {
+            Context context = getContext();
+            Intent intent = new Intent(context, BackgroundService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to start background service: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod
+    public void stopBackgroundService(PluginCall call) {
+        try {
+            Context context = getContext();
+            Intent intent = new Intent(context, BackgroundService.class);
+            context.stopService(intent);
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to stop background service: " + e.getMessage(), e);
+        }
     }
 }

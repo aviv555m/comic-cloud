@@ -15,9 +15,12 @@ import { ImportBooksDialog } from "@/components/ImportBooksDialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown, WifiOff } from "lucide-react";
+import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown, WifiOff, Search, X, FolderOpen, Sparkles } from "lucide-react";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,9 +53,47 @@ interface TagType {
   color: string;
 }
 
+const ProxiedImage = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+  
+  useEffect(() => {
+    if (!src) return;
+    if (src.startsWith("data:")) return;
+    
+    const isNative = Capacitor.isNativePlatform();
+    const isProdOrNative = isNative || !import.meta.env.DEV;
+    
+    if (isProdOrNative && src.startsWith("/api-image-proxy?url=")) {
+      const targetUrl = decodeURIComponent(src.split("/api-image-proxy?url=")[1]);
+      let active = true;
+      
+      const fetchImage = async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+            body: { url: targetUrl, responseType: "text" },
+          });
+          if (active && !error && data?.success && data.data) {
+            setResolvedSrc(`data:image/jpeg;base64,${data.data}`);
+          }
+        } catch (e) {
+          console.warn("Failed to load native image via edge proxy:", e);
+        }
+      };
+      
+      fetchImage();
+      return () => { active = false; };
+    } else {
+      setResolvedSrc(src);
+    }
+  }, [src]);
+
+  return <img src={resolvedSrc} alt={alt} className={className} />;
+};
+
 const Library = () => {
   const { isOnline } = useOfflineBooks();
   const [activeTab, setActiveTab] = useState("library");
+  const [quickFilter, setQuickFilter] = useState<"all" | "books" | "manga" | "reading" | "completed">("all");
 
   useEffect(() => {
     if (!isOnline) {
@@ -89,9 +130,12 @@ const Library = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     // Check auth state
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        currentUserId = session.user.id;
         setUser(session.user);
         fetchBooks(session.user.id);
         fetchTags(session.user.id);
@@ -104,6 +148,7 @@ const Library = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         if (session?.user) {
+          currentUserId = session.user.id;
           setUser(session.user);
           fetchBooks(session.user.id);
           fetchTags(session.user.id);
@@ -114,7 +159,19 @@ const Library = () => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.table === 'books' && currentUserId) {
+        console.log("[Sync] Books table synchronized from remote server, refreshing Library grid...");
+        fetchBooks(currentUserId);
+      }
+    };
+    window.addEventListener('local-db-synced', handleSync);
+
+    return () => {
+      subscription.unsubscribe();
+      window.removeEventListener('local-db-synced', handleSync);
+    };
   }, [navigate]);
 
   const fetchBooks = async (userId: string) => {
@@ -282,7 +339,14 @@ const Library = () => {
         !filters.minRating ||
         (bookRatings[book.id] && bookRatings[book.id] >= filters.minRating);
 
-      return matchesSearch && matchesFileType && matchesStatus && matchesTags && matchesRating;
+      const matchesQuickFilter = 
+        quickFilter === "all" ||
+        (quickFilter === "books" && !["manga", "cbz", "cbr"].includes(book.file_type.toLowerCase())) ||
+        (quickFilter === "manga" && book.file_type.toLowerCase() === "manga") ||
+        (quickFilter === "reading" && book.reading_progress > 0 && !book.is_completed) ||
+        (quickFilter === "completed" && book.is_completed);
+
+      return matchesSearch && matchesFileType && matchesStatus && matchesTags && matchesRating && matchesQuickFilter;
     })
     .sort((a, b) => {
       let comparison = 0;
@@ -305,9 +369,9 @@ const Library = () => {
       return filters.sortOrder === "asc" ? comparison : -comparison;
     });
 
-  // Group books by series
+  // Group books by series (excluding the manga series cards themselves to avoid grouping them again!)
   const groupedBySeries = filteredBooks.reduce((acc, book) => {
-    if (book.series) {
+    if (book.series && book.file_type !== 'manga') {
       if (!acc[book.series]) {
         acc[book.series] = [];
       }
@@ -316,8 +380,66 @@ const Library = () => {
     return acc;
   }, {} as Record<string, Book[]>);
 
-  // Books without a series
-  const standaloneBooks = filteredBooks.filter((book) => !book.series);
+  // Get list of distinct series (manga series cards + ebook series folders)
+  const mangaSeriesCards = filteredBooks.filter(book => book.file_type === 'manga');
+  
+  const ebookSeriesList = Object.entries(groupedBySeries).map(([name, seriesBooks]) => {
+    const sampleBook = seriesBooks.find(b => b.cover_url) || seriesBooks[0];
+    const totalChapters = seriesBooks.length;
+    const author = seriesBooks.find(b => b.author)?.author || null;
+    return {
+      name,
+      author,
+      coverUrl: sampleBook?.cover_url || null,
+      totalChapters,
+      isManga: false,
+      bookRecord: null
+    };
+  });
+  
+  // Combine into a single Collections list
+  const collectionsList = [
+    ...mangaSeriesCards.map(book => ({
+      name: book.title,
+      author: book.author || null,
+      coverUrl: book.cover_url || null,
+      totalChapters: 0, 
+      isManga: true,
+      bookRecord: book
+    })),
+    ...ebookSeriesList
+  ];
+  
+  // Standalone books (books that have no series AND are not manga series cards)
+  const standaloneBooks = filteredBooks.filter((book) => !book.series && book.file_type !== 'manga');
+
+  // Count unique items (each series counts as 1 item, and standalone books count as 1 item)
+  const uniqueItemsCount = (() => {
+    const uniqueKeys = new Set<string>();
+    let standaloneCount = 0;
+    
+    books.forEach(book => {
+      if (book.file_type === 'manga') {
+        uniqueKeys.add(`series:${book.title.trim().toLowerCase()}`);
+      } else if (book.series) {
+        uniqueKeys.add(`series:${book.series.trim().toLowerCase()}`);
+      } else if (book.file_type !== 'cbz' && book.file_type !== 'cbr') {
+        // Standalone ebook (exclude individual manga chapters that aren't mapped to a series)
+        standaloneCount++;
+      }
+    });
+    
+    return uniqueKeys.size + standaloneCount;
+  })();
+
+  const handleCollectionClick = (collection: any) => {
+    if (collection.isManga && collection.bookRecord) {
+      const book = collection.bookRecord;
+      navigate(`/manga?url=${encodeURIComponent(book.file_url)}&source=${book.author?.toLowerCase() || ""}&title=${encodeURIComponent(book.title)}`);
+    } else {
+      navigate(`/series/${encodeURIComponent(collection.name)}`);
+    }
+  };
 
   if (authLoading) {
     return (
@@ -341,7 +463,7 @@ const Library = () => {
             <div>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">My Library</h1>
               <p className="text-sm text-muted-foreground">
-                {books.length} {books.length === 1 ? "book" : "books"} in your collection
+                {uniqueItemsCount} {uniqueItemsCount === 1 ? "item" : "items"} in your collection
               </p>
             </div>
             {isOnline && user && (
@@ -399,6 +521,49 @@ const Library = () => {
             </TabsList>
 
             <TabsContent value="library">
+              {/* Quick Filters & Instant Search */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 border-b border-border/40 pb-4 mb-6">
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+                  {[
+                    { id: "all", label: "All Items" },
+                    { id: "books", label: "Ebooks" },
+                    { id: "manga", label: "Manga" },
+                    { id: "reading", label: "In Progress" },
+                    { id: "completed", label: "Completed" },
+                  ].map((pill) => (
+                    <button
+                      key={pill.id}
+                      onClick={() => setQuickFilter(pill.id as any)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all shrink-0 ${
+                        quickFilter === pill.id
+                          ? "bg-violet-600 text-white shadow-sm"
+                          : "bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {pill.label}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="relative w-full md:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Quick search..."
+                    value={filters.search}
+                    onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                    className="pl-9 pr-8 h-9 text-xs bg-muted/40 border-border/40 focus-visible:ring-violet-500 rounded-full"
+                  />
+                  {filters.search && (
+                    <button
+                      onClick={() => setFilters(prev => ({ ...prev, search: "" }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
               {/* Continue Reading Section */}
               {books.find(b => b.reading_progress > 0 && b.reading_progress < 100) && (
                 <div className="mb-6">
@@ -470,49 +635,68 @@ const Library = () => {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* Series Sections */}
-            {Object.entries(groupedBySeries).map(([seriesName, seriesBooks]) => (
-              <div key={seriesName} className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-semibold">{seriesName}</h2>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate(`/series/${encodeURIComponent(seriesName)}`)}
-                  >
-                    View All ({seriesBooks.length})
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                  {seriesBooks.slice(0, 6).map((book) => (
-                    <BookCard
-                      key={book.id}
-                      id={book.id}
-                      title={book.title}
-                      author={book.author || undefined}
-                      series={book.series || undefined}
-                      coverUrl={book.cover_url || undefined}
-                      fileUrl={book.file_url}
-                      fileType={book.file_type}
-                      isPublic={book.is_public}
-                      isCompleted={book.is_completed}
-                      readingProgress={book.reading_progress}
-                      lastPageRead={book.last_page_read || 0}
-                      canEdit={true}
-                      onClick={() => setSelectedBook(book)}
-                      onCoverGenerated={() => user && fetchBooks(user.id)}
-                    />
+            {/* Collections & Series Grid */}
+            {collectionsList.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <FolderOpen className="w-5 h-5 text-violet-500" />
+                  Series & Collections
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                  {collectionsList.map((series) => (
+                    <div 
+                      key={series.name} 
+                      className="relative group cursor-pointer"
+                      onClick={() => handleCollectionClick(series)}
+                    >
+                      {/* Back stacked card effect */}
+                      <div className="absolute inset-0 bg-card border border-border/40 rounded-xl translate-x-1.5 translate-y-1.5 opacity-60 scale-95 group-hover:translate-x-2 group-hover:translate-y-2 transition-all duration-300 shadow-sm" />
+                      {/* Middle stacked card effect */}
+                      <div className="absolute inset-0 bg-card border border-border/60 rounded-xl translate-x-0.75 translate-y-0.75 opacity-80 scale-[0.975] group-hover:translate-x-1 group-hover:translate-y-1 transition-all duration-300 shadow-sm" />
+                      {/* Front main card */}
+                      <Card className="relative overflow-hidden border border-border/80 transition-smooth group-hover:shadow-lg glass-card">
+                        <CardContent className="p-0">
+                          <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
+                            {series.coverUrl ? (
+                              <ProxiedImage
+                                src={series.coverUrl}
+                                alt={series.name}
+                                className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center w-full h-full">
+                                <BookOpen className="w-12 h-12 text-muted-foreground/30" />
+                              </div>
+                            )}
+                            
+                            {/* Quantity badge */}
+                            <Badge variant="secondary" className="absolute top-2 left-2 bg-violet-600/90 text-white border-0 text-xs font-semibold px-2 py-0.5 shadow-md">
+                              {series.isManga ? "Manga" : `${series.totalChapters} Books`}
+                            </Badge>
+                            
+                            {/* Info Overlay */}
+                            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+                              <h3 className="font-bold text-white line-clamp-2 text-xs sm:text-sm leading-snug mb-0.5">{series.name}</h3>
+                              {series.author && (
+                                <p className="text-[10px] sm:text-xs text-white/70 line-clamp-1">{series.author}</p>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
                   ))}
                 </div>
               </div>
-            ))}
+            )}
 
-            {/* Standalone Books */}
+            {/* Standalone Books & Documents Grid */}
             {standaloneBooks.length > 0 && (
-              <div className="space-y-4">
-                {Object.keys(groupedBySeries).length > 0 && (
-                  <h2 className="text-2xl font-semibold">Other Books</h2>
-                )}
+              <div className="space-y-4 pt-4">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-violet-500" />
+                  Standalone Books
+                </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                   {standaloneBooks.map((book) => (
                     <BookCard
@@ -529,7 +713,8 @@ const Library = () => {
                       readingProgress={book.reading_progress}
                       lastPageRead={book.last_page_read || 0}
                       canEdit={true}
-                      onClick={() => setSelectedBook(book)}
+                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onLongPress={() => setSelectedBook(book)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
                     />
                   ))}

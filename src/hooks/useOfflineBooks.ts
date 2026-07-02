@@ -2,6 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { openLocalDB } from '@/lib/local-supabase';
+import { downloadQueue } from '@/lib/download-manager';
+
+const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+};
 
 interface OfflineBook {
   id: string;
@@ -14,6 +25,7 @@ interface OfflineBook {
   fileSize: number;
   series?: string | null;
   file_url?: string | null;
+  cover_migrated?: boolean;
 }
 
 const DB_NAME = 'comic-cloud-offline';
@@ -47,123 +59,108 @@ export function useOfflineBooks() {
   const loadOfflineBooks = useCallback(async () => {
     try {
       const db = await openLocalDB();
-      const transaction = db.transaction(BOOKS_STORE, 'readonly');
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       const booksStore = transaction.objectStore(BOOKS_STORE);
+      const filesStore = transaction.objectStore(FILES_STORE);
       
-      const request = booksStore.getAll();
+      const booksList: any[] = await new Promise((resolve, reject) => {
+        const req = booksStore.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+
+      // Auto-migration: create missing series cards for downloaded cbz chapters if they don't exist
+      const cbzBooks = booksList.filter((b: any) => b.file_type === 'cbz');
+      const mangaBooks = booksList.filter((b: any) => b.file_type === 'manga');
       
-      request.onsuccess = async () => {
-        const booksList = request.result || [];
-        
-        // Auto-migration: create missing series cards for downloaded cbz chapters if they don't exist
-        const cbzBooks = booksList.filter((b: any) => b.file_type === 'cbz');
-        const mangaBooks = booksList.filter((b: any) => b.file_type === 'manga');
-        
-        const missingSeries: string[] = [];
-        for (const cbz of cbzBooks) {
-          if (cbz.series) {
-            const hasMangaCard = mangaBooks.some(m => m.title.toLowerCase().trim() === cbz.series.toLowerCase().trim());
-            if (!hasMangaCard && !missingSeries.includes(cbz.series)) {
-              missingSeries.push(cbz.series);
-            }
+      const missingSeries: string[] = [];
+      for (const cbz of cbzBooks) {
+        if (cbz.series) {
+          const hasMangaCard = mangaBooks.some(m => m.title.toLowerCase().trim() === cbz.series.toLowerCase().trim());
+          if (!hasMangaCard && !missingSeries.includes(cbz.series)) {
+            missingSeries.push(cbz.series);
           }
         }
-        
-        if (missingSeries.length > 0) {
-          try {
-            const writeDb = await openLocalDB();
-            const writeTx = writeDb.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
-            const writeBooks = writeTx.objectStore(BOOKS_STORE);
-            const writeFiles = writeTx.objectStore(FILES_STORE);
-            
-            for (const seriesName of missingSeries) {
-              const seriesId = `manga-series-${seriesName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-              const sampleBook = cbzBooks.find(b => b.series === seriesName);
-              const coverUrl = sampleBook ? sampleBook.cover_url : null;
-              const source = sampleBook ? sampleBook.author || 'comix' : 'comix';
-              
-              const newSeriesCard = {
-                id: seriesId,
-                title: seriesName,
-                author: source,
-                file_type: 'manga',
-                cover_url: coverUrl,
-                last_page_read: null,
-                cachedAt: Date.now(),
-                fileSize: 0,
-                series: null,
-                file_url: sampleBook ? sampleBook.file_url : null,
-              };
-              
-              writeBooks.put(newSeriesCard);
-              writeFiles.put({
-                bookId: seriesId,
-                data: new ArrayBuffer(1),
-                contentType: 'application/x-manga',
-              });
-              
-              booksList.push(newSeriesCard);
-            }
-            
-            await new Promise<void>((resolve, reject) => {
-              writeTx.oncomplete = () => resolve();
-              writeTx.onerror = () => reject(writeTx.error);
-            });
-            console.log("[Migration] Generated missing offline series cards successfully");
-          } catch (migrationErr) {
-            console.error("[Migration] Failed to generate missing offline series cards:", migrationErr);
-          }
+      }
+      
+      if (missingSeries.length > 0) {
+        for (const seriesName of missingSeries) {
+          const seriesId = `manga-series-${seriesName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+          const sampleBook = cbzBooks.find(b => b.series === seriesName);
+          const coverUrl = sampleBook ? sampleBook.cover_url : null;
+          const source = sampleBook ? sampleBook.author || 'comix' : 'comix';
+          
+          const newSeriesCard = {
+            id: seriesId,
+            title: seriesName,
+            author: source,
+            file_type: 'manga',
+            cover_url: coverUrl,
+            last_page_read: null,
+            cachedAt: Date.now(),
+            fileSize: 0,
+            series: null,
+            file_url: sampleBook ? sampleBook.file_url : null,
+          };
+          
+          booksStore.put(newSeriesCard);
+          filesStore.put({
+            bookId: seriesId,
+            data: new ArrayBuffer(1),
+            contentType: 'application/x-manga',
+          });
+          
+          booksList.push(newSeriesCard);
+        }
+      }
+
+      // Check file existence in O(1) using keys only, preventing loading of massive binary blobs
+      const existingKeys: string[] = await new Promise((resolve, reject) => {
+        const req = filesStore.getAllKeys();
+        req.onsuccess = () => resolve((req.result || []) as string[]);
+        req.onerror = () => reject(req.error);
+      });
+
+      const existingKeysSet = new Set(existingKeys);
+      const processedBooks: OfflineBook[] = [];
+      
+      for (const book of booksList) {
+        if (!existingKeysSet.has(book.id)) {
+          booksStore.delete(book.id);
+          continue;
         }
 
-        const processedBooks: OfflineBook[] = [];
-        
-        for (const book of booksList) {
-          const fileRecord = await new Promise<any>(async (resolve) => {
-            try {
-              const readDb = await openLocalDB();
-              const readTx = readDb.transaction(FILES_STORE, 'readonly');
-              const readStore = readTx.objectStore(FILES_STORE);
-              const fileRequest = readStore.get(book.id);
+        // Backward compatibility migration: If the cover has not been checked, migrate it once
+        if (!book.cover_migrated) {
+          if (book.cover_url && !book.cover_url.startsWith('data:image')) {
+            const fileRecord = await new Promise<any>((resolve) => {
+              const fileRequest = filesStore.get(book.id);
               fileRequest.onsuccess = () => resolve(fileRequest.result);
               fileRequest.onerror = () => resolve(null);
-            } catch (err) {
-              resolve(null);
+            });
+            if (fileRecord && fileRecord.coverData) {
+              try {
+                const base64String = arrayBufferToBase64(fileRecord.coverData);
+                book.cover_url = `data:image/jpeg;base64,${base64String}`;
+              } catch (e) {
+                console.warn("Failed to migrate old coverData to base64:", e);
+              }
             }
-          });
-          
-          if (!fileRecord || !fileRecord.data) {
-            try {
-              const writeDb = await openLocalDB();
-              const writeTx = writeDb.transaction(BOOKS_STORE, 'readwrite');
-              const writeStore = writeTx.objectStore(BOOKS_STORE);
-              writeStore.delete(book.id);
-            } catch (err) {
-              console.warn("Failed to delete corrupted offline book metadata:", err);
-            }
-            continue;
           }
-
-          let coverUrl = book.cover_url;
-          if (fileRecord?.coverData) {
-            let binary = '';
-            const bytes = new Uint8Array(fileRecord.coverData);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64String = window.btoa(binary);
-            coverUrl = `data:image/jpeg;base64,${base64String}`;
-          }
-          
-          processedBooks.push({
-            ...book,
-            cover_url: coverUrl
-          });
+          book.cover_migrated = true;
+          booksStore.put(book); // Persist migrated metadata record
         }
-        
-        setOfflineBooks(processedBooks);
-        setIsReady(true);
-      };
+
+        processedBooks.push(book);
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+      });
+
+      setOfflineBooks(processedBooks);
+      setIsReady(true);
     } catch (error) {
       console.error('Failed to load offline books:', error);
       setIsReady(true);
@@ -285,6 +282,15 @@ export function useOfflineBooks() {
         }
       }
       
+      let finalCoverUrl = book.cover_url;
+      if (coverBlob) {
+        try {
+          finalCoverUrl = `data:image/jpeg;base64,${arrayBufferToBase64(coverBlob)}`;
+        } catch (e) {
+          console.warn("Failed to encode cover data:", e);
+        }
+      }
+
       const db = await openLocalDB();
       const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
       
@@ -295,12 +301,13 @@ export function useOfflineBooks() {
         title: book.title,
         author: book.author,
         file_type: book.file_type,
-        cover_url: book.cover_url,
+        cover_url: finalCoverUrl,
         last_page_read: book.last_page_read,
         cachedAt: Date.now(),
         fileSize: arrayBuffer.byteLength,
         series: book.series || null,
         file_url: book.file_url || null,
+        cover_migrated: true,
       };
       booksStore.put(offlineBook);
       
@@ -432,6 +439,23 @@ export function useOfflineBooks() {
     }
   }, [toast]);
 
+  // Synchronize when download manager completes tasks
+  useEffect(() => {
+    let lastCompletedIds = '';
+    const unsubscribe = downloadQueue.subscribe((jobs) => {
+      const completedIds = jobs
+        .filter(j => j.status === 'completed' || j.status === 'failed')
+        .map(j => j.id)
+        .join(',');
+      
+      if (completedIds !== lastCompletedIds) {
+        lastCompletedIds = completedIds;
+        loadOfflineBooks();
+      }
+    });
+    return unsubscribe;
+  }, [loadOfflineBooks]);
+
   return {
     offlineBooks,
     isOnline,
@@ -445,5 +469,6 @@ export function useOfflineBooks() {
     isBookDownloading,
     getTotalStorageUsed,
     clearAllOfflineData,
+    refreshOfflineBooks: loadOfflineBooks,
   };
 }

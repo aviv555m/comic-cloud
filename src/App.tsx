@@ -88,18 +88,38 @@ const AppContent = () => {
     if (Capacitor.isNativePlatform()) {
       const checkNativeUpdate = async () => {
         try {
-          const res = await fetch("https://api.github.com/repos/aviv555m/comic-cloud/releases/latest");
+          const res = await fetch(`https://api.github.com/repos/aviv555m/comic-cloud/releases/latest?t=${Date.now()}`, {
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          });
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.26"; // Hardcoded current native app version
+          const currentTag = "v1.0.83"; // Hardcoded current native app version
           
-          if (latestTag && latestTag !== currentTag) {
-            setLatestReleaseInfo({
-              tag: latestTag,
-              body: data.body || ""
-            });
-            setNativeUpdateAvailable(true);
+          if (latestTag) {
+            const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
+            const cleanCurrent = currentTag.toLowerCase().replace(/^v/, "").trim();
+            
+            if (cleanLatest !== cleanCurrent) {
+              const bodyText = (data.body || "").toLowerCase();
+              const isMandatory = bodyText.includes("[mandatory]") || bodyText.includes("[critical]");
+              
+              if (isMandatory) {
+                localStorage.setItem("app_outdated", "true");
+                setLatestReleaseInfo({
+                  tag: latestTag,
+                  body: data.body || ""
+                });
+                setNativeUpdateAvailable(true);
+              } else {
+                localStorage.setItem("app_outdated", "false");
+              }
+            } else {
+              localStorage.setItem("app_outdated", "false");
+            }
           }
         } catch (e) {
           console.warn("Failed to check for native updates:", e);
@@ -109,80 +129,50 @@ const AppContent = () => {
     }
   }, []);
 
-  return (
-    <>
-      <Toaster />
-      <Sonner />
-      <PWAInstallPrompt />
-      {isUpdateAvailable && (
-        <div className="fixed top-4 left-4 right-4 z-50 sm:left-auto sm:right-4 sm:w-80">
-          <div className="bg-primary text-primary-foreground p-3 rounded-lg shadow-lg text-sm">
-            <p className="font-medium">Update available</p>
-            <button 
-              onClick={updateServiceWorker}
-              className="mt-2 underline text-xs"
+  if (nativeUpdateAvailable && latestReleaseInfo) {
+    return (
+      <div className="fixed inset-0 bg-background/95 backdrop-blur-md flex flex-col items-center justify-center p-6 z-50 animate-in fade-in duration-300">
+        <div className="w-full max-w-md bg-card border border-violet-500/20 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="flex flex-col items-center text-center space-y-2">
+            <div className="p-3 bg-violet-500/10 rounded-full text-violet-400 animate-bounce">
+              <Sparkles className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
+            <p className="text-sm text-muted-foreground">
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.83</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+            </p>
+          </div>
+          
+          <div className="flex flex-col gap-2 pt-2">
+            <Button 
+              disabled={isInstallingUpdate}
+              onClick={async () => {
+                setIsInstallingUpdate(true);
+                try {
+                  await UpdatePlugin.downloadAndInstall({
+                    url: `https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`
+                  });
+                } catch (err: any) {
+                  console.error("Installation failed:", err);
+                  alert("Failed to start automatic update installation. Falling back to browser download...");
+                  window.open(`https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`, "_system");
+                } finally {
+                  setIsInstallingUpdate(false);
+                }
+              }}
+              className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold h-11 flex items-center justify-center gap-2 shadow-lg shadow-violet-500/20"
             >
-              Click to update
-            </button>
+              <Download className="w-4 h-4" />
+              {isInstallingUpdate ? "Downloading Update..." : "Update Now"}
+            </Button>
           </div>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {nativeUpdateAvailable && latestReleaseInfo && (
-        <Dialog open={nativeUpdateAvailable} onOpenChange={setNativeUpdateAvailable}>
-          <DialogContent className="max-w-[90vw] sm:max-w-md bg-card/95 backdrop-blur-md border-violet-500/20 text-card-foreground">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl font-bold">
-                <Sparkles className="w-5 h-5 text-violet-400 animate-pulse" />
-                <span>New Update Available!</span>
-              </DialogTitle>
-              <DialogDescription className="text-muted-foreground text-sm mt-1">
-                A new version <span className="text-violet-400 font-semibold">{latestReleaseInfo.tag}</span> is ready for download. Update now to get the latest features and fixes!
-              </DialogDescription>
-            </DialogHeader>
-            {latestReleaseInfo.body && (
-              <div className="my-3 p-3 rounded-lg bg-muted/50 max-h-40 overflow-y-auto text-xs space-y-1 font-mono border border-border/50">
-                <p className="font-semibold text-violet-300 mb-1 text-[10px] uppercase tracking-wider">Release Notes:</p>
-                <div className="whitespace-pre-line text-muted-foreground">
-                  {latestReleaseInfo.body}
-                </div>
-              </div>
-            )}
-            <DialogFooter className="flex sm:justify-end gap-2 mt-4">
-              <Button 
-                variant="ghost" 
-                onClick={() => setNativeUpdateAvailable(false)}
-                className="text-xs"
-              >
-                Later
-              </Button>
-              <Button 
-                disabled={isInstallingUpdate}
-                onClick={async () => {
-                  setIsInstallingUpdate(true);
-                  try {
-                    await UpdatePlugin.downloadAndInstall({
-                      url: "https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk"
-                    });
-                    setNativeUpdateAvailable(false);
-                  } catch (err: any) {
-                    console.error("Installation failed:", err);
-                    alert("Failed to start automatic update installation. Falling back to browser download...");
-                    window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_system");
-                    setNativeUpdateAvailable(false);
-                  } finally {
-                    setIsInstallingUpdate(false);
-                  }
-                }}
-                className="bg-violet-600 hover:bg-violet-700 text-white font-semibold flex items-center gap-1.5 shadow-lg shadow-violet-500/20 text-xs"
-              >
-                <Download className="w-3.5 h-3.5" />
-                {isInstallingUpdate ? "Downloading..." : "Update"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+  return (
+    <>
       <BrowserRouter>
         <OfflineAlertOverlay />
         <Routes>

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useExistingSeries } from "@/hooks/useExistingSeries";
 import { SeriesCombobox } from "@/components/SeriesCombobox";
+import { Sparkles } from "lucide-react";
 
 interface EditBookDialogProps {
   open: boolean;
@@ -26,8 +27,10 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
   const [title, setTitle] = useState(book.title);
   const [author, setAuthor] = useState(book.author || "");
   const [series, setSeries] = useState(book.series || "");
+  const [coverUrl, setCoverUrl] = useState(book.cover_url || "");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [fetchingMetadata, setFetchingMetadata] = useState(false);
   const { toast } = useToast();
   const { series: existingSeries } = useExistingSeries(book.user_id);
 
@@ -36,15 +39,71 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
     setTitle(book.title);
     setAuthor(book.author || "");
     setSeries(book.series || "");
+    setCoverUrl(book.cover_url || "");
     setCoverFile(null);
   }, [book]);
+
+  const handleAutoFill = async () => {
+    const searchQuery = title || series;
+    if (!searchQuery) {
+      toast({
+        variant: "destructive",
+        title: "Search criteria needed",
+        description: "Please enter a Title or Series name first to search for details.",
+      });
+      return;
+    }
+    
+    setFetchingMetadata(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}`);
+      if (!res.ok) throw new Error("Metadata request failed");
+      const data = await res.json();
+      
+      if (!data.items || data.items.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Not found",
+          description: "Could not find any matching books on Google Books.",
+        });
+        return;
+      }
+      
+      const volumeInfo = data.items[0].volumeInfo;
+      const authorsList = volumeInfo.authors || [];
+      const imageLinks = volumeInfo.imageLinks || {};
+      
+      const scrapedAuthor = authorsList[0] || "";
+      const scrapedCover = (imageLinks.thumbnail || imageLinks.smallThumbnail || "").replace("http://", "https://");
+      
+      if (scrapedAuthor && !author) {
+        setAuthor(scrapedAuthor);
+      }
+      if (scrapedCover) {
+        setCoverUrl(scrapedCover);
+      }
+      
+      toast({
+        title: "Metadata populated",
+        description: `Found: "${volumeInfo.title}" by ${scrapedAuthor || "Unknown Author"}`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Search failed",
+        description: err.message,
+      });
+    } finally {
+      setFetchingMetadata(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
 
     try {
-      let coverUrl = book.cover_url;
+      let finalCoverUrl = coverUrl;
 
       // Upload new cover if provided
       if (coverFile) {
@@ -61,7 +120,7 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
           .from('book-covers')
           .getPublicUrl(filePath);
         
-        coverUrl = urlData.publicUrl;
+        finalCoverUrl = urlData.publicUrl;
       }
 
       // Update book metadata
@@ -71,7 +130,7 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
           title,
           author: author || null,
           series: series || null,
-          cover_url: coverUrl,
+          cover_url: finalCoverUrl || null,
         })
         .eq('id', book.id);
 
@@ -129,7 +188,29 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
             />
           </div>
           <div>
-            <Label htmlFor="cover">Custom Cover</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-xs font-bold gap-1.5 text-violet-400 hover:text-violet-300 border-violet-500/20"
+              onClick={handleAutoFill}
+              disabled={fetchingMetadata}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              {fetchingMetadata ? "Searching web details..." : "Auto-fill cover & author"}
+            </Button>
+          </div>
+          <div>
+            <Label htmlFor="coverUrl">Cover Image URL</Label>
+            <Input
+              id="coverUrl"
+              value={coverUrl}
+              onChange={(e) => setCoverUrl(e.target.value)}
+              placeholder="https://example.com/cover.jpg"
+            />
+          </div>
+          <div>
+            <Label htmlFor="cover">Custom Cover File</Label>
             <div className="mt-2">
               <Input
                 id="cover"

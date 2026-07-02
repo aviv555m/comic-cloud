@@ -66,9 +66,30 @@ const Reader = () => {
   const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
+  const [initialEpubCfi, setInitialEpubCfi] = useState<string | undefined>(undefined);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [showOverlayPage, setShowOverlayPage] = useState(false);
+  const pageNumTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (book?.file_type === 'pdf') {
+      setShowOverlayPage(true);
+      if (pageNumTimerRef.current) {
+        clearTimeout(pageNumTimerRef.current);
+      }
+      pageNumTimerRef.current = setTimeout(() => {
+        setShowOverlayPage(false);
+      }, 2000);
+    }
+    return () => {
+      if (pageNumTimerRef.current) {
+        clearTimeout(pageNumTimerRef.current);
+      }
+    };
+  }, [currentPage, book?.file_type]);
   const [showAnnotations, setShowAnnotations] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -77,6 +98,12 @@ const Reader = () => {
   const [checkingOffline, setCheckingOffline] = useState(true);
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
   const [siblingBooks, setSiblingBooks] = useState<Book[]>([]);
+  const [readerTheme, setReaderTheme] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      return document.documentElement.classList.contains("dark") ? "dark" : "light";
+    }
+    return "light";
+  });
 
   const getChapterNumber = (title: string): number => {
     const match = title.match(/(?:ch|chapter)\.?[^\d]*([0-9.]+)/i);
@@ -360,6 +387,50 @@ const Reader = () => {
     document.addEventListener("mouseup", handleSelection);
     return () => document.removeEventListener("mouseup", handleSelection);
   }, [book]);
+
+  // Fetch saved EPUB CFI location from the local-only reading_locations database table
+  useEffect(() => {
+    if (!book || book.file_type !== 'epub') {
+      setLoadingLocation(false);
+      return;
+    }
+    
+    const loadLocation = async () => {
+      try {
+        const localCfi = localStorage.getItem(`epub_cfi_${book.id}`);
+        if (localCfi) {
+          setInitialEpubCfi(localCfi);
+          setLoadingLocation(false);
+          return;
+        }
+
+        // Try book.tts_position (synced from remote DB!)
+        if (book.tts_position && typeof book.tts_position === 'object') {
+          const ttsObj = book.tts_position as Record<string, any>;
+          if (ttsObj.epub_cfi) {
+            setInitialEpubCfi(ttsObj.epub_cfi);
+            setLoadingLocation(false);
+            return;
+          }
+        }
+
+        const { data: locData } = await supabase
+          .from("reading_locations")
+          .select("cfi_location")
+          .eq("book_id", book.id)
+          .maybeSingle();
+        if (locData?.cfi_location) {
+          setInitialEpubCfi(locData.cfi_location);
+        }
+      } catch (e) {
+        console.warn("Failed to load local EPUB cfi location:", e);
+      } finally {
+        setLoadingLocation(false);
+      }
+    };
+    
+    loadLocation();
+  }, [book?.id]);
 
   const fetchBook = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -778,17 +849,32 @@ const Reader = () => {
   const isCBR = book.file_type === 'cbr';
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
-
   const currentBookIndex = siblingBooks.findIndex(b => b.id === book.id);
   const prevBook = currentBookIndex > 0 ? siblingBooks[currentBookIndex - 1] : null;
   const nextBook = currentBookIndex >= 0 && currentBookIndex < siblingBooks.length - 1 ? siblingBooks[currentBookIndex + 1] : null;
 
+  const getPageBgClass = () => {
+    if (!isEPUB) return "bg-background text-foreground";
+    if (readerTheme === "black") return "bg-black text-gray-200";
+    if (readerTheme === "dark") return "bg-[#0b0f19] text-gray-200";
+    if (readerTheme === "sepia") return "bg-[#f7f1e3] text-[#5d4037]";
+    return "bg-white text-gray-900";
+  };
+
+  const getHeaderBgClass = () => {
+    if (!isEPUB) return "bg-card/90 border-b";
+    if (readerTheme === "black") return "bg-black/90 border-neutral-900 text-gray-200";
+    if (readerTheme === "dark") return "bg-[#0b0f19]/90 border-slate-800 text-gray-200";
+    if (readerTheme === "sepia") return "bg-[#f7f1e3]/90 border-[#e3dcd0] text-[#5d4037]";
+    return "bg-white/90 border-gray-200 text-gray-900";
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className={`min-h-screen transition-colors duration-300 ${getPageBgClass()}`}>
       {/* Header */}
       <div 
         ref={headerRef} 
-        className={`border-b bg-card/90 backdrop-blur-sm fixed top-0 left-0 right-0 z-50 transition-transform duration-300 ${
+        className={`backdrop-blur-sm fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${getHeaderBgClass()} ${
           showControls ? "translate-y-0" : "-translate-y-full"
         }`}
       >
@@ -933,7 +1019,7 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded mx-auto bg-card border overflow-x-auto overflow-y-hidden w-full">
+                <div className="shadow-lg rounded mx-auto bg-card border overflow-x-auto overflow-y-hidden w-full relative">
                   <div className="mx-auto" style={{ width: `${containerWidth * scale}px`, minWidth: `${containerWidth * scale}px` }}>
                     <Page
                       pageNumber={currentPage}
@@ -942,6 +1028,34 @@ const Reader = () => {
                       renderTextLayer={true}
                       renderAnnotationLayer={true}
                       className="mx-auto"
+                    />
+                  </div>
+                  
+                  {/* Invisible Tap Zones for page turning */}
+                  <div className="absolute inset-0 flex z-10">
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (currentPage > 1) changePage(-1);
+                      }}
+                      className="w-[30%] h-full cursor-w-resize"
+                      title="Previous Page"
+                    />
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowControls(prev => !prev);
+                      }}
+                      className="w-[40%] h-full cursor-pointer"
+                      title="Toggle Controls"
+                    />
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (numPages && currentPage < numPages) changePage(1);
+                      }}
+                      className="w-[30%] h-full cursor-e-resize"
+                      title="Next Page"
                     />
                   </div>
                 </div>
@@ -1011,20 +1125,44 @@ const Reader = () => {
           </div>
         )}
 
-        {isEPUB && signedUrl && (
+        {isEPUB && signedUrl && !loadingLocation && (
           <EpubReader
             url={signedUrl}
-            onLocationChange={(location) => {
-              // Save location for progress tracking
+            onLocationChange={(location, progressPercent) => {
               if (book) {
+                // Save to localStorage immediately (100% reliable synchronous write)
+                try {
+                  localStorage.setItem(`epub_cfi_${book.id}`, location);
+                } catch (e) {}
+
+                const isCompleted = progressPercent >= 98;
                 supabase
                   .from("books")
-                  .update({ last_page_read: currentPage })
-                  .eq("id", book.id);
+                  .update({ 
+                    reading_progress: progressPercent,
+                    is_completed: isCompleted,
+                    last_page_read: 1, // EPUB locations rely on cfi, but set placeholder to mark started
+                    tts_position: { epub_cfi: location } as any
+                  })
+                  .eq("id", book.id)
+                  .then(() => {});
+                
+                // Save cfi position in local-only reading_locations database table
+                supabase
+                  .from("reading_locations")
+                  .upsert({
+                    book_id: book.id,
+                    cfi_location: location,
+                    progress_percent: progressPercent
+                  }, { onConflict: "book_id" })
+                  .then(() => {})
+                  .catch(err => console.warn("Failed to upsert local cfi:", err));
               }
             }}
-            initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
+            initialLocation={initialEpubCfi}
             showControls={showControls}
+            onThemeChange={setReaderTheme}
+            onToggleControls={() => setShowControls(prev => !prev)}
           />
         )}
 
@@ -1116,6 +1254,13 @@ const Reader = () => {
             window.getSelection()?.removeAllRanges();
           }}
         />
+      )}
+
+      {/* Floating Temporary Page Number Overlay for PDF */}
+      {showOverlayPage && book?.file_type === 'pdf' && numPages && (
+        <div className="fixed bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-50 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
+          Page {currentPage} of {numPages}
+        </div>
       )}
 
       {/* Reading Timer / Pomodoro */}

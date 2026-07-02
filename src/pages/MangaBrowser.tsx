@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
@@ -21,6 +21,7 @@ import {
   Plus,
   Check,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 
 /**
@@ -303,7 +304,7 @@ const getSourceUrl = (source: Source, seriesUrl: string): string => {
 const MangaBrowser = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { saveBookOffline, offlineBooks, getOfflineFile } = useOfflineBooks();
+  const { saveBookOffline, removeBookOffline, offlineBooks, getOfflineFile, refreshOfflineBooks } = useOfflineBooks();
   const [source, setSource] = useState<Source>("mangafire");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -322,6 +323,17 @@ const MangaBrowser = () => {
       return false;
     }
   });
+  const [isNearBottom, setIsNearBottom] = useState(false);
+  const [autoDownload, setAutoDownloadState] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (currentSeries) {
+      const stored = localStorage.getItem(`auto_download_${currentSeries.title}`) === "true";
+      setAutoDownloadState(stored);
+    } else {
+      setAutoDownloadState(false);
+    }
+  }, [currentSeries]);
 
   // Revoke object URLs to avoid memory leaks
   useEffect(() => {
@@ -386,28 +398,61 @@ const MangaBrowser = () => {
     }
   };
 
-  const getChapterDbRecord = (c: ChapterRef) => {
-    const cleanChapterTitle = c.title.trim().toLowerCase();
-    const expectedTitle = `${currentSeries?.title || ""} - ${c.title}`.trim().toLowerCase();
-    
-    const foundOnline = userChapters.find(b => {
-      const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
-      return cleanBookTitle === expectedTitle || cleanBookTitle === cleanChapterTitle;
-    });
-    if (foundOnline) return foundOnline;
+  const normalizedOfflineBooks = useMemo(() => {
+    return offlineBooks
+      .filter(b => b.file_type !== "manga")
+      .map(b => {
+        const normBookTitle = b.title.toLowerCase().replace(/\[offline\]/gi, "").replace(/[^a-z0-9]/g, "").trim();
+        const normBookSeries = b.series ? b.series.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+        return {
+          normBookTitle,
+          normBookSeries,
+          b
+        };
+      });
+  }, [offlineBooks]);
 
-    const foundOffline = offlineBooks.find(b => {
-      if (b.file_type === "manga") return false;
-      const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
-      const cleanBookSeries = b.series ? b.series.trim().toLowerCase() : "";
-      const cleanSeriesTitle = currentSeries?.title ? currentSeries.title.trim().toLowerCase() : "";
-      return (
-        cleanBookTitle === expectedTitle ||
-        (cleanBookTitle === cleanChapterTitle && (cleanBookSeries === cleanSeriesTitle || !cleanBookSeries))
-      );
+  const normalizedUserChapters = useMemo(() => {
+    return userChapters.map(b => {
+      const normBookTitle = b.title.toLowerCase().replace(/\[offline\]/gi, "").replace(/[^a-z0-9]/g, "").trim();
+      return {
+        normBookTitle,
+        b
+      };
     });
-    return foundOffline || null;
-  };
+  }, [userChapters]);
+
+  const isChapterDownloaded = useCallback((c: ChapterRef) => {
+    if (c.url.startsWith("offline:")) return true;
+    
+    const normChapterTitle = c.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+    const normSeriesTitle = currentSeries?.title ? currentSeries.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+
+    return normalizedOfflineBooks.some(ob => {
+      return ob.normBookTitle === normChapterTitle || 
+             ob.normBookTitle === (normSeriesTitle + normChapterTitle) ||
+             (ob.normBookTitle.includes(normChapterTitle) && 
+              (ob.normBookSeries === normSeriesTitle || ob.normBookTitle.includes(normSeriesTitle) || !ob.normBookSeries));
+    });
+  }, [normalizedOfflineBooks, currentSeries]);
+
+  const getChapterDbRecord = useCallback((c: ChapterRef) => {
+    const normChapterTitle = c.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+    const normSeriesTitle = currentSeries?.title ? currentSeries.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
+
+    const foundOnline = normalizedUserChapters.find(ob => {
+      return ob.normBookTitle === normChapterTitle || ob.normBookTitle === (normSeriesTitle + normChapterTitle);
+    });
+    if (foundOnline) return foundOnline.b;
+
+    const foundOffline = normalizedOfflineBooks.find(ob => {
+      return ob.normBookTitle === normChapterTitle || 
+             ob.normBookTitle === (normSeriesTitle + normChapterTitle) ||
+             (ob.normBookTitle.includes(normChapterTitle) && 
+              (ob.normBookSeries === normSeriesTitle || ob.normBookTitle.includes(normSeriesTitle) || !ob.normBookSeries));
+    });
+    return foundOffline ? foundOffline.b : null;
+  }, [normalizedOfflineBooks, normalizedUserChapters, currentSeries]);
 
   const isChapterRead = (c: ChapterRef) => {
     const record = getChapterDbRecord(c);
@@ -456,6 +501,10 @@ const MangaBrowser = () => {
               getReq.result.reading_progress = 0;
               getReq.result.last_page_read = 0;
               store.put(getReq.result);
+              
+              transaction.oncomplete = () => {
+                refreshOfflineBooks();
+              };
             }
           };
         } catch (offlineErr) {
@@ -490,6 +539,10 @@ const MangaBrowser = () => {
                 getReq.result.is_completed = true;
                 getReq.result.reading_progress = 100;
                 store.put(getReq.result);
+                
+                transaction.oncomplete = () => {
+                  refreshOfflineBooks();
+                };
               }
             };
           } catch (offlineErr) {
@@ -632,6 +685,9 @@ const MangaBrowser = () => {
       
       const newPage = activeIndex + 1;
       setCurrentPage(newPage);
+
+      const isAtBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 180;
+      setIsNearBottom(isAtBottom);
     };
 
     window.addEventListener("scroll", handleScroll);
@@ -814,15 +870,13 @@ const MangaBrowser = () => {
   const processMultipleChapters = async (chaptersToProcess: ChapterRef[], shouldDownloadOffline: boolean) => {
     if (!currentSeries) return;
 
-    chaptersToProcess.forEach(ch => {
-      downloadQueue.addJob(
-        ch,
-        currentSeries.title,
-        source,
-        shouldDownloadOffline ? 'download' : 'save',
-        currentSeries.cover
-      );
-    });
+    downloadQueue.addJobs(
+      chaptersToProcess,
+      currentSeries.title,
+      source,
+      shouldDownloadOffline ? 'download' : 'save',
+      currentSeries.cover
+    );
 
     setSelectedChapters([]); // clear selection
     
@@ -871,6 +925,68 @@ const MangaBrowser = () => {
     }
   };
 
+  const downloadMissingChapters = () => {
+    if (!currentSeries) return;
+    
+    const missing = chapters.filter(c => !isChapterDownloaded(c));
+
+    if (missing.length === 0) {
+      toast({
+        title: "All Offline",
+        description: "All chapters are already downloaded offline.",
+      });
+      return;
+    }
+
+    downloadQueue.addJobs(
+      missing,
+      currentSeries.title,
+      source,
+      'download',
+      currentSeries.cover
+    );
+
+    toast({
+      title: "Downloading Missing",
+      description: `Queued ${missing.length} missing chapters for background download.`,
+    });
+  };
+
+  const runAutoDownload = useCallback((chaptersList: ChapterRef[]) => {
+    if (!currentSeries || localStorage.getItem(`auto_download_${currentSeries.title}`) !== "true") return;
+
+    const missing = chaptersList.filter(c => !isChapterDownloaded(c));
+
+    if (missing.length > 0) {
+      downloadQueue.addJobs(
+        missing,
+        currentSeries.title,
+        source,
+        'download',
+        currentSeries.cover
+      );
+
+      toast({
+        title: "Auto-Downloading",
+        description: `Automatically queueing ${missing.length} new/missing chapters.`,
+      });
+    }
+  }, [currentSeries, source, offlineBooks]);
+
+  const setAutoDownload = (val: boolean) => {
+    if (!currentSeries) return;
+    setAutoDownloadState(val);
+    localStorage.setItem(`auto_download_${currentSeries.title}`, val ? "true" : "false");
+    
+    if (val) {
+      toast({
+        title: "Auto-Download Enabled",
+        description: "New chapters will be downloaded automatically when this series loads.",
+      });
+      runAutoDownload(chapters);
+    }
+  };
+
   const openSeries = async (series: SearchResult, overrideSource?: Source) => {
     const activeSource = overrideSource || source;
     setLoading(true);
@@ -885,6 +1001,9 @@ const MangaBrowser = () => {
       fetchUserChapters(series.title, user.id);
     }
     try {
+      if (!series.url || series.url.startsWith("offline:") || series.url.startsWith("online:http") || series.url.includes("/read/")) {
+        throw new Error("No online series details URL available.");
+      }
       let list: ChapterRef[] = [];
       if (activeSource === "comix") {
         list = await comixChapters(series.url);
@@ -908,6 +1027,7 @@ const MangaBrowser = () => {
         return a.title.localeCompare(b.title, undefined, { numeric: true });
       });
       setChapters(sortedList);
+      runAutoDownload(sortedList);
 
       // Attempt to search and match on AniList
       if (aniListToken && series.title) {
@@ -927,6 +1047,13 @@ const MangaBrowser = () => {
       }
     } catch (err: any) {
       console.warn("Could not load chapters online, checking offline...", err);
+      if (err.message !== "No online series details URL available.") {
+        toast({
+          variant: "destructive",
+          title: "Online fetch failed",
+          description: err.message || "Failed to load chapters from server. Loading downloaded chapters instead.",
+        });
+      }
       try {
         const db = await openLocalDB();
         const transaction = db.transaction("offline-books", "readonly");
@@ -1252,20 +1379,20 @@ const MangaBrowser = () => {
 
   // ---------------- Render ----------------
 
-  if (currentChapter && pages.length > 0) {
+  if (currentChapter) {
     const idx = chapters.findIndex((c) => c.url === currentChapter.url);
     const prev = idx > 0 ? chapters[idx - 1] : null;
     const next = idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
     return (
-      <div className="min-h-screen bg-background">
-        <div className="sticky top-0 z-30 backdrop-blur-md bg-background/80 border-b">
+      <div className="min-h-screen bg-background flex flex-col">
+        <div className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-violet-500/10 shadow-sm">
           <div className="max-w-3xl mx-auto flex items-center gap-2 p-3">
-            <Button variant="ghost" size="icon" onClick={() => setPages([])} className="h-9 w-9 translate-y-[2px]">
+            <Button variant="ghost" size="icon" onClick={() => { setCurrentChapter(null); setPages([]); }} className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full hover:bg-violet-500/10">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{currentSeries?.title}</p>
-              <p className="text-xs text-muted-foreground truncate">{currentChapter.title}</p>
+              <p className="text-xs text-violet-400 font-semibold uppercase tracking-wider truncate">{currentSeries?.title}</p>
+              <p className="text-sm font-bold text-white truncate leading-tight mt-0.5">{currentChapter.title}</p>
             </div>
             
             <div className="flex items-center gap-1.5 mr-2">
@@ -1284,7 +1411,7 @@ const MangaBrowser = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 px-2.5 text-xs flex items-center gap-1"
+                    className="h-8 px-2.5 text-xs flex items-center gap-1 border-violet-500/20 hover:bg-violet-500/10 text-violet-300"
                     onClick={() => saveChapter(false)}
                     disabled={saving}
                   >
@@ -1294,7 +1421,7 @@ const MangaBrowser = () => {
                   </Button>
                   <Button
                     size="sm"
-                    className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                    className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20"
                     onClick={() => saveChapter(true)}
                     disabled={saving}
                   >
@@ -1311,6 +1438,7 @@ const MangaBrowser = () => {
               variant="outline"
               disabled={!prev}
               onClick={() => prev && openChapter(prev)}
+              className="h-8 w-8 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
@@ -1319,36 +1447,46 @@ const MangaBrowser = () => {
               variant="outline"
               disabled={!next}
               onClick={() => next && openChapter(next)}
+              className="h-8 w-8 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
-        <div className="max-w-3xl mx-auto flex flex-col items-center gap-0 py-4">
-          {pages.map((src, i) => (
-            <img
-              key={i}
-              src={src}
-              alt={`Page ${i + 1}`}
-              loading="lazy"
-              className="manga-page-img w-full h-auto"
-              referrerPolicy="no-referrer"
-            />
-          ))}
-          <div className="flex gap-2 p-4">
-            <Button variant="outline" disabled={!prev} onClick={() => prev && openChapter(prev)}>
-              <ChevronLeft className="w-4 h-4 mr-1" /> Prev chapter
-            </Button>
-            <Button disabled={!next} onClick={() => next && openChapter(next)}>
-              Next chapter <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          </div>
+        <div className="flex-1 max-w-3xl mx-auto w-full flex flex-col items-center py-4 px-2">
+          {pages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+              <p className="text-sm font-semibold text-muted-foreground animate-pulse">Loading pages...</p>
+            </div>
+          ) : (
+            <>
+              {pages.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Page ${i + 1}`}
+                  loading="lazy"
+                  className="manga-page-img w-full h-auto shadow-md"
+                  referrerPolicy="no-referrer"
+                />
+              ))}
+              <div className="flex gap-4 p-8 w-full justify-center">
+                <Button variant="outline" disabled={!prev} onClick={() => prev && openChapter(prev)} className="border-violet-500/20 hover:bg-violet-500/10 text-violet-300 font-semibold">
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Previous Chapter
+                </Button>
+                <Button disabled={!next} onClick={() => next && openChapter(next)} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20">
+                  Next Chapter <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Floating progress overlay for inline reader */}
-        {currentPage < pages.length && (
+        {pages.length > 0 && currentPage < pages.length && !isNearBottom && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto">
-            <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-background/95 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
               <div className="flex justify-between items-center text-xs font-semibold">
                 <span className="truncate text-violet-300 max-w-[70%]">
                   {currentSeries?.title ? `${currentSeries.title} - ` : ""}{currentChapter.title}
@@ -1505,11 +1643,11 @@ const MangaBrowser = () => {
 
         {/* Sorting and hide read controls */}
         {chapters.length > 0 && (
-          <div className="mb-4 p-3 rounded-xl border border-violet-500/10 bg-muted/30 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+          <div className="mb-4 p-3 rounded-xl border border-violet-500/10 bg-muted/30 flex flex-wrap items-center justify-between gap-4 shadow-sm text-xs font-semibold">
             <div className="flex flex-wrap items-center gap-4">
               {/* Sorting Chooser */}
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Sort Chapters:</span>
+                <span className="text-muted-foreground uppercase tracking-wider">Sort Chapters:</span>
                 <div className="flex items-center bg-background/50 border rounded-lg p-0.5">
                   <Button
                     size="sm"
@@ -1531,18 +1669,35 @@ const MangaBrowser = () => {
               </div>
             </div>
 
-            {/* Option to hide read chapters */}
-            <div className="flex items-center gap-2.5">
-              <label htmlFor="hide-read" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
-                Hide Read Chapters
-              </label>
-              <input
-                type="checkbox"
-                id="hide-read"
-                checked={hideRead}
-                onChange={(e) => handleToggleHideRead(e.target.checked)}
-                className="w-4.5 h-4.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-              />
+            {/* Options */}
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Option to hide read chapters */}
+              <div className="flex items-center gap-2.5">
+                <label htmlFor="hide-read" className="text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
+                  Hide Read
+                </label>
+                <input
+                  type="checkbox"
+                  id="hide-read"
+                  checked={hideRead}
+                  onChange={(e) => handleToggleHideRead(e.target.checked)}
+                  className="w-4.5 h-4.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                />
+              </div>
+
+              {/* Option to auto-download new chapters */}
+              <div className="flex items-center gap-2.5">
+                <label htmlFor="auto-download" className="text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
+                  Auto-Download New
+                </label>
+                <input
+                  type="checkbox"
+                  id="auto-download"
+                  checked={autoDownload}
+                  onChange={(e) => setAutoDownload(e.target.checked)}
+                  className="w-4.5 h-4.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -1571,27 +1726,39 @@ const MangaBrowser = () => {
               </label>
             </div>
             
-            {selectedChapters.length > 0 && (
-              <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+              {selectedChapters.length > 0 ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs font-semibold flex items-center gap-1 hover:bg-violet-500/10 text-violet-400 border-violet-500/20"
+                    onClick={() => processMultipleChapters(visibleChapters.filter(c => selectedChapters.includes(c.url)), false)}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Save Selected
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs font-semibold flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                    onClick={() => processMultipleChapters(visibleChapters.filter(c => selectedChapters.includes(c.url)), true)}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Download Selected
+                  </Button>
+                </>
+              ) : (
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs font-semibold flex items-center gap-1 hover:bg-violet-500/10 text-violet-400 border-violet-500/20"
-                  onClick={() => processMultipleChapters(visibleChapters.filter(c => selectedChapters.includes(c.url)), false)}
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  Save Selected
-                </Button>
-                <Button
-                  size="sm"
-                  className="h-8 text-xs font-semibold flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
-                  onClick={() => processMultipleChapters(visibleChapters.filter(c => selectedChapters.includes(c.url)), true)}
+                  className="h-8 text-xs font-semibold flex items-center gap-1.5 hover:bg-violet-500/10 text-violet-400 border-violet-500/20 animate-in fade-in duration-300"
+                  onClick={downloadMissingChapters}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Download Selected
+                  Download Missing
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
@@ -1601,18 +1768,7 @@ const MangaBrowser = () => {
             {visibleChapters.map((c) => {
               const isSelected = selectedChapters.includes(c.url);
               const processing = processingChapters[c.url];
-              const isDownloaded = c.url.startsWith("offline:") || offlineBooks.some(b => {
-                if (b.file_type === "manga") return false;
-                const cleanBookTitle = b.title.replace(/[\s]*\[Offline\]/i, "").trim().toLowerCase();
-                const expectedTitle = `${currentSeries?.title || ""} - ${c.title}`.trim().toLowerCase();
-                const cleanChapterTitle = c.title.trim().toLowerCase();
-                const cleanBookSeries = b.series ? b.series.trim().toLowerCase() : "";
-                const cleanSeriesTitle = currentSeries?.title ? currentSeries.title.trim().toLowerCase() : "";
-                return (
-                  cleanBookTitle === expectedTitle ||
-                  (cleanBookTitle === cleanChapterTitle && (cleanBookSeries === cleanSeriesTitle || !cleanBookSeries))
-                );
-              });
+              const isDownloaded = isChapterDownloaded(c);
               const isRead = isChapterRead(c);
               
               return (
@@ -1653,9 +1809,41 @@ const MangaBrowser = () => {
                       ) : (
                         <>
                           {isDownloaded ? (
-                            <span className="text-xs text-green-500 font-semibold bg-green-500/10 px-2 py-1 rounded border border-green-500/20 flex items-center gap-1 mr-1">
-                              <Check className="w-3.5 h-3.5" /> Offline
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-green-500 font-semibold bg-green-500/10 px-2 py-1 rounded border border-green-500/20 flex items-center gap-1 mr-1">
+                                <Check className="w-3.5 h-3.5" /> Offline
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                disabled={isBulkProcessing}
+                                className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-md"
+                                title="Remove from offline storage"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const record = getChapterDbRecord(c);
+                                  if (record) {
+                                    await removeBookOffline(record.id);
+                                    
+                                    // Delete book record in Supabase
+                                    const { error } = await supabase
+                                      .from("books")
+                                      .delete()
+                                      .eq("id", record.id);
+                                    if (error) {
+                                      console.warn("Failed to delete book record in Supabase:", error);
+                                    }
+                                    
+                                    // Refresh local chapters state
+                                    if (currentSeries && user) {
+                                      await fetchUserChapters(currentSeries.title, user.id);
+                                    }
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           ) : (
                             <>
                               <Button
@@ -1757,6 +1945,14 @@ const MangaBrowser = () => {
         {!loading && results.length === 0 && !currentSeries && (
           <div className="text-center text-sm text-muted-foreground py-10">
             Search for a series to get started.
+          </div>
+        )}
+
+        {/* Global Premium Loading Overlay */}
+        {loading && (
+          <div className="fixed inset-0 bg-background/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-10 h-10 animate-spin text-violet-500" />
+            <p className="text-sm font-semibold text-violet-400 animate-pulse">Loading manga...</p>
           </div>
         )}
       </div>

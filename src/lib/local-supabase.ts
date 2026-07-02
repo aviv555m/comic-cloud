@@ -25,7 +25,31 @@ const getSafeStorage = (): Storage => {
   }
 };
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 const safeLocalStorage = getSafeStorage();
+
+const CURRENT_VERSION = "v1.0.83";
+if (typeof window !== 'undefined') {
+  try {
+    const lastVersion = localStorage.getItem("app_version");
+    if (lastVersion !== CURRENT_VERSION) {
+      localStorage.setItem("app_version", CURRENT_VERSION);
+      localStorage.setItem("app_outdated", "false");
+    }
+  } catch (e) {
+    console.warn("Failed to reset outdated flag on upgrade:", e);
+  }
+}
 
 // Original remote Supabase client
 export const originalSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
@@ -33,6 +57,11 @@ export const originalSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_PU
     storage: safeLocalStorage,
     persistSession: true,
     autoRefreshToken: true,
+  },
+  global: {
+    headers: {
+      "X-App-Version": "v1.0.83"
+    }
   }
 });
 
@@ -170,17 +199,31 @@ function mergeRemoteData(table: string, remoteRows: any[]) {
   const localRows = getTableData(table);
   const localMap = new Map(localRows.map(r => [r.id, r]));
   
+  let changed = false;
   for (const row of remoteRows) {
     if (!localMap.has(row.id)) {
       localRows.push(row);
+      changed = true;
     } else {
       const index = localRows.findIndex(r => r.id === row.id);
       if (index !== -1) {
-        localRows[index] = { ...localRows[index], ...row };
+        const localStr = JSON.stringify(localRows[index]);
+        const mergedRow = { ...localRows[index], ...row };
+        const mergedStr = JSON.stringify(mergedRow);
+        if (localStr !== mergedStr) {
+          localRows[index] = mergedRow;
+          changed = true;
+        }
       }
     }
   }
-  setTableData(table, localRows);
+  
+  if (changed) {
+    setTableData(table, localRows);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('local-db-synced', { detail: { table } }));
+    }
+  }
 }
 
 // Process local URLs inside query results (convert local cover_url or avatar_url to base64)
@@ -418,6 +461,102 @@ export async function cloneRemoteData(userId: string) {
   console.log("[Clone] Remote data clone completed!");
 }
 
+interface SyncItem {
+  table: string;
+  operation: 'insert' | 'update' | 'upsert' | 'delete';
+  payload: any;
+  upsertConflict?: string;
+  timestamp: number;
+}
+
+// Read pending offline sync items
+function getSyncQueue(): SyncItem[] {
+  try {
+    const q = localStorage.getItem("local_db_sync_queue");
+    return q ? JSON.parse(q) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Save offline sync queue
+function setSyncQueue(queue: SyncItem[]) {
+  try {
+    localStorage.setItem("local_db_sync_queue", JSON.stringify(queue));
+  } catch (e) {}
+}
+
+// Add item to offline sync queue
+function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'delete', payload: any, upsertConflict?: string) {
+  if (table === 'reading_locations') return; // local-only table
+  const queue = getSyncQueue();
+  queue.push({
+    table,
+    operation,
+    payload,
+    upsertConflict,
+    timestamp: Date.now()
+  });
+  setSyncQueue(queue);
+  processSyncQueue().catch(console.error);
+}
+
+let isSyncing = false;
+
+// Process offline queue and upload to remote Supabase server when connection is active
+export async function processSyncQueue() {
+  if (isSyncing) return;
+  if (!navigator.onLine) return;
+
+  const { data: { session } } = await originalSupabase.auth.getSession();
+  if (!session?.user) return; // Must be authenticated to sync
+
+  const queue = getSyncQueue();
+  if (queue.length === 0) return;
+
+  isSyncing = true;
+  console.log(`[Sync] Processing ${queue.length} offline changes...`);
+
+  const remainingQueue: SyncItem[] = [];
+
+  for (const item of queue) {
+    try {
+      if (item.operation === 'insert' || item.operation === 'upsert' || item.operation === 'update') {
+        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        const { error } = await originalSupabase
+          .from(item.table as any)
+          .upsert(payloadToSync, { onConflict: item.upsertConflict });
+          
+        if (error) throw error;
+      } else if (item.operation === 'delete') {
+        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        const ids = payloadToSync.map((r: any) => r.id);
+        const { error } = await originalSupabase
+          .from(item.table as any)
+          .delete()
+          .in('id', ids);
+          
+        if (error) throw error;
+      }
+      console.log(`[Sync] Successfully synced offline ${item.operation} for table ${item.table}`);
+    } catch (err) {
+      console.warn(`[Sync] Failed to sync ${item.operation} for table ${item.table}:`, err);
+      remainingQueue.push(item);
+    }
+  }
+
+  setSyncQueue(remainingQueue);
+  isSyncing = false;
+}
+
+// Add window online listener to auto-sync when network reconnects
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[Sync] Device is back online! Processing queued offline changes...');
+    processSyncQueue().catch(console.error);
+  });
+}
+
 // Local mock Query Builder
 class MockQueryBuilder {
   private tableName: string;
@@ -426,10 +565,11 @@ class MockQueryBuilder {
   private orderAscending = true;
   private limitCount: number | null = null;
   private selectFields: string = '*';
-  private operation: 'select' | 'insert' | 'update' | 'delete' = 'select';
+  private operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert' = 'select';
   private payload: any = null;
   private isSingle = false;
   private isMaybeSingle = false;
+  private upsertConflict: string | undefined = undefined;
 
   constructor(tableName: string) {
     this.tableName = tableName;
@@ -454,6 +594,13 @@ class MockQueryBuilder {
     return this;
   }
 
+  upsert(values: any, options?: { onConflict?: string }) {
+    this.operation = 'upsert';
+    this.payload = values;
+    this.upsertConflict = options?.onConflict;
+    return this;
+  }
+
   delete() {
     this.operation = 'delete';
     return this;
@@ -461,6 +608,17 @@ class MockQueryBuilder {
 
   eq(field: string, value: any) {
     this.filters.push(row => row[field] === value);
+    return this;
+  }
+
+  ilike(field: string, pattern: string) {
+    const cleanPattern = pattern.replace(/%/g, '.*');
+    const regex = new RegExp(`^${cleanPattern}$`, 'i');
+    this.filters.push(row => {
+      const val = row[field];
+      if (val === null || val === undefined) return false;
+      return regex.test(String(val));
+    });
     return this;
   }
 
@@ -568,28 +726,22 @@ class MockQueryBuilder {
         
         for (const item of toInsert) {
           const newItem = {
-            id: item.id || crypto.randomUUID(),
+            id: item.id || generateUUID(),
             created_at: item.created_at || new Date().toISOString(),
             ...item
           };
           data.push(newItem);
           inserted.push(newItem);
 
-          if (this.tableName === 'books') {
+          if (this.tableName === 'books' && newItem.file_url?.includes('/local-file-route/') && newItem.file_type !== 'manga') {
             await handleBookInsertionOffline(newItem);
           }
         }
 
         setTableData(this.tableName, data);
         
-        // Propagate to remote database in background if online and authenticated
-        originalSupabase.auth.getSession().then(({ data: { session } }) => {
-          if (session?.user) {
-            originalSupabase.from(this.tableName as any).insert(inserted).catch(err => {
-              console.warn(`[Sync] Background remote insert failed for ${this.tableName}:`, err);
-            });
-          }
-        }).catch(() => {});
+        // Queue for offline remote synchronization
+        queueSync(this.tableName, 'insert', inserted);
         
         const returnData = Array.isArray(this.payload) ? inserted : inserted[0];
         return { data: returnData, error: null };
@@ -615,18 +767,54 @@ class MockQueryBuilder {
 
         setTableData(this.tableName, data);
         
-        // Propagate to remote database in background if online and authenticated
+        // Queue for offline remote synchronization
         if (updatedRows.length > 0) {
-          originalSupabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) {
-              originalSupabase.from(this.tableName as any).upsert(updatedRows).catch(err => {
-                console.warn(`[Sync] Background remote update failed for ${this.tableName}:`, err);
-              });
-            }
-          }).catch(() => {});
+          queueSync(this.tableName, 'update', updatedRows);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (updatedRows[0] || null) : updatedRows;
+        return { data: returnData, error: null };
+      }
+
+      if (this.operation === 'upsert') {
+        const toUpsert = Array.isArray(this.payload) ? this.payload : [this.payload];
+        const conflictKeys = this.upsertConflict ? this.upsertConflict.split(',').map(s => s.trim()) : ['id'];
+        const upserted: any[] = [];
+        
+        for (const item of toUpsert) {
+          // Find matching row locally
+          const matchIdx = data.findIndex(row => {
+            return conflictKeys.every(k => row[k] === item[k]);
+          });
+          
+          if (matchIdx !== -1) {
+            // Update existing row
+            const updatedRow = {
+              ...data[matchIdx],
+              ...item,
+              updated_at: new Date().toISOString()
+            };
+            data[matchIdx] = updatedRow;
+            upserted.push(updatedRow);
+          } else {
+            // Insert new row
+            const newRow = {
+              id: item.id || generateUUID(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              ...item
+            };
+            data.push(newRow);
+            upserted.push(newRow);
+          }
+        }
+
+        setTableData(this.tableName, data);
+        
+        // Queue for offline remote synchronization
+        queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
+        
+        const returnData = Array.isArray(this.payload) ? upserted : upserted[0];
         return { data: returnData, error: null };
       }
 
@@ -650,16 +838,9 @@ class MockQueryBuilder {
 
         setTableData(this.tableName, remaining);
         
-        // Propagate to remote database in background if online and authenticated
+        // Queue for offline remote synchronization
         if (deleted.length > 0) {
-          const idsToDelete = deleted.map(r => r.id);
-          originalSupabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) {
-              originalSupabase.from(this.tableName as any).delete().in('id', idsToDelete).catch(err => {
-                console.warn(`[Sync] Background remote delete failed for ${this.tableName}:`, err);
-              });
-            }
-          }).catch(() => {});
+          queueSync(this.tableName, 'delete', deleted);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (deleted[0] || null) : deleted;
@@ -735,9 +916,28 @@ const localAuthProxy = {
       if (users.some(u => u.email === email)) {
         return { data: { user: null, session: null }, error: new Error('User already registered') };
       }
+
+      // Sync account creation to remote Supabase server when online
+      let remoteUser: any = null;
+      let remoteSession: any = null;
       
-      const userId = crypto.randomUUID();
-      const mockUser = {
+      if (navigator.onLine) {
+        const { data, error } = await originalSupabase.auth.signUp({
+          email,
+          password,
+          options: credentials.options
+        });
+        if (error) {
+          return { data: { user: null, session: null }, error };
+        }
+        if (data && data.user) {
+          remoteUser = data.user;
+          remoteSession = data.session;
+        }
+      }
+      
+      const userId = remoteUser?.id || generateUUID();
+      const mockUser = remoteUser || {
         id: userId,
         email,
         role: 'authenticated',
@@ -747,7 +947,7 @@ const localAuthProxy = {
         created_at: new Date().toISOString()
       };
       
-      const mockSession = {
+      const mockSession = remoteSession || {
         access_token: 'mock-local-token-' + userId,
         refresh_token: 'mock-local-refresh-token-' + userId,
         expires_in: 3600,
@@ -768,8 +968,10 @@ const localAuthProxy = {
         updated_at: new Date().toISOString()
       };
       const profiles = getTableData('profiles');
-      profiles.push(defaultProfile);
-      setTableData('profiles', profiles);
+      if (!profiles.some(p => p.id === userId)) {
+        profiles.push(defaultProfile);
+        setTableData('profiles', profiles);
+      }
 
       triggerAuthEvent('SIGNED_IN', mockSession);
       return { data: { user: mockUser, session: mockSession }, error: null };
@@ -882,6 +1084,12 @@ const localAuthProxy = {
     const session = getLocalSession();
     if (session) {
       if (session.user) {
+        // Synchronize authenticated session state to original remote Supabase client
+        originalSupabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token
+        }).catch(err => console.warn("[Auth] Failed to set originalSupabase session:", err));
+
         // Trigger background clone of remote data to stay up-to-date!
         cloneRemoteData(session.user.id).catch(console.error);
       }
@@ -905,6 +1113,13 @@ const localAuthProxy = {
     
     // Trigger initial auth check
     const session = getLocalSession();
+    if (session) {
+      originalSupabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      }).catch(() => {});
+    }
+
     setTimeout(() => {
       callback(session ? 'INITIAL_SESSION' : 'SIGNED_OUT', session);
     }, 0);
@@ -995,7 +1210,7 @@ const localStorageProxy = {
 };
 
 // Main Export Client Proxy
-export const supabase = {
+export const supabase = new Proxy({
   auth: localAuthProxy,
   from: (table: string) => new MockQueryBuilder(table),
   storage: localStorageProxy,
@@ -1006,4 +1221,52 @@ export const supabase = {
       return originalSupabase.functions.invoke(functionName, options);
     }
   }
-};
+}, {
+  get: (target, prop) => {
+    if (typeof window !== 'undefined' && localStorage.getItem("app_outdated") === "true") {
+      if (prop === 'from') {
+        return (table: string) => ({
+          select: () => Promise.resolve({ data: [], error: { message: "Outdated version" } }),
+          insert: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          update: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          delete: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          upsert: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          eq: function() { return this; },
+          neq: function() { return this; },
+          ilike: function() { return this; },
+          gt: function() { return this; },
+          lt: function() { return this; },
+          order: function() { return this; },
+          single: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          maybeSingle: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+        });
+      }
+      if (prop === 'functions') {
+        return {
+          invoke: () => Promise.resolve({ data: null, error: { message: "Outdated version" } })
+        };
+      }
+      if (prop === 'auth') {
+        return {
+          getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+          getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+          onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+          signInWithPassword: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          signOut: () => Promise.resolve({ error: null })
+        };
+      }
+      if (prop === 'storage') {
+        return {
+          from: () => ({
+            upload: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+            download: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+            remove: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+            createSignedUrl: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+            getPublicUrl: () => ({ data: { publicUrl: "" } })
+          })
+        };
+      }
+    }
+    return Reflect.get(target, prop);
+  }
+});

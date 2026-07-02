@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Upload } from "lucide-react";
+import { Loader2, Upload, Sparkles } from "lucide-react";
 import { useExistingSeries } from "@/hooks/useExistingSeries";
 import { SeriesCombobox } from "@/components/SeriesCombobox";
 
@@ -21,12 +21,69 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [series, setSeries] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fetchingMetadata, setFetchingMetadata] = useState(false);
   const { toast } = useToast();
   const { series: existingSeries } = useExistingSeries(userId);
+
+  const handleAutoFill = async () => {
+    const searchQuery = title || series;
+    if (!searchQuery) {
+      toast({
+        variant: "destructive",
+        title: "Search criteria needed",
+        description: "Please enter a Title or Series name first to search for details.",
+      });
+      return;
+    }
+    
+    setFetchingMetadata(true);
+    try {
+      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}`);
+      if (!res.ok) throw new Error("Metadata request failed");
+      const data = await res.json();
+      
+      if (!data.items || data.items.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Not found",
+          description: "Could not find any matching books on Google Books.",
+        });
+        return;
+      }
+      
+      const volumeInfo = data.items[0].volumeInfo;
+      const authorsList = volumeInfo.authors || [];
+      const imageLinks = volumeInfo.imageLinks || {};
+      
+      const scrapedAuthor = authorsList[0] || "";
+      const scrapedCover = (imageLinks.thumbnail || imageLinks.smallThumbnail || "").replace("http://", "https://");
+      
+      if (scrapedAuthor && !author) {
+        setAuthor(scrapedAuthor);
+      }
+      if (scrapedCover) {
+        setCoverUrl(scrapedCover);
+      }
+      
+      toast({
+        title: "Metadata populated",
+        description: `Found: "${volumeInfo.title}" by ${scrapedAuthor || "Unknown Author"}`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Search failed",
+        description: err.message,
+      });
+    } finally {
+      setFetchingMetadata(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -74,7 +131,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       const fileUrl = signedUrlData.signedUrl;
 
       // Upload custom cover if provided
-      let coverUrl = null;
+      let finalCoverUrl = coverUrl || null;
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop();
         const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
@@ -94,7 +151,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           const { data: coverData } = supabase.storage
             .from('book-covers')
             .getPublicUrl(coverPath);
-          coverUrl = coverData.publicUrl;
+          finalCoverUrl = coverData.publicUrl;
         }
       }
 
@@ -110,7 +167,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           file_type: fileExt || "unknown",
           file_size: file.size,
           is_public: isPublic,
-          cover_url: coverUrl,
+          cover_url: finalCoverUrl,
         })
         .select()
         .single();
@@ -125,7 +182,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
         }).catch(console.error);
 
         // Generate cover only if no custom cover was uploaded
-        if (!coverUrl) {
+        if (!finalCoverUrl) {
           supabase.functions.invoke('generate-cover', {
             body: { bookId: insertData.id }
           }).catch(console.error);
@@ -141,6 +198,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       setTitle("");
       setAuthor("");
       setSeries("");
+      setCoverUrl("");
       setIsPublic(false);
       setFile(null);
       setCoverFile(null);
@@ -213,7 +271,31 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="cover">Custom Cover (Optional)</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-xs font-bold gap-1.5 text-violet-400 hover:text-violet-300 border-violet-500/20"
+              onClick={handleAutoFill}
+              disabled={fetchingMetadata}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+              {fetchingMetadata ? "Searching web details..." : "Auto-fill cover & author"}
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="coverUrl">Cover Image URL</Label>
+            <Input
+              id="coverUrl"
+              value={coverUrl}
+              onChange={(e) => setCoverUrl(e.target.value)}
+              placeholder="https://example.com/cover.jpg"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="cover">Custom Cover File (Optional)</Label>
             <Input
               id="cover"
               type="file"

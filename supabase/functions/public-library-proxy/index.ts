@@ -95,9 +95,50 @@ async function safeFetch(initialUrl: URL): Promise<Response> {
   });
 }
 
+// Fetch latest version from GitHub API (cached in Deno memory to prevent rate limits)
+let cachedLatestVersion = "";
+let lastFetchedTime = 0;
+
+async function getLatestGitHubVersion() {
+  const now = Date.now();
+  if (cachedLatestVersion && (now - lastFetchedTime) < 300000) { // cache for 5 minutes
+    return cachedLatestVersion;
+  }
+  try {
+    const res = await fetch("https://api.github.com/repos/aviv555m/comic-cloud/releases/latest", {
+      headers: { "User-Agent": "deno-edge-function" }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.tag_name) {
+        cachedLatestVersion = data.tag_name.toLowerCase().replace(/^v/, "").trim();
+        lastFetchedTime = now;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to fetch latest GitHub release version:", err);
+  }
+  return cachedLatestVersion;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Mandatory App Version Verification
+  const clientVersion = req.headers.get("x-app-version");
+  if (clientVersion) {
+    const latest = await getLatestGitHubVersion();
+    if (latest) {
+      const cleanClient = clientVersion.toLowerCase().replace(/^v/, "").trim();
+      if (cleanClient !== latest) {
+        return new Response(JSON.stringify({ success: false, error: "Outdated client version. Update required to use services." }), {
+          status: 426,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
   }
 
   try {

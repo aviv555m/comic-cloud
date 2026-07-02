@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 
 export const useServiceWorker = () => {
   const [isReady, setIsReady] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
 
   useEffect(() => {
-    // In preview/dev we should not register a service worker because it can cache
-    // old builds and make new routes/components appear "missing".
-    if (!import.meta.env.PROD) {
+    // In preview/dev or native platform we should not register a service worker
+    if (!import.meta.env.PROD || Capacitor.isNativePlatform()) {
       void unregisterServiceWorkersInDev();
       return;
     }

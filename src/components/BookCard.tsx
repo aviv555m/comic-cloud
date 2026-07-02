@@ -1,8 +1,11 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Globe, Lock, CheckCircle2, CloudOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
+import { Capacitor } from "@capacitor/core";
+import { supabase } from "@/integrations/supabase/client";
 
 interface BookCardProps {
   id: string;
@@ -18,6 +21,7 @@ interface BookCardProps {
   lastPageRead?: number;
   canEdit?: boolean;
   onClick?: () => void;
+  onLongPress?: () => void;
   onCoverGenerated?: () => void;
 }
 
@@ -32,23 +36,117 @@ export const BookCard = ({
   isCompleted = false,
   readingProgress = 0,
   onClick,
+  onLongPress,
 }: BookCardProps) => {
   const { isBookOffline } = useOfflineBooks();
   const isOffline = isBookOffline(id);
+  const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
+  const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressActiveRef = useRef(false);
+
+  useEffect(() => {
+    if (!coverUrl) {
+      setResolvedCover(undefined);
+      return;
+    }
+    
+    if (coverUrl.startsWith("data:")) {
+      setResolvedCover(coverUrl);
+      return;
+    }
+    
+    const isNative = Capacitor.isNativePlatform();
+    const isProdOrNative = isNative || !import.meta.env.DEV;
+    
+    if (isProdOrNative && coverUrl.startsWith("/api-image-proxy?url=")) {
+      const targetUrl = decodeURIComponent(coverUrl.split("/api-image-proxy?url=")[1]);
+      
+      let active = true;
+      const fetchCover = async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+            body: { url: targetUrl, responseType: "text" },
+          });
+          if (active && !error && data?.success && data.data) {
+            setResolvedCover(`data:image/jpeg;base64,${data.data}`);
+          }
+        } catch (e) {
+          console.warn("Failed to load native cover via edge proxy:", e);
+        }
+      };
+      
+      fetchCover();
+      return () => {
+        active = false;
+      };
+    } else {
+      setResolvedCover(coverUrl);
+    }
+  }, [coverUrl]);
+
+  const handlePressStart = (e: React.TouchEvent | React.MouseEvent) => {
+    // Avoid mouse emulation triggers on touch devices
+    if (e.type === 'mousedown' && 'ontouchstart' in window) return;
+    
+    longPressActiveRef.current = false;
+    touchTimeoutRef.current = setTimeout(() => {
+      if (onLongPress) {
+        onLongPress();
+        longPressActiveRef.current = true;
+        if (navigator.vibrate) {
+          try {
+            navigator.vibrate(40);
+          } catch (err) {}
+        }
+      }
+    }, 600); // 600ms hold
+  };
+
+  const handlePressEnd = (e: React.TouchEvent | React.MouseEvent) => {
+    if (e.type === 'mouseup' && 'ontouchstart' in window) return;
+    
+    if (touchTimeoutRef.current) {
+      clearTimeout(touchTimeoutRef.current);
+      touchTimeoutRef.current = null;
+    }
+    
+    if (longPressActiveRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      longPressActiveRef.current = false;
+      return;
+    }
+    
+    if (onClick) {
+      onClick();
+    }
+  };
+
+  const handlePressCancel = () => {
+    if (touchTimeoutRef.current) {
+      clearTimeout(touchTimeoutRef.current);
+      touchTimeoutRef.current = null;
+    }
+  };
 
   return (
     <Card
       className={cn(
-        "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1",
+        "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1 select-none active:scale-[0.98]",
         "glass-card"
       )}
-      onClick={onClick}
+      onMouseDown={handlePressStart}
+      onMouseUp={handlePressEnd}
+      onMouseLeave={handlePressCancel}
+      onTouchStart={handlePressStart}
+      onTouchEnd={handlePressEnd}
+      onTouchMove={handlePressCancel}
     >
       <CardContent className="p-0">
         <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
-          {coverUrl ? (
+          {resolvedCover ? (
             <img
-              src={coverUrl}
+              src={resolvedCover}
               alt={title}
               className={cn(
                 "w-full h-full object-cover",
