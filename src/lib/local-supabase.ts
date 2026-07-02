@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.85";
+const CURRENT_VERSION = "v1.0.86";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -443,6 +443,22 @@ export async function cloneRemoteData(userId: string) {
       if (error) {
         console.warn(`[Clone] Failed to fetch table ${table}:`, error);
         continue;
+      }
+      
+      // Self-healing: if online and fetching books, check for any unsynced local uploads
+      if (table === "books" && data) {
+        const remoteIds = new Set(data.map(b => b.id));
+        const localBooks = getTableData("books");
+        const unsyncedBooks = localBooks.filter(b => b.user_id === userId && !remoteIds.has(b.id));
+        
+        if (unsyncedBooks.length > 0) {
+          console.log(`[Sync] Self-healing: Found ${unsyncedBooks.length} unsynced local books. Syncing to remote...`);
+          originalSupabase.from("books").upsert(unsyncedBooks).then(() => {
+            console.log("[Sync] Self-healing: Successfully uploaded unsynced books to server.");
+          }).catch(err => {
+            console.warn("[Sync] Self-healing: Failed to sync books to remote server:", err);
+          });
+        }
       }
       
       if (data && data.length > 0) {
@@ -1145,6 +1161,14 @@ const localAuthProxy = {
   }
 };
 
+function getServerUrl() {
+  if (typeof window === 'undefined') return "https://cc.displayname.top";
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.')) {
+    return window.location.origin;
+  }
+  return "https://cc.displayname.top";
+}
+
 // Local mock Storage Object
 const localStorageProxy = {
   from: (bucket: string) => ({
@@ -1154,16 +1178,25 @@ const localStorageProxy = {
         await saveLocalFile(fullPath, file);
         console.log(`[Storage] Uploaded ${fullPath} locally to IndexedDB`);
         
-        // Propagate file upload to remote Supabase storage in background if authenticated
-        originalSupabase.auth.getSession().then(({ data: { session } }) => {
-          if (session?.user) {
-            originalSupabase.storage.from(bucket).upload(filePath, file, options).then(() => {
-              console.log(`[Storage] Successfully synced ${fullPath} to remote storage`);
-            }).catch(err => {
-              console.warn(`[Storage] Failed to sync ${fullPath} to remote storage:`, err);
-            });
-          }
-        }).catch(() => {});
+        // Propagate file upload to local server in background if online
+        if (navigator.onLine) {
+          fetch(`${getServerUrl()}/api/upload`, {
+            method: 'POST',
+            headers: {
+              'x-file-path': `${bucket}/${filePath}`,
+              'Content-Type': 'application/octet-stream'
+            },
+            body: file
+          }).then(async (res) => {
+            if (res.ok) {
+              console.log(`[Storage] Successfully synced ${fullPath} to local server`);
+            } else {
+              console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, res.statusText);
+            }
+          }).catch(err => {
+            console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, err);
+          });
+        }
 
         return { data: { path: filePath }, error: null };
       } catch (e: any) {
@@ -1198,22 +1231,28 @@ const localStorageProxy = {
     
     createSignedUrl: async (filePath: string, expiresIn: number) => {
       const fullPath = `${bucket}/${filePath}`;
+      
+      // 1. If online, serve directly from the local Node server static path
+      if (navigator.onLine) {
+        const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
+        return { data: { signedUrl: serverUrl }, error: null };
+      }
+      
+      // 2. If offline, fallback to IndexedDB file blob
       const localFile = await getLocalFile(fullPath);
       if (localFile) {
         const localUrl = `${window.location.origin}/local-file-route/${encodeURIComponent(fullPath)}`;
         return { data: { signedUrl: localUrl }, error: null };
-      } else {
-        // Fallback to remote storage if not found locally
-        console.log(`[Storage] Local file not found: ${fullPath}. Falling back to remote Supabase Storage...`);
-        return originalSupabase.storage.from(bucket).createSignedUrl(filePath, expiresIn);
       }
+      
+      return { data: null, error: new Error("File not available offline") };
     },
     
     getPublicUrl: (filePath: string) => {
       const fullPath = `${bucket}/${filePath}`;
-      // Return local-file-route URL; it will load cover images locally
-      const localUrl = `${window.location.origin}/local-file-route/${encodeURIComponent(fullPath)}`;
-      return { data: { publicUrl: localUrl } };
+      // Return local server URL for cover images and other public assets
+      const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
+      return { data: { publicUrl: serverUrl } };
     }
   })
 };

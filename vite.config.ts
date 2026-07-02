@@ -93,6 +93,72 @@ export default defineConfig(({ mode }) => ({
             return;
           }
 
+          // Handle CORS preflight for upload API
+          if (req.url && req.url.startsWith("/api/upload") && req.method === "OPTIONS") {
+            res.statusCode = 204;
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+            res.setHeader("Access-Control-Allow-Headers", "*");
+            res.end();
+            return;
+          }
+
+          // Local server upload API
+          if (req.url && req.url.startsWith("/api/upload") && req.method === "POST") {
+            const filePathHeader = req.headers['x-file-path'] as string;
+            if (!filePathHeader) {
+              res.statusCode = 400;
+              res.end("Missing x-file-path header");
+              return;
+            }
+
+            const cleanFilePath = decodeURIComponent(filePathHeader);
+            const uploadDir = path.resolve(__dirname, "./public/uploads");
+            const distDir = path.resolve(__dirname, "./dist/uploads");
+            
+            const fs = require("fs");
+            
+            const saveToDir = (dir: string) => {
+              if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+              }
+              const destPath = path.join(dir, cleanFilePath);
+              const destDir = path.dirname(destPath);
+              if (!fs.existsSync(destDir)) {
+                fs.mkdirSync(destDir, { recursive: true });
+              }
+              return destPath;
+            };
+
+            const publicDest = saveToDir(uploadDir);
+            const distDest = saveToDir(distDir);
+            
+            const writeStreamPublic = fs.createWriteStream(publicDest);
+            const writeStreamDist = fs.createWriteStream(distDest);
+
+            req.on("data", (chunk) => {
+              writeStreamPublic.write(chunk);
+              writeStreamDist.write(chunk);
+            });
+
+            req.on("end", () => {
+              writeStreamPublic.end();
+              writeStreamDist.end();
+              res.statusCode = 200;
+              res.setHeader("Content-Type", "application/json");
+              res.setHeader("Access-Control-Allow-Origin", "*");
+              res.setHeader("Access-Control-Allow-Headers", "*");
+              res.end(JSON.stringify({ url: `/uploads/${cleanFilePath}` }));
+            });
+
+            req.on("error", (err) => {
+              console.error("Upload error:", err);
+              res.statusCode = 500;
+              res.end("Upload failed");
+            });
+            return;
+          }
+
           if (req.url && req.url.startsWith("/api-image-proxy")) {
             const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
             const targetUrl = urlObj.searchParams.get("url");

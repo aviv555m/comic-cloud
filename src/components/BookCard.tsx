@@ -43,6 +43,7 @@ export const BookCard = ({
   const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
   const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressActiveRef = useRef(false);
+  const startCoordsRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!coverUrl) {
@@ -88,6 +89,11 @@ export const BookCard = ({
     // Avoid mouse emulation triggers on touch devices
     if (e.type === 'mousedown' && 'ontouchstart' in window) return;
     
+    if (e.type === 'touchstart') {
+      const touch = (e as React.TouchEvent).touches[0];
+      startCoordsRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+    
     longPressActiveRef.current = false;
     touchTimeoutRef.current = setTimeout(() => {
       if (onLongPress) {
@@ -129,18 +135,35 @@ export const BookCard = ({
     }
   };
 
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const dx = touch.clientX - startCoordsRef.current.x;
+    const dy = touch.clientY - startCoordsRef.current.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Only cancel hold if user actually scrolled/dragged their finger (distance > 10px)
+    if (distance > 10) {
+      if (touchTimeoutRef.current) {
+        clearTimeout(touchTimeoutRef.current);
+        touchTimeoutRef.current = null;
+      }
+    }
+  };
+
   return (
     <Card
       className={cn(
         "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1 select-none active:scale-[0.98]",
         "glass-card"
       )}
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}
       onMouseLeave={handlePressCancel}
       onTouchStart={handlePressStart}
       onTouchEnd={handlePressEnd}
-      onTouchMove={handlePressCancel}
+      onTouchMove={handleTouchMove}
+      onContextMenu={(e) => e.preventDefault()}
     >
       <CardContent className="p-0">
         <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
