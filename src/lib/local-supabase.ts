@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.93";
+const CURRENT_VERSION = "v1.0.94";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");

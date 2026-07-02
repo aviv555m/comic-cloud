@@ -27,7 +27,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { openLocalDB, getServerUrl } from "@/lib/local-supabase";
+import { openLocalDB, getServerUrl, originalSupabase } from "@/lib/local-supabase";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
@@ -610,6 +610,20 @@ const Reader = () => {
                 setSignedUrl(fileUrl + cacheBuster);
                 setLoading(false);
                 return;
+              }
+            } else {
+              // Fallback to remote Supabase Storage for existing files
+              console.log("[Reader] No local cache found. Falling back to remote Supabase Storage...");
+              try {
+                const { data: remoteSigned, error: remoteSignedError } = await originalSupabase.storage
+                  .from('book-files')
+                  .createSignedUrl(decodeURIComponent(filePath || ''), 60 * 60 * 4);
+                if (!remoteSignedError && remoteSigned?.signedUrl) {
+                  console.log("[Reader] Resolved remote signed URL fallback.");
+                  fileUrl = remoteSigned.signedUrl;
+                }
+              } catch (remoteErr) {
+                console.warn("Failed to generate remote signed URL fallback:", remoteErr);
               }
             }
           }
