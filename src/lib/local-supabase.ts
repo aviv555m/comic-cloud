@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.84";
+const CURRENT_VERSION = "v1.0.85";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -57,11 +57,6 @@ export const originalSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_PU
     storage: safeLocalStorage,
     persistSession: true,
     autoRefreshToken: true,
-  },
-  global: {
-    headers: {
-      "X-App-Version": "v1.0.84"
-    }
   }
 });
 
@@ -440,7 +435,7 @@ export async function cloneRemoteData(userId: string) {
       let query = originalSupabase.from(table as any).select("*");
       if (table === "profiles") {
         query = query.eq("id", userId) as any;
-      } else {
+      } else if (table !== "book_tags" && table !== "reading_list_books") {
         query = query.eq("user_id", userId) as any;
       }
       
