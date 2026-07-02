@@ -44,6 +44,7 @@ export const BookCard = ({
   const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressActiveRef = useRef(false);
   const startCoordsRef = useRef({ x: 0, y: 0 });
+  const wasDraggedRef = useRef(false);
 
   useEffect(() => {
     if (!coverUrl) {
@@ -94,6 +95,7 @@ export const BookCard = ({
       startCoordsRef.current = { x: touch.clientX, y: touch.clientY };
     }
     
+    wasDraggedRef.current = false;
     longPressActiveRef.current = false;
     touchTimeoutRef.current = setTimeout(() => {
       if (onLongPress) {
@@ -123,6 +125,12 @@ export const BookCard = ({
       return;
     }
     
+    // Ignore clicks if the user dragged/scrolled their finger during touch
+    if (wasDraggedRef.current) {
+      wasDraggedRef.current = false;
+      return;
+    }
+    
     if (onClick) {
       onClick();
     }
@@ -143,6 +151,7 @@ export const BookCard = ({
     
     // Only cancel hold if user actually scrolled/dragged their finger (distance > 10px)
     if (distance > 10) {
+      wasDraggedRef.current = true;
       if (touchTimeoutRef.current) {
         clearTimeout(touchTimeoutRef.current);
         touchTimeoutRef.current = null;
@@ -156,7 +165,7 @@ export const BookCard = ({
         "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1 select-none active:scale-[0.98]",
         "glass-card"
       )}
-      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
       onMouseDown={handlePressStart}
       onMouseUp={handlePressEnd}
       onMouseLeave={handlePressCancel}

@@ -97,7 +97,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.86"; // Hardcoded current native app version
+          const currentTag = "v1.0.87"; // Hardcoded current native app version
           
           if (latestTag) {
             const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
@@ -139,7 +139,7 @@ const AppContent = () => {
             </div>
             <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
             <p className="text-sm text-muted-foreground">
-              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.86</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.87</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
             </p>
           </div>
           
