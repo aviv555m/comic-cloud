@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.87";
+const CURRENT_VERSION = "v1.0.88";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -1323,6 +1323,12 @@ export const supabase = new Proxy({
 originalSupabase.auth.onAuthStateChange((event, session) => {
   console.log(`[Auth Sync] Remote auth state change event: ${event}`);
   if (session) {
+    const currentSession = getLocalSession();
+    // Prevent infinite recursion loops by only triggering updates when the token has actually changed
+    if (currentSession && currentSession.access_token === session.access_token) {
+      return;
+    }
+    
     const localSession = {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
