@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.90";
+const CURRENT_VERSION = "v1.0.91";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -1208,7 +1208,7 @@ const localAuthProxy = {
   }
 };
 
-function getServerUrl() {
+export function getServerUrl() {
   if (typeof window === 'undefined') return "https://cc.displayname.top";
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.')) {
     return window.location.origin;

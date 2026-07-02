@@ -27,7 +27,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { openLocalDB } from "@/lib/local-supabase";
+import { openLocalDB, getServerUrl } from "@/lib/local-supabase";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
@@ -583,6 +583,33 @@ const Reader = () => {
           }
         } catch (err) {
           console.error("Failed to generate fresh signed URL:", err);
+        }
+      }
+
+      // Self-healing: verify if file exists on server disk
+      if (currentlyOnline && fileUrl && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
+        try {
+          const testRes = await fetch(fileUrl, { method: 'HEAD' });
+          if (testRes.status === 404) {
+            console.log("[Reader] File not found on server (404). Checking local offline cache for upload...");
+            const fileBlob = await getOfflineFile(data.id);
+            if (fileBlob) {
+              console.log("[Reader] Found local file blob. Syncing to server disk...");
+              const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
+                method: 'POST',
+                headers: {
+                  'x-file-path': `book-files/${decodeURIComponent(filePath || '')}`,
+                  'Content-Type': 'application/octet-stream'
+                },
+                body: fileBlob
+              });
+              if (uploadRes.ok) {
+                console.log("[Reader] Self-healing file upload succeeded.");
+              }
+            }
+          }
+        } catch (headErr) {
+          console.warn("Failed to check server file availability:", headErr);
         }
       }
 
