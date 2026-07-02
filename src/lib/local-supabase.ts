@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.83";
+const CURRENT_VERSION = "v1.0.84";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -60,7 +60,7 @@ export const originalSupabase = createClient<Database>(SUPABASE_URL, SUPABASE_PU
   },
   global: {
     headers: {
-      "X-App-Version": "v1.0.83"
+      "X-App-Version": "v1.0.84"
     }
   }
 });
@@ -984,8 +984,56 @@ const localAuthProxy = {
     try {
       const email = credentials.email;
       const password = credentials.password;
-      const users = getLocalUsers();
       
+      // Try remote Supabase server login first if online
+      if (navigator.onLine) {
+        console.log('[Auth] Online: Attempting remote database login...');
+        const { data: remoteData, error: remoteError } = await originalSupabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (!remoteError && remoteData && remoteData.session && remoteData.user) {
+          const users = getLocalUsers();
+          if (!users.some(u => u.email === email)) {
+            users.push({ id: remoteData.user.id, email, password });
+            saveLocalUsers(users);
+          } else {
+            const idx = users.findIndex(u => u.email === email);
+            if (idx !== -1) users[idx].password = password;
+            saveLocalUsers(users);
+          }
+          
+          const localSession = {
+            access_token: remoteData.session.access_token,
+            refresh_token: remoteData.session.refresh_token,
+            expires_in: remoteData.session.expires_in,
+            expires_at: remoteData.session.expires_at,
+            token_type: remoteData.session.token_type,
+            user: remoteData.user
+          };
+          saveLocalSession(localSession);
+          
+          // Explicitly sync session context
+          await originalSupabase.auth.setSession({
+            access_token: remoteData.session.access_token,
+            refresh_token: remoteData.session.refresh_token
+          }).catch(() => {});
+          
+          cloneRemoteData(remoteData.user.id).catch(console.error);
+          triggerAuthEvent('SIGNED_IN', localSession);
+          return { data: { user: remoteData.user, session: remoteData.session }, error: null };
+        }
+        
+        // If it is a credentials error (wrong password/user doesn't exist), return immediately
+        if (remoteError && remoteError.status && remoteError.status >= 400 && remoteError.status < 500) {
+          return { data: { user: null, session: null }, error: remoteError };
+        }
+      }
+      
+      // Offline fallback or remote server error fallback: authenticate locally
+      console.log('[Auth] Offline or remote server error. Authenticating locally...');
+      const users = getLocalUsers();
       const localUser = users.find(u => u.email === email);
       if (localUser) {
         if (localUser.password !== password) {
@@ -1010,46 +1058,12 @@ const localAuthProxy = {
           token_type: 'bearer',
           user: mockUser
         };
-        
         saveLocalSession(mockSession);
         triggerAuthEvent('SIGNED_IN', mockSession);
         return { data: { user: mockUser, session: mockSession }, error: null };
       }
       
-      // Fallback to Remote Supabase Login
-      console.log('[Auth] User not found locally. Trying remote database login...');
-      const { data: remoteData, error: remoteError } = await originalSupabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (remoteError) {
-        return { data: { user: null, session: null }, error: remoteError };
-      }
-      
-      if (remoteData && remoteData.session && remoteData.user) {
-        // Save user locally for future offline logins
-        users.push({ id: remoteData.user.id, email, password });
-        saveLocalUsers(users);
-        
-        const localSession = {
-          access_token: remoteData.session.access_token,
-          refresh_token: remoteData.session.refresh_token,
-          expires_in: remoteData.session.expires_in,
-          expires_at: remoteData.session.expires_at,
-          token_type: remoteData.session.token_type,
-          user: remoteData.user
-        };
-        saveLocalSession(localSession);
-        
-        // Clone all user's data from remote database to local storage in background
-        cloneRemoteData(remoteData.user.id).catch(console.error);
-        
-        triggerAuthEvent('SIGNED_IN', localSession);
-        return { data: { user: remoteData.user, session: remoteData.session }, error: null };
-      }
-      
-      return { data: { user: null, session: null }, error: new Error('Failed to sign in') };
+      return { data: { user: null, session: null }, error: new Error('User not registered or device is offline') };
     } catch (e: any) {
       return { data: { user: null, session: null }, error: e };
     }
@@ -1268,5 +1282,28 @@ export const supabase = new Proxy({
       }
     }
     return Reflect.get(target, prop);
+  }
+});
+
+// Synchronize remote client auth changes back to local storage session cache
+originalSupabase.auth.onAuthStateChange((event, session) => {
+  console.log(`[Auth Sync] Remote auth state change event: ${event}`);
+  if (session) {
+    const localSession = {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      expires_at: session.expires_at,
+      token_type: session.token_type,
+      user: session.user
+    };
+    saveLocalSession(localSession);
+    triggerAuthEvent(event as any, localSession);
+  } else {
+    // Only clear session if we are online and truly signed out remotely
+    if (navigator.onLine && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
+      saveLocalSession(null);
+      triggerAuthEvent('SIGNED_OUT', null);
+    }
   }
 });
