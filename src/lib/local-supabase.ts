@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.92";
+const CURRENT_VERSION = "v1.0.93";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = localStorage.getItem("app_version");
@@ -467,34 +467,38 @@ export async function cloneRemoteData(userId: string) {
           }).catch(err => {
             console.warn("[Sync] Self-healing: Failed to sync books to remote server:", err);
           });
+        }
 
-          // Upload missing file blobs to Node server storage in the background
-          for (const book of unsyncedBooks) {
-            if (!book.file_url) continue;
-            const fileParts = book.file_url.split('/book-files/');
-            const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
-            if (filePath) {
-              const fullPath = `book-files/${decodeURIComponent(filePath)}`;
-              getLocalFile(fullPath).then((fileBlob) => {
-                if (fileBlob) {
-                  console.log(`[Sync] Self-healing: Syncing file blob for ${book.title} to server...`);
-                  fetch(`${getServerUrl()}/api/upload`, {
-                    method: 'POST',
-                    headers: {
-                      'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
-                      'Content-Type': 'application/octet-stream'
-                    },
-                    body: fileBlob
-                  }).then(res => {
-                    if (res.ok) {
-                      console.log(`[Sync] Self-healing: Successfully synced file blob for ${book.title} to server`);
-                    }
-                  }).catch(err => {
-                    console.warn(`[Sync] Self-healing: Failed to sync file blob for ${book.title}:`, err);
-                  });
-                }
-              }).catch(() => {});
-            }
+        // Proactively scan all local books cached in IndexedDB and upload them to the server if missing
+        for (const book of localBooks) {
+          if (book.user_id !== userId || !book.file_url) continue;
+          const fileParts = book.file_url.split('/book-files/');
+          const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
+          if (filePath) {
+            const fullPath = `book-files/${decodeURIComponent(filePath)}`;
+            getLocalFile(fullPath).then((fileBlob) => {
+              if (fileBlob) {
+                const serverUrl = `${getServerUrl()}/uploads/book-files/${filePath}`;
+                fetch(serverUrl, { method: 'HEAD' }).then(async (testRes) => {
+                  const contentType = testRes.headers.get('content-type') || '';
+                  if (testRes.status === 404 || contentType.includes('text/html')) {
+                    console.log(`[Sync] Self-healing: Syncing missing file blob for ${book.title} to server...`);
+                    fetch(`${getServerUrl()}/api/upload`, {
+                      method: 'POST',
+                      headers: {
+                        'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
+                        'Content-Type': 'application/octet-stream'
+                      },
+                      body: fileBlob
+                    }).then(res => {
+                      if (res.ok) {
+                        console.log(`[Sync] Self-healing: Proactively uploaded file blob for ${book.title} to server`);
+                      }
+                    }).catch(() => {});
+                  }
+                }).catch(() => {});
+              }
+            }).catch(() => {});
           }
         }
       }
@@ -816,7 +820,10 @@ class MockQueryBuilder {
             }
           }
           if (matches) {
-            const updatedRow = { ...row, ...this.payload, updated_at: new Date().toISOString() };
+            const updatedRow = { ...row, ...this.payload };
+            if ('updated_at' in row) {
+              updatedRow.updated_at = new Date().toISOString();
+            }
             updatedRows.push(updatedRow);
             return updatedRow;
           }
