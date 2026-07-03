@@ -441,7 +441,7 @@ export function useOfflineBooks() {
 
   const updateOfflineProgress = useCallback(async (bookId: string, page: number) => {
     try {
-      const db = await getDB();
+      const db = await openLocalDB();
       const transaction = db.transaction(BOOKS_STORE, 'readwrite');
       const store = transaction.objectStore(BOOKS_STORE);
       
@@ -459,7 +459,7 @@ export function useOfflineBooks() {
     } catch (error) {
       console.error('Failed to update offline progress:', error);
     }
-  }, [getDB]);
+  }, []);
 
   // Synchronize when download manager completes tasks
   useEffect(() => {
