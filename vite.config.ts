@@ -5,8 +5,26 @@ import http from "http";
 import https from "https";
 import fs from "fs";
 
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
+  "script-src-elem 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: http: https:",
+  "font-src 'self' data:",
+  "media-src 'self' data: blob: http: https:",
+  "connect-src 'self' http: https: ws: wss: capacitor://localhost",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+].join('; ');
+
 const setupMiddlewares = (middlewares: any) => {
   middlewares.use((req: any, res: any, next: any) => {
+    res.setHeader("Content-Security-Policy", contentSecurityPolicy);
+    res.setHeader("Content-Security-Policy-Report-Only", contentSecurityPolicy);
     // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
           if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
             res.statusCode = 403;

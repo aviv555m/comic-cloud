@@ -39,7 +39,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.109";
+const CURRENT_VERSION = "v1.0.110";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -430,14 +430,25 @@ async function handleBookInsertionOffline(book: any) {
 
 // Clone function to pull remote Supabase data locally
 let cloneInProgress = false;
-export async function cloneRemoteData(userId: string) {
+let lastCloneUserId: string | null = null;
+let lastCloneCompletedAt = 0;
+const MIN_CLONE_INTERVAL_MS = 60_000;
+
+export async function cloneRemoteData(userId: string, options: { force?: boolean } = {}) {
+  const now = Date.now();
   if (cloneInProgress) {
     console.log('[Clone] Clone already in progress, skipping.');
+    return;
+  }
+  if (!options.force && lastCloneUserId === userId && now - lastCloneCompletedAt < MIN_CLONE_INTERVAL_MS) {
+    console.log('[Clone] Recent clone already completed, skipping.');
     return;
   }
   cloneInProgress = true;
   try {
     await _cloneRemoteData(userId);
+    lastCloneUserId = userId;
+    lastCloneCompletedAt = Date.now();
   } finally {
     cloneInProgress = false;
   }
@@ -1500,13 +1511,14 @@ export const supabase = new Proxy({
 
 // Synchronize remote client auth changes back to local storage session cache
 originalSupabase.auth.onAuthStateChange((event, session) => {
-  console.log(`[Auth Sync] Remote auth state change event: ${event}`);
   if (session) {
     const currentSession = getLocalSession();
     // Prevent infinite recursion loops by only triggering updates when the token has actually changed
     if (currentSession && currentSession.access_token === session.access_token) {
       return;
     }
+
+    console.log(`[Auth Sync] Remote auth state change event: ${event}`);
     
     const localSession = {
       access_token: session.access_token,
