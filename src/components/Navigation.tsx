@@ -109,7 +109,7 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_blank")}
+                  onClick={() => window.open("/comic-cloud-release.apk", "_blank")}
                   className="gap-1.5 px-2.5 mr-1 border-violet-500/30 text-violet-400 hover:text-violet-300 hover:bg-violet-500/10"
                 >
                   <Download className="w-4 h-4" />

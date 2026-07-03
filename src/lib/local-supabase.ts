@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.100";
+const CURRENT_VERSION = "v1.0.101";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -486,21 +486,36 @@ async function _cloneRemoteData(userId: string) {
         // Proactively scan all local books cached in IndexedDB and upload them to the server if missing
         for (const book of localBooks) {
           if (book.user_id !== userId || !book.file_url) continue;
-          const fileParts = book.file_url.split('/book-files/');
-          const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
+          let filePath = null;
+          if (book.file_url.includes('/book-files/')) {
+            filePath = book.file_url.split('/book-files/').pop().split('?')[0];
+          } else if (book.file_url.includes('/uploads/')) {
+            filePath = book.file_url.split('/uploads/').pop().split('?')[0];
+          } else {
+            filePath = book.file_url.split('/').pop().split('?')[0];
+          }
           if (filePath) {
             const fullPath = `book-files/${decodeURIComponent(filePath)}`;
             getLocalFile(fullPath).then((fileBlob) => {
               if (fileBlob) {
-                const serverUrl = `${getServerUrl()}/uploads/book-files/${filePath}`;
+                const serverPathToCheck = book.file_url.split('?')[0];
+                const serverUrl = serverPathToCheck.startsWith('http') ? serverPathToCheck : `${getServerUrl()}${serverPathToCheck.startsWith('/') ? '' : '/'}${serverPathToCheck}`;
                 fetch(serverUrl, { method: 'HEAD' }).then(async (testRes) => {
                   const contentType = testRes.headers.get('content-type') || '';
                   if (testRes.status === 404 || contentType.includes('text/html')) {
                     console.log(`[Sync] Self-healing: Syncing missing file blob for ${book.title} to server...`);
+                    
+                    let uploadPath = filePath;
+                    if (book.file_url.includes('/book-files/')) {
+                      uploadPath = `book-files/${decodeURIComponent(filePath)}`;
+                    } else {
+                      uploadPath = decodeURIComponent(filePath);
+                    }
+
                     fetch(`${getServerUrl()}/api/upload`, {
                       method: 'POST',
                       headers: {
-                        'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
+                        'x-file-path': uploadPath,
                         'Content-Type': 'application/octet-stream'
                       },
                       body: fileBlob
@@ -513,6 +528,32 @@ async function _cloneRemoteData(userId: string) {
                 }).catch(() => {});
               }
             }).catch(() => {});
+          }
+
+          if (book.cover_url && book.cover_url.includes('/uploads/book-covers/')) {
+            const coverPath = book.cover_url.split('/book-covers/').pop().split('?')[0];
+            if (coverPath) {
+              const fullCoverPath = `book-covers/${decodeURIComponent(coverPath)}`;
+              getLocalFile(fullCoverPath).then((coverBlob) => {
+                if (coverBlob) {
+                  const serverCoverUrl = book.cover_url.split('?')[0];
+                  fetch(serverCoverUrl, { method: 'HEAD' }).then(async (testRes) => {
+                    const contentType = testRes.headers.get('content-type') || '';
+                    if (testRes.status === 404 || contentType.includes('text/html')) {
+                      console.log(`[Sync] Self-healing: Syncing missing cover blob for ${book.title} to server...`);
+                      fetch(`${getServerUrl()}/api/upload`, {
+                        method: 'POST',
+                        headers: {
+                          'x-file-path': `book-covers/${decodeURIComponent(coverPath)}`,
+                          'Content-Type': 'application/octet-stream'
+                        },
+                        body: coverBlob
+                      }).catch(() => {});
+                    }
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }
           }
         }
       }
@@ -597,7 +638,14 @@ async function _processSyncQueue() {
   for (const item of queue) {
     try {
       if (item.operation === 'insert' || item.operation === 'upsert' || item.operation === 'update') {
-        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        let payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        if (!['books', 'profiles', 'book_reviews', 'annotations', 'tags'].includes(item.table)) {
+          payloadToSync = payloadToSync.map(p => {
+            const newP = { ...p };
+            delete newP.updated_at;
+            return newP;
+          });
+        }
         const { error } = await originalSupabase
           .from(item.table as any)
           .upsert(payloadToSync, { onConflict: item.upsertConflict });
@@ -916,9 +964,11 @@ class MockQueryBuilder {
             // Update existing row
             const updatedRow = {
               ...data[matchIdx],
-              ...item,
-              updated_at: new Date().toISOString()
+              ...item
             };
+            if ('updated_at' in data[matchIdx]) {
+              updatedRow.updated_at = new Date().toISOString();
+            }
             data[matchIdx] = updatedRow;
             upserted.push(updatedRow);
           } else {
@@ -926,9 +976,11 @@ class MockQueryBuilder {
             const newRow = {
               id: item.id || generateUUID(),
               created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
               ...item
             };
+            if (['books', 'profiles', 'book_reviews', 'annotations', 'tags'].includes(this.tableName)) {
+              newRow.updated_at = new Date().toISOString();
+            }
             data.push(newRow);
             upserted.push(newRow);
           }

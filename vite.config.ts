@@ -4,88 +4,9 @@ import path from "path";
 import http from "http";
 import https from "https";
 
-// https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8081,
-    allowedHosts: ["cc.displayname.top"],
-    proxy: {
-      "/api-comix": {
-        target: "https://comix.to",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-comix/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://comix.to/");
-            proxyReq.setHeader("origin", "https://comix.to");
-          });
-        }
-      },
-      "/api-mangafire": {
-        target: "https://mangafire.to",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-mangafire/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://mangafire.to/");
-            proxyReq.setHeader("origin", "https://mangafire.to");
-          });
-        }
-      },
-      "/api-mangafreak": {
-        target: "https://ww2.mangafreak.me",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-mangafreak/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://ww2.mangafreak.me/");
-            proxyReq.setHeader("origin", "https://ww2.mangafreak.me");
-          });
-        }
-      },
-      "/api-mangapark": {
-        target: "https://mangapark.io",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-mangapark/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://mangapark.io/");
-            proxyReq.setHeader("origin", "https://mangapark.io");
-          });
-        }
-      },
-      "/api-manganato": {
-        target: "https://manganato.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-manganato/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://manganato.com/");
-            proxyReq.setHeader("origin", "https://manganato.com");
-          });
-        }
-      },
-      "/api-chapmanganato": {
-        target: "https://chapmanganato.to",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-chapmanganato/, ""),
-        configure: (proxy) => {
-          proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://chapmanganato.to/");
-            proxyReq.setHeader("origin", "https://chapmanganato.to");
-          });
-        }
-      }
-    }
-  },
-  plugins: [
-    react(),
-    {
-      name: "image-proxy-middleware",
-      configureServer(server) {
-        server.middlewares.use((req, res, next) => {
-          // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
+const setupMiddlewares = (middlewares: any) => {
+  middlewares.use((req: any, res: any, next: any) => {
+    // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
           if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
             res.statusCode = 403;
             res.setHeader("Content-Type", "text/plain");
@@ -247,6 +168,100 @@ export default defineConfig(({ mode }) => ({
             next();
           }
         });
+};
+
+// https://vitejs.dev/config/
+const proxyConfig = {
+      "/api-comix": {
+        target: "https://comix.to",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-comix/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://comix.to/");
+            proxyReq.setHeader("origin", "https://comix.to");
+          });
+        }
+      },
+      "/api-mangafire": {
+        target: "https://mangafire.to",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-mangafire/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://mangafire.to/");
+            proxyReq.setHeader("origin", "https://mangafire.to");
+          });
+        }
+      },
+      "/api-mangafreak": {
+        target: "https://ww2.mangafreak.me",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-mangafreak/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://ww2.mangafreak.me/");
+            proxyReq.setHeader("origin", "https://ww2.mangafreak.me");
+          });
+        }
+      },
+      "/api-mangapark": {
+        target: "https://mangapark.io",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-mangapark/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://mangapark.io/");
+            proxyReq.setHeader("origin", "https://mangapark.io");
+          });
+        }
+      },
+      "/api-manganato": {
+        target: "https://manganato.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-manganato/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://manganato.com/");
+            proxyReq.setHeader("origin", "https://manganato.com");
+          });
+        }
+      },
+      "/api-chapmanganato": {
+        target: "https://chapmanganato.to",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-chapmanganato/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.setHeader("referer", "https://chapmanganato.to/");
+            proxyReq.setHeader("origin", "https://chapmanganato.to");
+          });
+        }
+      }
+    };
+
+export default defineConfig(({ mode }) => ({
+  server: {
+    host: "::",
+    port: 8081,
+    allowedHosts: ["cc.displayname.top"],
+    proxy: proxyConfig
+  },
+  preview: {
+    host: "::",
+    port: 8081,
+    allowedHosts: ["cc.displayname.top"],
+    proxy: proxyConfig
+  },
+  plugins: [
+    react(),
+    {
+      name: "image-proxy-middleware",
+      configureServer(server) {
+        setupMiddlewares(server.middlewares);
+      },
+      configurePreviewServer(server) {
+        setupMiddlewares(server.middlewares);
       }
     }
   ],
