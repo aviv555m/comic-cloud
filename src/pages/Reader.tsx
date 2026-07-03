@@ -580,10 +580,10 @@ const Reader = () => {
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
       let fileUrl = data.file_url;
       let filePath = null;
-      if (fileUrl.includes('/book-files/')) {
-        filePath = fileUrl.split('/book-files/').pop().split('?')[0];
-      } else if (fileUrl.includes('/uploads/')) {
-        filePath = fileUrl.split('/uploads/').pop().split('?')[0];
+      if (fileUrl.includes('book-files/')) {
+        filePath = fileUrl.split('book-files/').pop().split('?')[0];
+      } else if (fileUrl.includes('uploads/')) {
+        filePath = fileUrl.split('uploads/').pop().split('?')[0];
       } else {
         filePath = fileUrl.split('/').pop().split('?')[0];
       }

@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.101";
+const CURRENT_VERSION = "v1.0.102";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -487,10 +487,10 @@ async function _cloneRemoteData(userId: string) {
         for (const book of localBooks) {
           if (book.user_id !== userId || !book.file_url) continue;
           let filePath = null;
-          if (book.file_url.includes('/book-files/')) {
-            filePath = book.file_url.split('/book-files/').pop().split('?')[0];
-          } else if (book.file_url.includes('/uploads/')) {
-            filePath = book.file_url.split('/uploads/').pop().split('?')[0];
+          if (book.file_url.includes('book-files/')) {
+            filePath = book.file_url.split('book-files/').pop().split('?')[0];
+          } else if (book.file_url.includes('uploads/')) {
+            filePath = book.file_url.split('uploads/').pop().split('?')[0];
           } else {
             filePath = book.file_url.split('/').pop().split('?')[0];
           }

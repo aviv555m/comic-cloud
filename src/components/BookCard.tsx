@@ -26,6 +26,7 @@ interface BookCardProps {
   onClick?: () => void;
   onLongPress?: () => void;
   onCoverGenerated?: () => void;
+  onDelete?: () => void;
 }
 
 export const BookCard = ({
@@ -42,6 +43,8 @@ export const BookCard = ({
   lastPageRead = 0,
   onClick,
   onLongPress,
+  onCoverGenerated,
+  onDelete,
 }: BookCardProps) => {
   const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
   const { toast } = useToast();
@@ -76,6 +79,68 @@ export const BookCard = ({
         cover_url: coverUrl || null,
         last_page_read: lastPageRead || 0,
         series: series || null,
+      });
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      // Remove from offline storage first
+      try {
+        await removeBookOffline(id);
+      } catch (offlineErr) {
+        console.warn("Failed to remove offline copy:", offlineErr);
+      }
+
+      // Parse file path robustly
+      let filePath = null;
+      if (fileUrl?.includes('book-files/')) {
+        filePath = fileUrl.split('book-files/').pop()?.split('?')[0];
+      } else if (fileUrl?.includes('uploads/')) {
+        filePath = fileUrl.split('uploads/').pop()?.split('?')[0];
+      } else if (fileUrl) {
+        filePath = fileUrl.split('/').pop()?.split('?')[0];
+      }
+      if (filePath) {
+        await supabase.storage.from('book-files').remove([decodeURIComponent(filePath)]);
+      }
+
+      // Delete cover if exists
+      if (coverUrl) {
+        let coverPath = null;
+        if (coverUrl.includes('book-covers/')) {
+          coverPath = coverUrl.split('book-covers/').pop()?.split('?')[0];
+        } else if (coverUrl.includes('uploads/')) {
+          coverPath = coverUrl.split('uploads/').pop()?.split('?')[0];
+        } else {
+          coverPath = coverUrl.split('/').pop()?.split('?')[0];
+        }
+        if (coverPath) {
+          await supabase.storage.from('book-covers').remove([decodeURIComponent(coverPath)]);
+        }
+      }
+
+      // Delete book record
+      const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Book deleted",
+        description: "The book has been removed from your library.",
+      });
+
+      onDelete?.();
+    } catch (err) {
+      console.error("Failed to delete book:", err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete book",
       });
     }
   };
@@ -282,6 +347,11 @@ export const BookCard = ({
                   ) : (
                     <DropdownMenuItem onClick={handleOfflineAction}>
                       <DownloadCloud className="w-4 h-4 mr-2" /> Download Offline
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem onClick={handleDelete} className="text-red-500 mt-1 border-t border-white/10 pt-2">
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete Book
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
