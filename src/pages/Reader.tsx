@@ -579,14 +579,8 @@ const Reader = () => {
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
       let fileUrl = data.file_url;
-      let filePath = null;
-      if (fileUrl.includes('book-files/')) {
-        filePath = fileUrl.split('book-files/').pop().split('?')[0];
-      } else if (fileUrl.includes('uploads/')) {
-        filePath = fileUrl.split('uploads/').pop().split('?')[0];
-      } else {
-        filePath = fileUrl.split('/').pop().split('?')[0];
-      }
+      const fileParts = fileUrl.split('/book-files/');
+      const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
       if (filePath) {
         try {
           const { data: signedData, error: signedError } = await supabase.storage
@@ -613,7 +607,7 @@ const Reader = () => {
               const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
                 method: 'POST',
                 headers: {
-                  'x-file-path': decodeURIComponent(filePath || ''),
+                  'x-file-path': `book-files/${decodeURIComponent(filePath || '')}`,
                   'Content-Type': 'application/octet-stream'
                 },
                 body: fileBlob

@@ -15,12 +15,11 @@ import { ImportBooksDialog } from "@/components/ImportBooksDialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown, WifiOff, Search, X, FolderOpen, Sparkles, MoreVertical, Edit2 } from "lucide-react";
+import { Plus, BookOpen, Upload, Link, CloudOff, Library as LibraryIcon, FileDown, WifiOff, Search, X, FolderOpen, Sparkles } from "lucide-react";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CollectionEditDialog } from "@/components/CollectionEditDialog";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -127,7 +126,6 @@ const Library = () => {
     todayMinutes: 0,
     weeklyMinutes: 0,
   });
-  const [editingCollection, setEditingCollection] = useState<{name: string, isManga: boolean} | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -677,32 +675,11 @@ const Library = () => {
                             </Badge>
                             
                             {/* Info Overlay */}
-                            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex justify-between items-end">
-                              <div>
-                                <h3 className="font-bold text-white line-clamp-2 text-xs sm:text-sm leading-snug mb-0.5">{series.name}</h3>
-                                {series.author && (
-                                  <p className="text-[10px] sm:text-xs text-white/70 line-clamp-1">{series.author}</p>
-                                )}
-                              </div>
-                              <div 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                }}
-                              >
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-white hover:bg-white/20 rounded-full">
-                                      <MoreVertical className="w-4 h-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => setEditingCollection({ name: series.name, isManga: series.isManga })}>
-                                      <Edit2 className="w-4 h-4 mr-2" />
-                                      Edit Collection
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
+                            <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+                              <h3 className="font-bold text-white line-clamp-2 text-xs sm:text-sm leading-snug mb-0.5">{series.name}</h3>
+                              {series.author && (
+                                <p className="text-[10px] sm:text-xs text-white/70 line-clamp-1">{series.author}</p>
+                              )}
                             </div>
                           </div>
                         </CardContent>
@@ -711,16 +688,6 @@ const Library = () => {
                   ))}
                 </div>
               </div>
-            )}
-
-            {editingCollection && (
-              <CollectionEditDialog
-                open={!!editingCollection}
-                onOpenChange={(open) => !open && setEditingCollection(null)}
-                collectionName={editingCollection.name}
-                isManga={editingCollection.isManga}
-                onSuccess={() => user && fetchBooks(user.id)}
-              />
             )}
 
             {/* Standalone Books & Documents Grid */}
@@ -749,7 +716,6 @@ const Library = () => {
                       onClick={() => navigate(`/reader/${book.id}`)}
                       onLongPress={() => setSelectedBook(book)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
-                      onDelete={() => user && fetchBooks(user.id)}
                     />
                   ))}
                 </div>

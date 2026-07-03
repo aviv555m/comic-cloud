@@ -1,7 +1,13 @@
-import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import { Capacitor, CapacitorHttp, registerPlugin } from '@capacitor/core';
 import { App } from '@capacitor/app';
 
-import { UpdatePlugin } from '@/lib/update-plugin';
+interface UpdatePluginType {
+  downloadAndInstall(options: { url: string }): Promise<{ success: boolean }>;
+  startBackgroundService(): Promise<{ success: boolean }>;
+  stopBackgroundService(): Promise<{ success: boolean }>;
+}
+
+const UpdatePlugin = registerPlugin<UpdatePluginType>("UpdatePlugin");
 import { supabase } from '@/integrations/supabase/client';
 import { openLocalDB } from '@/lib/local-supabase';
 import JSZip from 'jszip';

@@ -10,7 +10,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
-import android.provider.Settings;
 import androidx.core.content.FileProvider;
 
 import java.io.BufferedInputStream;
@@ -37,19 +36,6 @@ public class UpdatePlugin extends Plugin {
             public void run() {
                 try {
                     Context context = getContext();
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.getPackageManager().canRequestPackageInstalls()) {
-                        Intent settingsIntent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
-                        settingsIntent.setData(Uri.parse("package:" + context.getPackageName()));
-                        settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        context.startActivity(settingsIntent);
-
-                        JSObject ret = new JSObject();
-                        ret.put("success", false);
-                        ret.put("permissionRequired", true);
-                        call.resolve(ret);
-                        return;
-                    }
-
                     URL url = new URL(urlString);
                     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                     connection.setRequestMethod("GET");
@@ -86,7 +72,7 @@ public class UpdatePlugin extends Plugin {
                     input.close();
 
                     // Install APK
-                    Intent intent = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
                     Uri apkUri;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -98,7 +84,6 @@ public class UpdatePlugin extends Plugin {
 
                     intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    intent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
                     context.startActivity(intent);
 
                     JSObject ret = new JSObject();

@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../integrations/supabase/types';
-import localforage from 'localforage';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -39,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.116";
+const CURRENT_VERSION = "v1.0.117";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -172,56 +171,36 @@ if (typeof window !== 'undefined') {
 }
 
 // Local Database JSON storage
-export async function getTableData(table: string): Promise<any[]> {
+export function getTableData(table: string): any[] {
   try {
-    const data = await localforage.getItem(`local_db_${table}`);
-    return data ? (data as any[]) : [];
+    const data = safeLocalStorage.getItem(`local_db_${table}`);
+    return data ? JSON.parse(data) : [];
   } catch (e) {
     console.warn(`Failed to read local table ${table}:`, e);
     return [];
   }
 }
 
-export async function setTableData(table: string, data: any[]) {
+export function setTableData(table: string, data: any[]) {
   try {
-    await localforage.setItem(`local_db_${table}`, data);
+    safeLocalStorage.setItem(`local_db_${table}`, JSON.stringify(data));
   } catch (e) {
     console.warn(`Failed to save local table ${table}:`, e);
   }
 }
 
-function getRowKey(table: string, row: any) {
-  if (!row) return "";
-  if (row.id) return String(row.id);
-  if (table === "book_tags") return `${row.book_id || ""}:${row.tag_id || ""}`;
-  if (table === "reading_list_books") return `${row.list_id || ""}:${row.book_id || ""}`;
-  if (row.book_id) return String(row.book_id);
-  return JSON.stringify(row);
-}
-
-async function mergeRemoteData(table: string, remoteRows: any[]) {
+function mergeRemoteData(table: string, remoteRows: any[]) {
   if (!remoteRows || !Array.isArray(remoteRows)) return;
-  const localRows = await getTableData(table);
-  const localMap = new Map(localRows.map(r => [getRowKey(table, r), r]));
+  const localRows = getTableData(table);
+  const localMap = new Map(localRows.map(r => [r.id, r]));
   
-  const queue = await getSyncQueue();
-  const deletedKeys = new Set(
-    queue
-      .filter(q => q.operation === 'delete' && q.table === table)
-      .flatMap(q => Array.isArray(q.payload) ? q.payload.map((r: any) => getRowKey(table, r)) : [getRowKey(table, q.payload)])
-  );
-
   let changed = false;
   for (const row of remoteRows) {
-    const rowKey = getRowKey(table, row);
-    if (!localMap.has(rowKey)) {
-      if (deletedKeys.has(rowKey)) {
-        continue; // Skip adding back a row we just deleted locally
-      }
+    if (!localMap.has(row.id)) {
       localRows.push(row);
       changed = true;
     } else {
-      const index = localRows.findIndex(r => getRowKey(table, r) === rowKey);
+      const index = localRows.findIndex(r => r.id === row.id);
       if (index !== -1) {
         const localRow = localRows[index];
         
@@ -244,7 +223,7 @@ async function mergeRemoteData(table: string, remoteRows: any[]) {
   }
   
   if (changed) {
-    await setTableData(table, localRows);
+    setTableData(table, localRows);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('local-db-synced', { detail: { table } }));
     }
@@ -440,25 +419,14 @@ async function handleBookInsertionOffline(book: any) {
 
 // Clone function to pull remote Supabase data locally
 let cloneInProgress = false;
-let lastCloneUserId: string | null = null;
-let lastCloneCompletedAt = 0;
-const MIN_CLONE_INTERVAL_MS = 60_000;
-
-export async function cloneRemoteData(userId: string, options: { force?: boolean } = {}) {
-  const now = Date.now();
+export async function cloneRemoteData(userId: string) {
   if (cloneInProgress) {
     console.log('[Clone] Clone already in progress, skipping.');
-    return;
-  }
-  if (!options.force && lastCloneUserId === userId && now - lastCloneCompletedAt < MIN_CLONE_INTERVAL_MS) {
-    console.log('[Clone] Recent clone already completed, skipping.');
     return;
   }
   cloneInProgress = true;
   try {
     await _cloneRemoteData(userId);
-    lastCloneUserId = userId;
-    lastCloneCompletedAt = Date.now();
   } finally {
     cloneInProgress = false;
   }
@@ -483,97 +451,56 @@ async function _cloneRemoteData(userId: string) {
     "user_reading_preferences",
   ];
 
-  console.log("[Clone] Starting server data clone for user:", userId);
-
-  let serverTables: Record<string, any[]> = {};
-  let serverPullSucceeded = false;
-  const legacyMigrationKey = `legacy_supabase_migrated_${userId}`;
-  const legacyMigrationDone = safeLocalStorage.getItem(legacyMigrationKey) === 'true';
-  try {
-    const response = await serverJson(`/api/db/pull?userId=${encodeURIComponent(userId)}`);
-    serverTables = response.tables || {};
-    serverPullSucceeded = true;
-  } catch (serverErr) {
-    console.warn('[Clone] Local server clone failed, using legacy Supabase fallback:', serverErr);
-  }
+  console.log("[Clone] Starting remote data clone for user:", userId);
 
   for (const table of BACKUP_TABLES) {
     try {
-      let data = serverTables[table] || [];
-      const localRowsBeforeFallback = await getTableData(table);
-      const shouldTryLegacyFallback = !serverPullSucceeded || (!legacyMigrationDone && localRowsBeforeFallback.length === 0 && data.length === 0);
-      if (shouldTryLegacyFallback) {
-        let query = originalSupabase.from(table as any).select("*");
-        if (table === "profiles") {
-          query = query.eq("id", userId) as any;
-        } else if (table !== "book_tags" && table !== "reading_list_books") {
-          query = query.eq("user_id", userId) as any;
-        }
-        const legacy = await query;
-        if (legacy.error) {
-          console.warn(`[Clone] Failed to fetch legacy table ${table}:`, legacy.error);
-          continue;
-        }
-        data = legacy.data || [];
-        if (data.length) {
-          await serverJson('/api/db/push', {
-            method: 'POST',
-            body: JSON.stringify({ items: [{ table, operation: 'upsert', payload: data }] })
-          }).catch(err => console.warn(`[Clone] Failed to migrate ${table} to local server:`, err));
-        }
+      let query = originalSupabase.from(table as any).select("*");
+      if (table === "profiles") {
+        query = query.eq("id", userId) as any;
+      } else if (table !== "book_tags" && table !== "reading_list_books") {
+        query = query.eq("user_id", userId) as any;
+      }
+      
+      const { data, error } = await query;
+      if (error) {
+        console.warn(`[Clone] Failed to fetch table ${table}:`, error);
+        continue;
       }
       
       // Self-healing: if online and fetching books, check for any unsynced local uploads
       if (table === "books" && data) {
         const remoteIds = new Set(data.map(b => b.id));
-        const localBooks = await getTableData("books");
+        const localBooks = getTableData("books");
         const unsyncedBooks = localBooks.filter(b => b.user_id === userId && !remoteIds.has(b.id));
         
         if (unsyncedBooks.length > 0) {
-          console.log(`[Sync] Self-healing: Found ${unsyncedBooks.length} unsynced local books. Syncing to local server...`);
-          serverJson('/api/db/push', {
-            method: 'POST',
-            body: JSON.stringify({ items: [{ table: 'books', operation: 'upsert', payload: unsyncedBooks }] })
-          }).then(() => {
-            console.log("[Sync] Self-healing: Successfully uploaded unsynced books to local server.");
+          console.log(`[Sync] Self-healing: Found ${unsyncedBooks.length} unsynced local books. Syncing to remote...`);
+          originalSupabase.from("books").upsert(unsyncedBooks).then(() => {
+            console.log("[Sync] Self-healing: Successfully uploaded unsynced books to server.");
           }).catch(err => {
-            console.warn("[Sync] Self-healing: Failed to sync books to local server:", err);
+            console.warn("[Sync] Self-healing: Failed to sync books to remote server:", err);
           });
         }
 
         // Proactively scan all local books cached in IndexedDB and upload them to the server if missing
         for (const book of localBooks) {
           if (book.user_id !== userId || !book.file_url) continue;
-          let filePath = null;
-          if (book.file_url.includes('book-files/')) {
-            filePath = book.file_url.split('book-files/').pop().split('?')[0];
-          } else if (book.file_url.includes('uploads/')) {
-            filePath = book.file_url.split('uploads/').pop().split('?')[0];
-          } else {
-            filePath = book.file_url.split('/').pop().split('?')[0];
-          }
+          const fileParts = book.file_url.split('/book-files/');
+          const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
           if (filePath) {
             const fullPath = `book-files/${decodeURIComponent(filePath)}`;
             getLocalFile(fullPath).then((fileBlob) => {
               if (fileBlob) {
-                const serverPathToCheck = book.file_url.split('?')[0];
-                const serverUrl = serverPathToCheck.startsWith('http') ? serverPathToCheck : `${getServerUrl()}${serverPathToCheck.startsWith('/') ? '' : '/'}${serverPathToCheck}`;
+                const serverUrl = `${getServerUrl()}/uploads/book-files/${filePath}`;
                 fetch(serverUrl, { method: 'HEAD' }).then(async (testRes) => {
                   const contentType = testRes.headers.get('content-type') || '';
                   if (testRes.status === 404 || contentType.includes('text/html')) {
                     console.log(`[Sync] Self-healing: Syncing missing file blob for ${book.title} to server...`);
-                    
-                    let uploadPath = filePath;
-                    if (book.file_url.includes('/book-files/')) {
-                      uploadPath = `book-files/${decodeURIComponent(filePath)}`;
-                    } else {
-                      uploadPath = decodeURIComponent(filePath);
-                    }
-
                     fetch(`${getServerUrl()}/api/upload`, {
                       method: 'POST',
                       headers: {
-                        'x-file-path': uploadPath,
+                        'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
                         'Content-Type': 'application/octet-stream'
                       },
                       body: fileBlob
@@ -587,47 +514,18 @@ async function _cloneRemoteData(userId: string) {
               }
             }).catch(() => {});
           }
-
-          if (book.cover_url && book.cover_url.includes('/uploads/book-covers/')) {
-            const coverPath = book.cover_url.split('/book-covers/').pop().split('?')[0];
-            if (coverPath) {
-              const fullCoverPath = `book-covers/${decodeURIComponent(coverPath)}`;
-              getLocalFile(fullCoverPath).then((coverBlob) => {
-                if (coverBlob) {
-                  const serverCoverUrl = book.cover_url.split('?')[0];
-                  fetch(serverCoverUrl, { method: 'HEAD' }).then(async (testRes) => {
-                    const contentType = testRes.headers.get('content-type') || '';
-                    if (testRes.status === 404 || contentType.includes('text/html')) {
-                      console.log(`[Sync] Self-healing: Syncing missing cover blob for ${book.title} to server...`);
-                      fetch(`${getServerUrl()}/api/upload`, {
-                        method: 'POST',
-                        headers: {
-                          'x-file-path': `book-covers/${decodeURIComponent(coverPath)}`,
-                          'Content-Type': 'application/octet-stream'
-                        },
-                        body: coverBlob
-                      }).catch(() => {});
-                    }
-                  }).catch(() => {});
-                }
-              }).catch(() => {});
-            }
-          }
         }
       }
       
       if (data && data.length > 0) {
-        await mergeRemoteData(table, data);
+        mergeRemoteData(table, data);
         console.log(`[Clone] Synced ${data.length} rows for table ${table}`);
       }
     } catch (err) {
       console.error(`[Clone] Error cloning table ${table}:`, err);
     }
   }
-  if (serverPullSucceeded) {
-    safeLocalStorage.setItem(legacyMigrationKey, 'true');
-  }
-  console.log("[Clone] Server data clone completed!");
+  console.log("[Clone] Remote data clone completed!");
 }
 
 interface SyncItem {
@@ -639,28 +537,26 @@ interface SyncItem {
 }
 
 // Read pending offline sync items
-async function getSyncQueue(): Promise<SyncItem[]> {
+function getSyncQueue(): SyncItem[] {
   try {
-    const q = await localforage.getItem("local_db_sync_queue");
-    return q ? (q as SyncItem[]) : [];
+    const q = safeLocalStorage.getItem("local_db_sync_queue");
+    return q ? JSON.parse(q) : [];
   } catch (e) {
     return [];
   }
 }
 
 // Save offline sync queue
-async function setSyncQueue(queue: SyncItem[]) {
+function setSyncQueue(queue: SyncItem[]) {
   try {
-    await localforage.setItem("local_db_sync_queue", queue);
-  } catch (e) {
-    console.error("Failed to save sync queue", e);
-  }
+    safeLocalStorage.setItem("local_db_sync_queue", JSON.stringify(queue));
+  } catch (e) {}
 }
 
 // Add item to offline sync queue
-async function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'delete', payload: any, upsertConflict?: string) {
+function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'delete', payload: any, upsertConflict?: string) {
   if (table === 'reading_locations') return; // local-only table
-  const queue = await getSyncQueue();
+  const queue = getSyncQueue();
   queue.push({
     table,
     operation,
@@ -668,7 +564,7 @@ async function queueSync(table: string, operation: 'insert' | 'update' | 'upsert
     upsertConflict,
     timestamp: Date.now()
   });
-  await setSyncQueue(queue);
+  setSyncQueue(queue);
   processSyncQueue().catch(console.error);
 }
 
@@ -688,35 +584,43 @@ export async function processSyncQueue() {
 }
 
 async function _processSyncQueue() {
-  const session = getLocalSession();
-  if (!session?.user) return;
+  const { data: { session } } = await originalSupabase.auth.getSession();
+  if (!session?.user) return; // Must be authenticated to sync
 
-  const queue = await getSyncQueue();
+  const queue = getSyncQueue();
   if (queue.length === 0) return;
 
-  console.log(`[Sync] Processing ${queue.length} local-server changes...`);
+  console.log(`[Sync] Processing ${queue.length} offline changes...`);
 
-  try {
-    const items = queue.map(item => {
-      let payload = item.payload;
-      if (item.operation !== 'delete' && !['books', 'profiles', 'book_reviews', 'annotations', 'tags'].includes(item.table)) {
-        payload = (Array.isArray(payload) ? payload : [payload]).map((p: any) => {
-          const next = { ...p };
-          delete next.updated_at;
-          return next;
-        });
+  const remainingQueue: SyncItem[] = [];
+
+  for (const item of queue) {
+    try {
+      if (item.operation === 'insert' || item.operation === 'upsert' || item.operation === 'update') {
+        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        const { error } = await originalSupabase
+          .from(item.table as any)
+          .upsert(payloadToSync, { onConflict: item.upsertConflict });
+          
+        if (error) throw error;
+      } else if (item.operation === 'delete') {
+        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        const ids = payloadToSync.map((r: any) => r.id);
+        const { error } = await originalSupabase
+          .from(item.table as any)
+          .delete()
+          .in('id', ids);
+          
+        if (error) throw error;
       }
-      return { ...item, payload };
-    });
-    await serverJson('/api/db/push', {
-      method: 'POST',
-      body: JSON.stringify({ userId: session.user.id, items })
-    });
-    await setSyncQueue([]);
-    console.log(`[Sync] Successfully synced ${queue.length} changes to local server`);
-  } catch (err) {
-    console.warn('[Sync] Failed to sync local-server changes:', err);
+      console.log(`[Sync] Successfully synced offline ${item.operation} for table ${item.table}`);
+    } catch (err) {
+      console.warn(`[Sync] Failed to sync ${item.operation} for table ${item.table}:`, err);
+      remainingQueue.push(item);
+    }
   }
+
+  setSyncQueue(remainingQueue);
 }
 
 // Add window online listener to auto-sync when network reconnects
@@ -769,7 +673,6 @@ function teardownRealtimeSync() {
 class MockQueryBuilder {
   private tableName: string;
   private filters: Array<(row: any) => boolean> = [];
-  private filterMeta: Array<{ field: string; operator: string; value: any }> = [];
   private orderField: string | null = null;
   private orderAscending = true;
   private limitCount: number | null = null;
@@ -816,7 +719,6 @@ class MockQueryBuilder {
   }
 
   eq(field: string, value: any) {
-    this.filterMeta.push({ field, operator: 'eq', value });
     this.filters.push(row => row[field] === value);
     return this;
   }
@@ -834,7 +736,6 @@ class MockQueryBuilder {
   }
 
   neq(field: string, value: any) {
-    this.filterMeta.push({ field, operator: 'neq', value });
     this.filters.push(row => row[field] !== value);
     return this;
   }
@@ -896,19 +797,9 @@ class MockQueryBuilder {
 
   async execute() {
     try {
-      let data = await getTableData(this.tableName);
+      let data = getTableData(this.tableName);
 
       if (this.operation === 'select') {
-        const isPublicBooksQuery = this.tableName === 'books' && this.filterMeta.some(f => f.field === 'is_public' && f.operator === 'eq' && f.value === true);
-        if (isPublicBooksQuery && navigator.onLine) {
-          try {
-            const response = await serverJson('/api/db/public-books');
-            data = response.books || [];
-            await mergeRemoteData('books', data);
-          } catch (err) {
-            console.warn('[Local DB] Failed to fetch public books from local server:', err);
-          }
-        }
         // Apply filters
         for (const filter of this.filters) {
           data = data.filter(filter);
@@ -969,10 +860,10 @@ class MockQueryBuilder {
           }
         }
 
-        await setTableData(this.tableName, data);
+        setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
-        await queueSync(this.tableName, 'insert', inserted);
+        queueSync(this.tableName, 'insert', inserted);
         
         const returnData = Array.isArray(this.payload) ? inserted : inserted[0];
         return { data: returnData, error: null };
@@ -999,11 +890,11 @@ class MockQueryBuilder {
           return row;
         });
 
-        await setTableData(this.tableName, data);
+        setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
         if (updatedRows.length > 0) {
-          await queueSync(this.tableName, 'update', updatedRows);
+          queueSync(this.tableName, 'update', updatedRows);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (updatedRows[0] || null) : updatedRows;
@@ -1025,11 +916,9 @@ class MockQueryBuilder {
             // Update existing row
             const updatedRow = {
               ...data[matchIdx],
-              ...item
+              ...item,
+              updated_at: new Date().toISOString()
             };
-            if ('updated_at' in data[matchIdx]) {
-              updatedRow.updated_at = new Date().toISOString();
-            }
             data[matchIdx] = updatedRow;
             upserted.push(updatedRow);
           } else {
@@ -1037,20 +926,18 @@ class MockQueryBuilder {
             const newRow = {
               id: item.id || generateUUID(),
               created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
               ...item
             };
-            if (['books', 'profiles', 'book_reviews', 'annotations', 'tags'].includes(this.tableName)) {
-              newRow.updated_at = new Date().toISOString();
-            }
             data.push(newRow);
             upserted.push(newRow);
           }
         }
 
-        await setTableData(this.tableName, data);
+        setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
-        await queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
+        queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
         
         const returnData = Array.isArray(this.payload) ? upserted : upserted[0];
         return { data: returnData, error: null };
@@ -1074,53 +961,11 @@ class MockQueryBuilder {
           }
         }
 
-        await setTableData(this.tableName, remaining);
-
-        if (this.tableName === 'books' && deleted.length > 0) {
-          const deletedIds = new Set(deleted.map(row => row.id).filter(Boolean));
-          const cascadeTables = [
-            'book_tags',
-            'annotations',
-            'book_reviews',
-            'reading_sessions',
-            'reading_list_books',
-            'journal_entries',
-            'scheduled_reading'
-          ];
-
-          for (const table of cascadeTables) {
-            const tableRows = await getTableData(table);
-            const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.book_id));
-            if (cascadeDeleted.length > 0) {
-              await setTableData(table, tableRows.filter(row => !deletedIds.has(row.book_id)));
-              await queueSync(table, 'delete', cascadeDeleted);
-            }
-          }
-        }
-
-        if (this.tableName === 'reading_lists' && deleted.length > 0) {
-          const deletedIds = new Set(deleted.map(row => row.id).filter(Boolean));
-          const tableRows = await getTableData('reading_list_books');
-          const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.list_id));
-          if (cascadeDeleted.length > 0) {
-            await setTableData('reading_list_books', tableRows.filter(row => !deletedIds.has(row.list_id)));
-            await queueSync('reading_list_books', 'delete', cascadeDeleted);
-          }
-        }
-
-        if (this.tableName === 'tags' && deleted.length > 0) {
-          const deletedIds = new Set(deleted.map(row => row.id).filter(Boolean));
-          const tableRows = await getTableData('book_tags');
-          const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.tag_id));
-          if (cascadeDeleted.length > 0) {
-            await setTableData('book_tags', tableRows.filter(row => !deletedIds.has(row.tag_id)));
-            await queueSync('book_tags', 'delete', cascadeDeleted);
-          }
-        }
+        setTableData(this.tableName, remaining);
         
         // Queue for offline remote synchronization
         if (deleted.length > 0) {
-          await queueSync(this.tableName, 'delete', deleted);
+          queueSync(this.tableName, 'delete', deleted);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (deleted[0] || null) : deleted;
@@ -1189,105 +1034,235 @@ function triggerAuthEvent(event: string, session: any) {
 const localAuthProxy = {
   signUp: async (credentials: any) => {
     try {
-      const email = String(credentials.email || '').trim().toLowerCase();
+      const email = credentials.email;
       const password = credentials.password;
-      const response = await serverJson('/api/auth/signup', {
-        method: 'POST',
-        body: JSON.stringify({ email, password })
-      });
-      const session = toLocalSession(response.user, password);
       const users = getLocalUsers();
-      if (!users.some(u => u.email === email)) {
-        users.push({ id: response.user.id, email, password });
-        saveLocalUsers(users);
+      
+      if (users.some(u => u.email === email)) {
+        return { data: { user: null, session: null }, error: new Error('User already registered') };
       }
-      saveLocalSession(session);
-      triggerAuthEvent('SIGNED_IN', session);
-      cloneRemoteData(response.user.id, { force: true }).catch(console.error);
-      return { data: { user: session.user, session }, error: null };
+
+      // Sync account creation to remote Supabase server when online
+      let remoteUser: any = null;
+      let remoteSession: any = null;
+      
+      if (navigator.onLine) {
+        const { data, error } = await originalSupabase.auth.signUp({
+          email,
+          password,
+          options: credentials.options
+        });
+        if (error) {
+          return { data: { user: null, session: null }, error };
+        }
+        if (data && data.user) {
+          remoteUser = data.user;
+          remoteSession = data.session;
+        }
+      }
+      
+      const userId = remoteUser?.id || generateUUID();
+      const mockUser = remoteUser || {
+        id: userId,
+        email,
+        role: 'authenticated',
+        aud: 'authenticated',
+        user_metadata: {},
+        app_metadata: {},
+        created_at: new Date().toISOString()
+      };
+      
+      const mockSession = remoteSession || {
+        access_token: 'mock-local-token-' + userId,
+        refresh_token: 'mock-local-refresh-token-' + userId,
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        token_type: 'bearer',
+        user: mockUser
+      };
+      
+      users.push({ id: userId, email, password });
+      saveLocalUsers(users);
+      saveLocalSession(mockSession);
+      
+      // Auto-create profile in database
+      const defaultProfile = {
+        id: userId,
+        email,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      const profiles = getTableData('profiles');
+      if (!profiles.some(p => p.id === userId)) {
+        profiles.push(defaultProfile);
+        setTableData('profiles', profiles);
+      }
+
+      triggerAuthEvent('SIGNED_IN', mockSession);
+      return { data: { user: mockUser, session: mockSession }, error: null };
     } catch (e: any) {
       return { data: { user: null, session: null }, error: e };
     }
   },
 
   signInWithPassword: async (credentials: any) => {
-    const email = String(credentials.email || '').trim().toLowerCase();
-    const password = credentials.password;
     try {
-      const response = await serverJson('/api/auth/signin', {
-        method: 'POST',
-        body: JSON.stringify({ email, password })
-      });
-      const session = toLocalSession(response.user, password);
-      const users = getLocalUsers();
-      const idx = users.findIndex(u => u.email === email);
-      if (idx >= 0) users[idx] = { id: response.user.id, email, password };
-      else users.push({ id: response.user.id, email, password });
-      saveLocalUsers(users);
-      saveLocalSession(session);
-      triggerAuthEvent('SIGNED_IN', session);
-      cloneRemoteData(response.user.id, { force: true }).catch(console.error);
-      return { data: { user: session.user, session }, error: null };
-    } catch (serverError: any) {
-      // Legacy fallback only: lets existing Supabase users migrate into the local server once.
+      const email = credentials.email;
+      const password = credentials.password;
+      
+      // Try remote Supabase server login first if online
       if (navigator.onLine) {
-        try {
-          const { data: remoteData, error: remoteError } = await originalSupabase.auth.signInWithPassword({ email, password });
-          if (!remoteError && remoteData?.user) {
-            const migrated = await serverJson('/api/auth/signup', {
-              method: 'POST',
-              body: JSON.stringify({ id: remoteData.user.id, email, password })
-            }).catch(async () => serverJson('/api/auth/signin', {
-              method: 'POST',
-              body: JSON.stringify({ email, password })
-            }));
-            const session = toLocalSession(migrated.user || remoteData.user, password);
-            saveLocalSession(session);
-            triggerAuthEvent('SIGNED_IN', session);
-            cloneRemoteData(session.user.id, { force: true }).catch(console.error);
-            return { data: { user: session.user, session }, error: null };
+        console.log('[Auth] Online: Attempting remote database login...');
+        const { data: remoteData, error: remoteError } = await originalSupabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        
+        if (!remoteError && remoteData && remoteData.session && remoteData.user) {
+          const users = getLocalUsers();
+          if (!users.some(u => u.email === email)) {
+            users.push({ id: remoteData.user.id, email, password });
+            saveLocalUsers(users);
+          } else {
+            const idx = users.findIndex(u => u.email === email);
+            if (idx !== -1) users[idx].password = password;
+            saveLocalUsers(users);
           }
-          if (remoteError) return { data: { user: null, session: null }, error: remoteError };
-        } catch {}
+          
+          const localSession = {
+            access_token: remoteData.session.access_token,
+            refresh_token: remoteData.session.refresh_token,
+            expires_in: remoteData.session.expires_in,
+            expires_at: remoteData.session.expires_at,
+            token_type: remoteData.session.token_type,
+            user: remoteData.user
+          };
+          saveLocalSession(localSession);
+          
+          // Explicitly sync session context
+          await originalSupabase.auth.setSession({
+            access_token: remoteData.session.access_token,
+            refresh_token: remoteData.session.refresh_token
+          }).catch(() => {});
+          
+          cloneRemoteData(remoteData.user.id).catch(console.error);
+          triggerAuthEvent('SIGNED_IN', localSession);
+          return { data: { user: remoteData.user, session: remoteData.session }, error: null };
+        }
+        
+        // If it is a credentials error (wrong password/user doesn't exist), return immediately
+        if (remoteError && remoteError.status && remoteError.status >= 400 && remoteError.status < 500) {
+          return { data: { user: null, session: null }, error: remoteError };
+        }
       }
-
+      
+      // Offline fallback or remote server error fallback: authenticate locally
+      console.log('[Auth] Offline or remote server error. Authenticating locally...');
       const users = getLocalUsers();
-      const localUser = users.find(u => u.email === email && u.password === password);
+      const localUser = users.find(u => u.email === email);
       if (localUser) {
-        const session = toLocalSession({ id: localUser.id, email }, password);
-        saveLocalSession(session);
-        triggerAuthEvent('SIGNED_IN', session);
-        return { data: { user: session.user, session }, error: null };
+        if (localUser.password !== password) {
+          return { data: { user: null, session: null }, error: new Error('Invalid credentials') };
+        }
+        
+        const mockUser = {
+          id: localUser.id,
+          email,
+          role: 'authenticated',
+          aud: 'authenticated',
+          user_metadata: {},
+          app_metadata: {},
+          created_at: new Date().toISOString()
+        };
+        
+        const mockSession = {
+          access_token: 'mock-local-token-' + localUser.id,
+          refresh_token: 'mock-local-refresh-token-' + localUser.id,
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: 'bearer',
+          user: mockUser
+        };
+        saveLocalSession(mockSession);
+        triggerAuthEvent('SIGNED_IN', mockSession);
+        return { data: { user: mockUser, session: mockSession }, error: null };
       }
-      return { data: { user: null, session: null }, error: serverError };
+      
+      return { data: { user: null, session: null }, error: new Error('User not registered or device is offline') };
+    } catch (e: any) {
+      return { data: { user: null, session: null }, error: e };
     }
   },
 
   signOut: async () => {
     saveLocalSession(null);
+    await originalSupabase.auth.signOut().catch(() => {});
     triggerAuthEvent('SIGNED_OUT', null);
     return { error: null };
   },
 
   getUser: async () => {
     const session = getLocalSession();
-    return { data: { user: session?.user || null }, error: null };
+    if (session && session.user) {
+      return { data: { user: session.user }, error: null };
+    }
+    // Try remote client
+    const { data, error } = await originalSupabase.auth.getUser();
+    if (data && data.user) {
+      // Sync local session
+      const remoteSessionResponse = await originalSupabase.auth.getSession();
+      if (remoteSessionResponse.data.session) {
+        saveLocalSession(remoteSessionResponse.data.session);
+      }
+      return { data: { user: data.user }, error: null };
+    }
+    return { data: { user: null }, error: null };
   },
 
   getSession: async () => {
     const session = getLocalSession();
-    if (session?.user) {
-      cloneRemoteData(session.user.id).catch(console.error);
+    if (session) {
+      if (session.user) {
+        // Synchronize authenticated session state to original remote Supabase client
+        originalSupabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token
+        }).catch(err => console.warn("[Auth] Failed to set originalSupabase session:", err));
+
+        // Trigger background clone of remote data to stay up-to-date!
+        cloneRemoteData(session.user.id).catch(console.error);
+      }
+      return { data: { session }, error: null };
     }
-    return { data: { session: session || null }, error: null };
+    // Try remote client
+    const { data, error } = await originalSupabase.auth.getSession();
+    if (data && data.session) {
+      saveLocalSession(data.session);
+      if (data.session.user) {
+        // Trigger background clone of remote data to stay up-to-date!
+        cloneRemoteData(data.session.user.id).catch(console.error);
+      }
+      return { data: { session: data.session }, error: null };
+    }
+    return { data: { session: null }, error: null };
   },
 
   onAuthStateChange: (callback: (event: any, session: any) => void) => {
     authListeners.push(callback);
+    
+    // Trigger initial auth check
     const session = getLocalSession();
+    if (session) {
+      originalSupabase.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      }).catch(() => {});
+    }
+
     setTimeout(() => {
       callback(session ? 'INITIAL_SESSION' : 'SIGNED_OUT', session);
     }, 0);
+
     return {
       data: {
         subscription: {
@@ -1308,40 +1283,6 @@ export function getServerUrl() {
   return "https://cc.displayname.top";
 }
 
-
-async function serverJson(path: string, options: RequestInit = {}) {
-  const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-  const res = await fetch(`${getServerUrl()}${path}`, { ...options, headers });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) {
-    throw new Error(data?.error || `Server request failed (${res.status})`);
-  }
-  return data;
-}
-
-function toLocalSession(user: any, password?: string) {
-  return {
-    access_token: `local-server-token-${user.id}`,
-    refresh_token: `local-server-refresh-${user.id}`,
-    expires_in: 60 * 60 * 24 * 365,
-    expires_at: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 365),
-    token_type: 'bearer',
-    user: {
-      id: user.id,
-      email: user.email,
-      role: 'authenticated',
-      aud: 'authenticated',
-      user_metadata: { email: user.email },
-      app_metadata: { provider: 'local-server', providers: ['local-server'] },
-      created_at: user.created_at || new Date().toISOString()
-    }
-  };
-}
-
 // Local mock Storage Object
 const localStorageProxy = {
   from: (bucket: string) => ({
@@ -1350,21 +1291,25 @@ const localStorageProxy = {
         const fullPath = `${bucket}/${filePath}`;
         await saveLocalFile(fullPath, file);
         console.log(`[Storage] Uploaded ${fullPath} locally to IndexedDB`);
-
+        
+        // Propagate file upload to local server in background if online
         if (navigator.onLine) {
-          const res = await fetch(`${getServerUrl()}/api/upload`, {
+          fetch(`${getServerUrl()}/api/upload`, {
             method: 'POST',
             headers: {
               'x-file-path': `${bucket}/${filePath}`,
               'Content-Type': 'application/octet-stream'
             },
             body: file
+          }).then(async (res) => {
+            if (res.ok) {
+              console.log(`[Storage] Successfully synced ${fullPath} to local server`);
+            } else {
+              console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, res.statusText);
+            }
+          }).catch(err => {
+            console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, err);
           });
-          if (!res.ok) {
-            const message = await res.text().catch(() => res.statusText);
-            throw new Error(`Failed to sync ${fullPath} to local server: ${message}`);
-          }
-          console.log(`[Storage] Successfully synced ${fullPath} to local server`);
         }
 
         return { data: { path: filePath }, error: null };
@@ -1380,15 +1325,18 @@ const localStorageProxy = {
         const transaction = db.transaction(LOCAL_FILES_STORE, 'readwrite');
         const store = transaction.objectStore(LOCAL_FILES_STORE);
         for (const p of paths) {
-          const fullPath = `${bucket}/${p}`;
-          store.delete(fullPath);
-          if (navigator.onLine) {
-            await fetch(`${getServerUrl()}/api/upload`, {
-              method: 'DELETE',
-              headers: { 'x-file-path': fullPath }
-            }).catch(err => console.warn(`[Storage] Failed to delete ${fullPath} from local server:`, err));
-          }
+          store.delete(`${bucket}/${p}`);
         }
+        
+        // Propagate deletion to remote Supabase storage in background if authenticated
+        originalSupabase.auth.getSession().then(({ data: { session } }) => {
+          if (session?.user) {
+            originalSupabase.storage.from(bucket).remove(paths).catch(err => {
+              console.warn(`[Storage] Failed to remove ${paths} from remote storage:`, err);
+            });
+          }
+        }).catch(() => {});
+
         return { data: null, error: null };
       } catch (e: any) {
         return { data: null, error: e };
@@ -1430,25 +1378,8 @@ export const supabase = new Proxy({
   storage: localStorageProxy,
   functions: {
     invoke: async (functionName: string, options?: any) => {
-      if (functionName === 'public-library-proxy') {
-        try {
-          const data = await serverJson('/api/public-library-proxy', {
-            method: 'POST',
-            body: JSON.stringify(options?.body || {})
-          });
-          return { data, error: null };
-        } catch (error: any) {
-          return { data: null, error };
-        }
-      }
-
-      // Local-server architecture: server-side generated metadata/covers are optional enhancements.
-      // Avoid sending normal app writes through Supabase Edge Functions.
-      if (['extract-metadata', 'generate-cover'].includes(functionName)) {
-        return { data: { skipped: true }, error: null };
-      }
-
-      console.log(`[Functions] Invoking legacy Edge Function "${functionName}" via original Supabase client`);
+      // Delegate Edge Functions invocation to the original remote client
+      console.log(`[Functions] Invoking Edge Function "${functionName}" via original Supabase client`);
       return originalSupabase.functions.invoke(functionName, options);
     }
   }
@@ -1502,5 +1433,33 @@ export const supabase = new Proxy({
   }
 });
 
-// Legacy Supabase auth is intentionally not used for primary auth anymore.
-// The local server auth proxy above owns user sessions; Supabase remains only as a one-time legacy migration fallback.
+// Synchronize remote client auth changes back to local storage session cache
+originalSupabase.auth.onAuthStateChange((event, session) => {
+  console.log(`[Auth Sync] Remote auth state change event: ${event}`);
+  if (session) {
+    const currentSession = getLocalSession();
+    // Prevent infinite recursion loops by only triggering updates when the token has actually changed
+    if (currentSession && currentSession.access_token === session.access_token) {
+      return;
+    }
+    
+    const localSession = {
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      expires_at: session.expires_at,
+      token_type: session.token_type,
+      user: session.user
+    };
+    saveLocalSession(localSession);
+    setupRealtimeSync(session.user.id);
+    triggerAuthEvent(event as any, localSession);
+  } else {
+    // Only clear session if we are online and truly signed out remotely
+    if (navigator.onLine && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
+      saveLocalSession(null);
+      teardownRealtimeSync();
+      triggerAuthEvent('SIGNED_OUT', null);
+    }
+  }
+});

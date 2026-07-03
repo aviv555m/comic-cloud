@@ -199,7 +199,7 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
             {!Capacitor.isNativePlatform() && (
               <button
                 onClick={() => {
-                  window.open("/comic-cloud-release.apk", "_blank");
+                  window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_blank");
                   setOpen(false);
                 }}
                 className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-violet-400 hover:bg-violet-500/10 transition-colors"

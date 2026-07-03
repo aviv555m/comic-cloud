@@ -4,11 +4,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Download, Sparkles } from "lucide-react";
 
-import { UpdatePlugin } from "@/lib/update-plugin";
+interface UpdatePluginType {
+  downloadAndInstall(options: { url: string }): Promise<{ success: boolean }>;
+}
+const UpdatePlugin = registerPlugin<UpdatePluginType>("UpdatePlugin");
 
 import {
   Dialog,
@@ -76,7 +79,7 @@ const applyTheme = () => {
 const AppContent = () => {
   const { isUpdateAvailable, updateServiceWorker } = useServiceWorker();
   const [nativeUpdateAvailable, setNativeUpdateAvailable] = useState(false);
-  const [latestReleaseInfo, setLatestReleaseInfo] = useState<{ tag: string; body: string; apkUrl?: string } | null>(null);
+  const [latestReleaseInfo, setLatestReleaseInfo] = useState<{ tag: string; body: string } | null>(null);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
   useEffect(() => {
@@ -95,7 +98,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.116"; // Hardcoded current native app version
+          const currentTag = "v1.0.117"; // Hardcoded current native app version
           
           if (latestTag) {
             const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
@@ -109,8 +112,7 @@ const AppContent = () => {
                 localStorage.setItem("app_outdated", "true");
                 setLatestReleaseInfo({
                   tag: latestTag,
-                  body: data.body || "",
-                  apkUrl: data.assets?.find((asset: any) => String(asset.name || "").endsWith(".apk"))?.browser_download_url
+                  body: data.body || ""
                 });
                 setNativeUpdateAvailable(true);
               } else {
@@ -152,11 +154,8 @@ const AppContent = () => {
               <Sparkles className="w-8 h-8" />
             </div>
             <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
-            <p className="text-gray-400 mt-2 text-sm">
-              Current version: <span className="font-mono bg-gray-800 px-2 py-1 rounded">v1.0.116</span>
-            </p>
             <p className="text-sm text-muted-foreground">
-              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.116</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.117</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
             </p>
           </div>
           
@@ -166,18 +165,13 @@ const AppContent = () => {
               onClick={async () => {
                 setIsInstallingUpdate(true);
                 try {
-                  const apkUrl = latestReleaseInfo.apkUrl || "https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk";
-                  const result = await UpdatePlugin.downloadAndInstall({
-                    url: `${apkUrl}${apkUrl.includes("?") ? "&" : "?"}t=${Date.now()}`
+                  await UpdatePlugin.downloadAndInstall({
+                    url: `https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`
                   });
-                  if (result.permissionRequired) {
-                    alert("Android opened the install permission screen. Allow Comic Cloud to install updates, then return here and tap Update Now again.");
-                  }
                 } catch (err: any) {
                   console.error("Installation failed:", err);
-                  const apkUrl = latestReleaseInfo.apkUrl || "https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk";
-                  alert(`Failed to start automatic update installation: ${err?.message || err}. Falling back to browser download...`);
-                  window.open(`${apkUrl}${apkUrl.includes("?") ? "&" : "?"}t=${Date.now()}`, "_system");
+                  alert("Failed to start automatic update installation. Falling back to browser download...");
+                  window.open(`https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`, "_system");
                 } finally {
                   setIsInstallingUpdate(false);
                 }

@@ -155,30 +155,16 @@ export const BookDetailsDialog = ({
       }
 
       // Delete from storage
-      let filePath = null;
-      if (book.file_url?.includes('book-files/')) {
-        filePath = book.file_url.split('book-files/').pop()?.split('?')[0];
-      } else if (book.file_url?.includes('uploads/')) {
-        filePath = book.file_url.split('uploads/').pop()?.split('?')[0];
-      } else if (book.file_url) {
-        filePath = book.file_url.split('/').pop()?.split('?')[0];
-      }
+      const filePath = book.file_url.split('/book-files/')[1];
       if (filePath) {
-        await supabase.storage.from('book-files').remove([decodeURIComponent(filePath)]);
+        await supabase.storage.from('book-files').remove([filePath]);
       }
 
       // Delete cover if exists
       if (book.cover_url) {
-        let coverPath = null;
-        if (book.cover_url.includes('book-covers/')) {
-          coverPath = book.cover_url.split('book-covers/').pop()?.split('?')[0];
-        } else if (book.cover_url.includes('uploads/')) {
-          coverPath = book.cover_url.split('uploads/').pop()?.split('?')[0];
-        } else {
-          coverPath = book.cover_url.split('/').pop()?.split('?')[0];
-        }
+        const coverPath = book.cover_url.split('/book-covers/')[1];
         if (coverPath) {
-          await supabase.storage.from('book-covers').remove([decodeURIComponent(coverPath)]);
+          await supabase.storage.from('book-covers').remove([coverPath]);
         }
       }
 
