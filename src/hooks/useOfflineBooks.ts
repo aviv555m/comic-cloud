@@ -439,6 +439,28 @@ export function useOfflineBooks() {
     }
   }, [toast]);
 
+  const updateOfflineProgress = useCallback(async (bookId: string, page: number) => {
+    try {
+      const db = await getDB();
+      const transaction = db.transaction(BOOKS_STORE, 'readwrite');
+      const store = transaction.objectStore(BOOKS_STORE);
+      
+      const req = store.get(bookId);
+      req.onsuccess = () => {
+        if (req.result) {
+          const updatedBook = { ...req.result, last_page_read: page };
+          store.put(updatedBook);
+          
+          setOfflineBooks(prev => 
+            prev.map(b => b.id === bookId ? { ...b, last_page_read: page } : b)
+          );
+        }
+      };
+    } catch (error) {
+      console.error('Failed to update offline progress:', error);
+    }
+  }, [getDB]);
+
   // Synchronize when download manager completes tasks
   useEffect(() => {
     let lastCompletedIds = '';
@@ -470,5 +492,6 @@ export function useOfflineBooks() {
     getTotalStorageUsed,
     clearAllOfflineData,
     refreshOfflineBooks: loadOfflineBooks,
+    updateOfflineProgress,
   };
 }

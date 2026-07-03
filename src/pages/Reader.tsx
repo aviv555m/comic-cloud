@@ -53,7 +53,7 @@ const Reader = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isOnline, getOfflineFile, checkBookOfflineAsync, getOfflineBookAsync } = useOfflineBooks();
+  const { isOnline, getOfflineFile, checkBookOfflineAsync, getOfflineBookAsync, updateOfflineProgress } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
   const [showControls, setShowControls] = useState(true);
@@ -667,6 +667,11 @@ const Reader = () => {
     const totalPages = total || numPages || book.total_pages || 1;
     const progress = Math.round((page / totalPages) * 100);
     const isCompleted = progress >= 98;
+    
+    // Always update offline store progress if it's cached offline
+    if (isReadingOffline) {
+      updateOfflineProgress(book.id, page);
+    }
     
     await supabase
       .from("books")
