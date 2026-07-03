@@ -50,3 +50,4 @@ vm_run.log
 comix_*.js
 scratch_*.js
 scratch_*.ts
+public/uploads/

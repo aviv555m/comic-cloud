@@ -7,7 +7,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Upload, Trash2, Edit2, AlertTriangle } from "lucide-react";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { parseStorageReference } from "@/lib/storage-paths";
 
 interface CollectionEditDialogProps {
   open: boolean;
@@ -158,15 +157,31 @@ export const CollectionEditDialog = ({ open, onOpenChange, collectionName, isMan
           } catch (e) {}
 
           // Remove file
-          const fileRef = parseStorageReference(book.file_url, 'book-files');
-          if (fileRef) {
-            await supabase.storage.from('book-files').remove([fileRef.relativePath]);
+          let filePath = null;
+          if (book.file_url?.includes('book-files/')) {
+            filePath = book.file_url.split('book-files/').pop()?.split('?')[0];
+          } else if (book.file_url?.includes('uploads/')) {
+            filePath = book.file_url.split('uploads/').pop()?.split('?')[0];
+          } else if (book.file_url) {
+            filePath = book.file_url.split('/').pop()?.split('?')[0];
+          }
+          if (filePath) {
+            await supabase.storage.from('book-files').remove([decodeURIComponent(filePath)]);
           }
 
           // Remove cover
-          const coverRef = parseStorageReference(book.cover_url, 'book-covers');
-          if (coverRef) {
-            await supabase.storage.from('book-covers').remove([coverRef.relativePath]);
+          if (book.cover_url) {
+            let coverPath = null;
+            if (book.cover_url.includes('book-covers/')) {
+              coverPath = book.cover_url.split('book-covers/').pop()?.split('?')[0];
+            } else if (book.cover_url.includes('uploads/')) {
+              coverPath = book.cover_url.split('uploads/').pop()?.split('?')[0];
+            } else {
+              coverPath = book.cover_url.split('/').pop()?.split('?')[0];
+            }
+            if (coverPath) {
+              await supabase.storage.from('book-covers').remove([decodeURIComponent(coverPath)]);
+            }
           }
         }
       }

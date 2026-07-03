@@ -46,17 +46,6 @@ const Series = () => {
     }
   }, [seriesName, user]);
 
-  useEffect(() => {
-    const handleSync = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      if (customEvent.detail?.table === "books" && seriesName) {
-        fetchSeriesBooks();
-      }
-    };
-    window.addEventListener("local-db-synced", handleSync);
-    return () => window.removeEventListener("local-db-synced", handleSync);
-  }, [seriesName, user]);
-
   const fetchSeriesBooks = async () => {
     setLoading(true);
     try {

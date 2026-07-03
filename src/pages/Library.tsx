@@ -316,6 +316,7 @@ const Library = () => {
   // Filter and sort books
   const filteredBooks = books
     .filter((book) => {
+      if (book.file_type === "cbz") return false;
       const query = filters.search.toLowerCase();
       const matchesSearch = 
         book.title.toLowerCase().includes(query) ||
@@ -424,7 +425,8 @@ const Library = () => {
         uniqueKeys.add(`series:${book.title.trim().toLowerCase()}`);
       } else if (book.series) {
         uniqueKeys.add(`series:${book.series.trim().toLowerCase()}`);
-      } else if (book.file_type !== 'manga') {
+      } else if (book.file_type !== 'cbz' && book.file_type !== 'cbr') {
+        // Standalone ebook (exclude individual manga chapters that aren't mapped to a series)
         standaloneCount++;
       }
     });

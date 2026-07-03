@@ -97,13 +97,6 @@ function rowMatchesPayload(row: any, payload: any) {
   return keys.every((key) => row[key] === payload[key]);
 }
 
-function defaultConflictKeys(table: string) {
-  if (table === "book_tags") return ["book_id", "tag_id"];
-  if (table === "reading_list_books") return ["list_id", "book_id"];
-  if (table === "user_reading_preferences") return ["user_id"];
-  return ["id"];
-}
-
 
 function validateProxyUrl(rawUrl: string): URL {
   const parsed = new URL(rawUrl);
@@ -188,13 +181,13 @@ function applyServerDbItem(db: ServerDb, item: any) {
 
   const conflictKeys = item.upsertConflict
     ? String(item.upsertConflict).split(",").map((key) => key.trim()).filter(Boolean)
-    : defaultConflictKeys(table);
+    : ["id"];
 
   for (const record of payload) {
     if (!record) continue;
     const idx = rows.findIndex((row) => conflictKeys.every((key) => row[key] === record[key]));
     const next = { ...record };
-    if (!next.id && !["book_tags", "reading_list_books"].includes(table)) next.id = crypto.randomUUID();
+    if (!next.id) next.id = crypto.randomUUID();
     if (!next.created_at) next.created_at = new Date().toISOString();
     if (["books", "profiles", "book_reviews", "annotations", "tags"].includes(table)) {
       next.updated_at = next.updated_at || new Date().toISOString();
@@ -212,10 +205,9 @@ const contentSecurityPolicy = [
   "frame-ancestors 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://static.cloudflareinsights.com",
   "script-src-elem 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
-  "style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com",
-  "style-src-elem 'self' 'unsafe-inline' blob: https://fonts.googleapis.com",
+  "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: http: https:",
-  "font-src 'self' data: https://fonts.gstatic.com",
+  "font-src 'self' data:",
   "media-src 'self' data: blob: http: https:",
   "connect-src 'self' http: https: ws: wss: capacitor://localhost",
   "worker-src 'self' blob:",
@@ -225,6 +217,7 @@ const contentSecurityPolicy = [
 const setupMiddlewares = (middlewares: any) => {
   middlewares.use((req: any, res: any, next: any) => {
     res.setHeader("Content-Security-Policy", contentSecurityPolicy);
+    res.setHeader("Content-Security-Policy-Report-Only", contentSecurityPolicy);
     // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
           if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
             res.statusCode = 403;
