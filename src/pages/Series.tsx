@@ -140,6 +140,7 @@ const Series = () => {
                 isPublic={book.is_public}
                 onClick={() => navigate(`/reader/${book.id}`)}
                 onCoverGenerated={fetchSeriesBooks}
+                onDelete={fetchSeriesBooks}
               />
             ))}
           </div>
