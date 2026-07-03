@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Download, Sparkles } from "lucide-react";
 
 interface UpdatePluginType {
@@ -97,7 +98,7 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          const currentTag = "v1.0.97"; // Hardcoded current native app version
+          const currentTag = "v1.0.98"; // Hardcoded current native app version
           
           if (latestTag) {
             const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
@@ -126,6 +127,21 @@ const AppContent = () => {
         }
       };
       checkNativeUpdate();
+
+      // Listen for app state changes on mobile (foreground/background) to sync
+      const appStateSub = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          console.log("[App] App returned to foreground, triggering update check and sync");
+          checkNativeUpdate();
+          // The visibilitychange listener in local-supabase.ts will handle data sync,
+          // but we can also trigger a generic window event just in case
+          window.dispatchEvent(new Event('online'));
+        }
+      });
+
+      return () => {
+        appStateSub.then(sub => sub.remove());
+      };
     }
   }, []);
 
@@ -139,7 +155,7 @@ const AppContent = () => {
             </div>
             <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
             <p className="text-sm text-muted-foreground">
-              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.97</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.98</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
             </p>
           </div>
           

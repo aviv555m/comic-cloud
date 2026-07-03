@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.97";
+const CURRENT_VERSION = "v1.0.98";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -628,7 +628,45 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('[Sync] Device is back online! Processing queued offline changes...');
     processSyncQueue().catch(console.error);
+    const session = getLocalSession();
+    if (session?.user) {
+      cloneRemoteData(session.user.id).catch(console.error);
+    }
   });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      console.log('[Sync] App returned to foreground, checking for remote updates...');
+      processSyncQueue().catch(console.error);
+      const session = getLocalSession();
+      if (session?.user) {
+        cloneRemoteData(session.user.id).catch(console.error);
+      }
+    }
+  });
+}
+
+let realtimeSyncChannel: any = null;
+
+function setupRealtimeSync(userId: string) {
+  if (realtimeSyncChannel) return;
+  realtimeSyncChannel = originalSupabase.channel('custom-all-channel')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public' },
+      (payload) => {
+        console.log('[Sync] Realtime change detected on server:', payload);
+        cloneRemoteData(userId).catch(console.error);
+      }
+    )
+    .subscribe();
+}
+
+function teardownRealtimeSync() {
+  if (realtimeSyncChannel) {
+    originalSupabase.removeChannel(realtimeSyncChannel);
+    realtimeSyncChannel = null;
+  }
 }
 
 // Local mock Query Builder
@@ -1414,11 +1452,13 @@ originalSupabase.auth.onAuthStateChange((event, session) => {
       user: session.user
     };
     saveLocalSession(localSession);
+    setupRealtimeSync(session.user.id);
     triggerAuthEvent(event as any, localSession);
   } else {
     // Only clear session if we are online and truly signed out remotely
     if (navigator.onLine && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
       saveLocalSession(null);
+      teardownRealtimeSync();
       triggerAuthEvent('SIGNED_OUT', null);
     }
   }
