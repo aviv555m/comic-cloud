@@ -6,6 +6,10 @@ import https from "https";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  preview: {
+    port: 8081,
+    host: true
+  },
   server: {
     host: "::",
     port: 8081,
