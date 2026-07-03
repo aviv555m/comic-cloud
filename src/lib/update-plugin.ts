@@ -1,7 +1,7 @@
 import { registerPlugin } from "@capacitor/core";
 
 export interface UpdatePluginType {
-  downloadAndInstall(options: { url: string }): Promise<{ success: boolean }>;
+  downloadAndInstall(options: { url: string }): Promise<{ success: boolean; permissionRequired?: boolean }>;
   startBackgroundService(): Promise<{ success: boolean }>;
   stopBackgroundService(): Promise<{ success: boolean }>;
 }
