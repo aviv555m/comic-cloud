@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.103";
+const CURRENT_VERSION = "v1.0.104";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -194,9 +194,19 @@ function mergeRemoteData(table: string, remoteRows: any[]) {
   const localRows = getTableData(table);
   const localMap = new Map(localRows.map(r => [r.id, r]));
   
+  const queue = getSyncQueue();
+  const deletedIds = new Set(
+    queue
+      .filter(q => q.operation === 'delete' && q.table === table)
+      .flatMap(q => Array.isArray(q.payload) ? q.payload.map((r: any) => r.id) : [q.payload.id])
+  );
+
   let changed = false;
   for (const row of remoteRows) {
     if (!localMap.has(row.id)) {
+      if (deletedIds.has(row.id)) {
+        continue; // Skip adding back a row we just deleted locally
+      }
       localRows.push(row);
       changed = true;
     } else {
