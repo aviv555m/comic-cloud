@@ -98,6 +98,51 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+
+  const themeColors: Record<string, { bg: string; fg: string }> = {
+    light: { bg: "#ffffff", fg: "#111827" },
+    sepia: { bg: "#f7f1e3", fg: "#5d4037" },
+    dark: { bg: "#0b0f19", fg: "#e5e7eb" },
+    black: { bg: "#000000", fg: "#e5e7eb" },
+  };
+
+  const injectThemeCss = (contents: any, selectedTheme = theme) => {
+    const doc = contents.document;
+    const colors = themeColors[selectedTheme] || themeColors.light;
+    let style = doc.getElementById("comiccloud-epub-theme") as HTMLStyleElement | null;
+    if (!style) {
+      style = doc.createElement("style");
+      style.id = "comiccloud-epub-theme";
+      doc.head.appendChild(style);
+    }
+    const activeFont = fontFamily === "System" ? "system-ui, -apple-system, sans-serif" : fontFamily;
+    style.textContent = `
+      html, body {
+        background: ${colors.bg} !important;
+        background-color: ${colors.bg} !important;
+        color: ${colors.fg} !important;
+        font-family: ${activeFont}, serif !important;
+        font-size: ${fontSize}px !important;
+        line-height: ${lineHeight} !important;
+        padding: 0 ${marginSize} !important;
+      }
+      body * {
+        background-color: transparent !important;
+        color: inherit !important;
+      }
+      p {
+        font-family: ${activeFont}, serif !important;
+        font-size: ${fontSize}px !important;
+        line-height: ${lineHeight} !important;
+        margin-bottom: 1.2em !important;
+      }
+      a { color: ${selectedTheme === 'light' || selectedTheme === 'sepia' ? '#6d28d9' : '#a78bfa'} !important; }
+    `;
+    doc.documentElement.style.backgroundColor = colors.bg;
+    doc.body.style.backgroundColor = colors.bg;
+    doc.body.style.color = colors.fg;
+  };
+
   useEffect(() => {
     setShowUi(showControls);
   }, [showControls]);
@@ -188,13 +233,17 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         });
         renditionRef.current = rendition;
 
-        // Hook to inject serif and sans-serif Google Fonts inside the sandboxed iframe
+        // Hook to inject fonts and hard theme CSS inside the sandboxed iframe.
         rendition.hooks.content.register((contents: any) => {
           const doc = contents.document;
-          const link = doc.createElement("link");
-          link.href = "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,700;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap";
-          link.rel = "stylesheet";
-          doc.head.appendChild(link);
+          if (!doc.getElementById("comiccloud-epub-fonts")) {
+            const link = doc.createElement("link");
+            link.id = "comiccloud-epub-fonts";
+            link.href = "https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,700;1,400&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Inter:wght@300;400;500;600&display=swap";
+            link.rel = "stylesheet";
+            doc.head.appendChild(link);
+          }
+          injectThemeCss(contents, theme);
         });
 
         // Initialize themes and styles
@@ -250,6 +299,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         // Gesture and interaction hooks inside Epub iframe document
         rendition.on("rendered", (section: any, iframe: any) => {
           const doc = iframe.document;
+          injectThemeCss({ document: doc }, theme);
           let touchStartX = 0;
           let touchEndX = 0;
 
@@ -468,6 +518,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
 
     renditionRef.current.themes.select(theme);
     renditionRef.current.themes.fontSize(`${fontSize}px`);
+    renditionRef.current.getContents().forEach((contents: any) => injectThemeCss(contents, theme));
   };
 
   useEffect(() => {

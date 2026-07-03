@@ -58,31 +58,18 @@ export const CollectionEditDialog = ({ open, onOpenChange, collectionName, isMan
       // If new cover, upload it and update all books in the collection
       if (coverFile) {
         const fileExt = coverFile.name.split('.').pop();
-        const fileName = `${crypto.randomUUID()}.${fileExt}`;
+        const fileName = `collections/${crypto.randomUUID()}.${fileExt || 'jpg'}`;
 
-        // Create form data to upload the file to local Node server
-        const formData = new FormData();
-        formData.append('file', coverFile);
-        
-        let coverUrl = '';
-        if (navigator.onLine) {
-          // Upload to Node server
-          const uploadRes = await fetch(`${window.location.origin}/api/upload-cover`, {
-            method: 'POST',
-            headers: {
-              'x-file-name': fileName
-            },
-            body: formData
-          });
-          
-          if (!uploadRes.ok) {
-             throw new Error('Failed to upload cover');
-          }
-          coverUrl = `${window.location.origin}/uploads/book-covers/${fileName}`;
-        } else {
-          // Fallback, we could do IndexedDB but for now just fail gracefully if offline
-          throw new Error('Must be online to upload a new cover for a collection.');
-        }
+        const { error: uploadError } = await supabase.storage
+          .from('book-covers')
+          .upload(fileName, coverFile, { upsert: true });
+
+        if (uploadError) throw uploadError;
+
+        const { data: coverData } = supabase.storage
+          .from('book-covers')
+          .getPublicUrl(fileName);
+        const coverUrl = coverData.publicUrl;
 
         if (isManga) {
           const { error } = await supabase

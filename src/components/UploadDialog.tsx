@@ -97,6 +97,46 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
     }
   };
 
+  const uploadCoverBlob = async (blob: Blob, extension = "jpg") => {
+    const coverPath = `${userId}/${Date.now()}-cover.${extension.replace(/[^a-z0-9]/gi, "") || "jpg"}`;
+    const coverFile = new File([blob], coverPath.split("/").pop() || "cover.jpg", {
+      type: blob.type || "image/jpeg",
+    });
+
+    const { error } = await supabase.storage
+      .from("book-covers")
+      .upload(coverPath, coverFile, { upsert: true });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage
+      .from("book-covers")
+      .getPublicUrl(coverPath);
+
+    return data.publicUrl;
+  };
+
+  const fetchRemoteCover = async (url: string) => {
+    const { data, error } = await supabase.functions.invoke("public-library-proxy", {
+      body: { url, responseType: "base64" },
+    });
+
+    if (error) throw error;
+
+    const base64 = data?.body || data?.data || data;
+    if (typeof base64 !== "string") {
+      throw new Error("Cover proxy returned an invalid response");
+    }
+
+    const contentType = data?.contentType || "image/jpeg";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: contentType });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !title) {
@@ -133,25 +173,15 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       // Upload custom cover if provided
       let finalCoverUrl = coverUrl || null;
       if (coverFile) {
-        const coverExt = coverFile.name.split('.').pop();
-        const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
-        
-        const { error: coverUploadError, data: uploadData } = await supabase.storage
-          .from('book-covers')
-          .upload(coverPath, coverFile, { upsert: true });
-
-        if (coverUploadError) {
-          console.error('Cover upload error:', coverUploadError);
-          toast({
-            variant: "destructive",
-            title: "Warning",
-            description: "Failed to upload custom cover, will generate one instead",
-          });
-        } else if (uploadData) {
-          const { data: coverData } = supabase.storage
-            .from('book-covers')
-            .getPublicUrl(coverPath);
-          finalCoverUrl = coverData.publicUrl;
+        const coverExt = coverFile.name.split(".").pop() || "jpg";
+        finalCoverUrl = await uploadCoverBlob(coverFile, coverExt);
+      } else if (coverUrl && /^https?:\/\//i.test(coverUrl)) {
+        try {
+          const remoteCover = await fetchRemoteCover(coverUrl);
+          const coverExt = remoteCover.type.split("/").pop() || "jpg";
+          finalCoverUrl = await uploadCoverBlob(remoteCover, coverExt);
+        } catch (coverError) {
+          console.warn("Failed to import remote cover, keeping original URL:", coverError);
         }
       }
 
