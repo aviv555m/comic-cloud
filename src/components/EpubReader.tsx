@@ -209,6 +209,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
           "p, span, div, h1, h2, h3, h4, h5, h6, li, ul, ol, section": {
             "background": "transparent !important",
             "background-color": "transparent !important",
+            "color": "inherit !important",
           },
           p: {
             "font-family": `${activeFont} !important`,
