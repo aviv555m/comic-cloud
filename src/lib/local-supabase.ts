@@ -39,7 +39,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.113";
+const CURRENT_VERSION = "v1.0.114";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -148,6 +148,61 @@ export async function getLocalFile(filePath: string): Promise<Blob | null> {
     console.error('Failed to read local file from IndexedDB:', e);
     return null;
   }
+}
+
+async function getOfflineStoredFile(bookId: string): Promise<{ file: Blob | null; cover: Blob | null }> {
+  try {
+    const db = await openLocalDB();
+    const transaction = db.transaction(FILES_STORE, 'readonly');
+    const store = transaction.objectStore(FILES_STORE);
+    const request = store.get(bookId);
+
+    return new Promise((resolve) => {
+      request.onsuccess = () => {
+        const result = request.result;
+        if (!result) {
+          resolve({ file: null, cover: null });
+          return;
+        }
+        const file = result.data ? new Blob([result.data], { type: result.contentType || 'application/octet-stream' }) : null;
+        const cover = result.coverData ? new Blob([result.coverData], { type: 'image/jpeg' }) : null;
+        resolve({ file, cover });
+      };
+      request.onerror = () => resolve({ file: null, cover: null });
+    });
+  } catch (e) {
+    console.error('Failed to read offline stored file:', e);
+    return { file: null, cover: null };
+  }
+}
+
+function extractUploadPath(url: string | null | undefined, preferredBucket: 'book-files' | 'book-covers'): string | null {
+  if (!url) return null;
+  const value = String(url);
+  if (value.includes('/local-file-route/')) {
+    const encoded = value.split('/local-file-route/').pop()?.split('?')[0];
+    if (!encoded) return null;
+    const decoded = decodeURIComponent(encoded);
+    return decoded.startsWith(`${preferredBucket}/`) ? decoded : null;
+  }
+  if (value.includes('/uploads/')) {
+    const afterUploads = value.split('/uploads/').pop()?.split('?')[0];
+    if (!afterUploads) return null;
+    if (afterUploads.startsWith(`${preferredBucket}/`)) return decodeURIComponent(afterUploads);
+  }
+  if (value.includes(`${preferredBucket}/`)) {
+    const afterBucket = value.split(`${preferredBucket}/`).pop()?.split('?')[0];
+    if (!afterBucket) return null;
+    return `${preferredBucket}/${decodeURIComponent(afterBucket)}`;
+  }
+  return null;
+}
+
+function normalizeServerHostedUrl(url: string | null | undefined, preferredBucket: 'book-files' | 'book-covers'): string | null | undefined {
+  if (!url) return url;
+  const uploadPath = extractUploadPath(url, preferredBucket);
+  if (!uploadPath) return url;
+  return `${getServerUrl()}/uploads/${uploadPath}`;
 }
 
 // Monkey-patch window.fetch to intercept local-file-route requests
@@ -281,6 +336,12 @@ async function processLocalUrls(rows: any[]) {
   const processed = [];
   for (const row of rows) {
     const newRow = { ...row };
+    if (newRow.file_url) {
+      newRow.file_url = normalizeServerHostedUrl(newRow.file_url, 'book-files');
+    }
+    if (newRow.cover_url) {
+      newRow.cover_url = normalizeServerHostedUrl(newRow.cover_url, 'book-covers');
+    }
     // Process cover_url
     if (newRow.cover_url && newRow.cover_url.includes('/local-file-route/')) {
       const match = newRow.cover_url.match(/\/local-file-route\/([^?]+)/);
@@ -569,78 +630,110 @@ async function _cloneRemoteData(userId: string) {
           });
         }
 
-        // Proactively scan all local books cached in IndexedDB and upload them to the server if missing
+        // Proactively scan local cached books, migrate blobs to the server, and rewrite stale localhost URLs.
+        const normalizedBookUpdates: any[] = [];
         for (const book of localBooks) {
           if (book.user_id !== userId || !book.file_url) continue;
-          let filePath = null;
-          if (book.file_url.includes('book-files/')) {
-            filePath = book.file_url.split('book-files/').pop().split('?')[0];
-          } else if (book.file_url.includes('uploads/')) {
-            filePath = book.file_url.split('uploads/').pop().split('?')[0];
-          } else {
-            filePath = book.file_url.split('/').pop().split('?')[0];
-          }
-          if (filePath) {
-            const fullPath = `book-files/${decodeURIComponent(filePath)}`;
-            getLocalFile(fullPath).then((fileBlob) => {
-              if (fileBlob) {
-                const serverPathToCheck = book.file_url.split('?')[0];
-                const serverUrl = serverPathToCheck.startsWith('http') ? serverPathToCheck : `${getServerUrl()}${serverPathToCheck.startsWith('/') ? '' : '/'}${serverPathToCheck}`;
-                fetch(serverUrl, { method: 'HEAD' }).then(async (testRes) => {
-                  const contentType = testRes.headers.get('content-type') || '';
-                  if (testRes.status === 404 || contentType.includes('text/html')) {
-                    console.log(`[Sync] Self-healing: Syncing missing file blob for ${book.title} to server...`);
-                    
-                    let uploadPath = filePath;
-                    if (book.file_url.includes('/book-files/')) {
-                      uploadPath = `book-files/${decodeURIComponent(filePath)}`;
-                    } else {
-                      uploadPath = decodeURIComponent(filePath);
-                    }
+          const fileUploadPath = extractUploadPath(book.file_url, 'book-files');
+          const coverUploadPath = extractUploadPath(book.cover_url, 'book-covers');
+          const offlineStored = await getOfflineStoredFile(book.id);
+          const normalizedUpdate: any = { id: book.id };
 
-                    fetch(`${getServerUrl()}/api/upload`, {
-                      method: 'POST',
-                      headers: {
-                        'x-file-path': uploadPath,
-                        'Content-Type': 'application/octet-stream'
-                      },
-                      body: fileBlob
-                    }).then(res => {
-                      if (res.ok) {
-                        console.log(`[Sync] Self-healing: Proactively uploaded file blob for ${book.title} to server`);
-                      }
-                    }).catch(() => {});
-                  }
-                }).catch(() => {});
+          if (fileUploadPath) {
+            const localFile = await getLocalFile(fileUploadPath);
+            const fileBlob = localFile || offlineStored.file;
+            const expectedFileUrl = `${getServerUrl()}/uploads/${fileUploadPath}`;
+            const needsRewrite = book.file_url !== expectedFileUrl;
+            let needsUpload = needsRewrite;
+            if (!needsUpload) {
+              try {
+                const testRes = await fetch(expectedFileUrl, { method: 'HEAD' });
+                const contentType = testRes.headers.get('content-type') || '';
+                needsUpload = testRes.status === 404 || contentType.includes('text/html');
+              } catch {
+                needsUpload = true;
               }
-            }).catch(() => {});
-          }
+            }
 
-          if (book.cover_url && book.cover_url.includes('/uploads/book-covers/')) {
-            const coverPath = book.cover_url.split('/book-covers/').pop().split('?')[0];
-            if (coverPath) {
-              const fullCoverPath = `book-covers/${decodeURIComponent(coverPath)}`;
-              getLocalFile(fullCoverPath).then((coverBlob) => {
-                if (coverBlob) {
-                  const serverCoverUrl = book.cover_url.split('?')[0];
-                  fetch(serverCoverUrl, { method: 'HEAD' }).then(async (testRes) => {
-                    const contentType = testRes.headers.get('content-type') || '';
-                    if (testRes.status === 404 || contentType.includes('text/html')) {
-                      console.log(`[Sync] Self-healing: Syncing missing cover blob for ${book.title} to server...`);
-                      fetch(`${getServerUrl()}/api/upload`, {
-                        method: 'POST',
-                        headers: {
-                          'x-file-path': `book-covers/${decodeURIComponent(coverPath)}`,
-                          'Content-Type': 'application/octet-stream'
-                        },
-                        body: coverBlob
-                      }).catch(() => {});
-                    }
-                  }).catch(() => {});
+            if (fileBlob && needsUpload) {
+              try {
+                const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
+                  method: 'POST',
+                  headers: {
+                    'x-file-path': fileUploadPath,
+                    'Content-Type': 'application/octet-stream'
+                  },
+                  body: fileBlob
+                });
+                if (uploadRes.ok) {
+                  console.log(`[Sync] Self-healing: Uploaded file blob for ${book.title} to server`);
+                  normalizedUpdate.file_url = expectedFileUrl;
+                  normalizedUpdate.file_size = fileBlob.size;
                 }
-              }).catch(() => {});
+              } catch (err) {
+                console.warn(`[Sync] Self-healing: Failed uploading file for ${book.title}:`, err);
+              }
+            } else if (needsRewrite) {
+              normalizedUpdate.file_url = expectedFileUrl;
             }
           }
+
+          if (coverUploadPath) {
+            const localCover = await getLocalFile(coverUploadPath);
+            const coverBlob = localCover || offlineStored.cover;
+            const expectedCoverUrl = `${getServerUrl()}/uploads/${coverUploadPath}`;
+            const needsRewrite = book.cover_url !== expectedCoverUrl;
+            let needsUpload = needsRewrite;
+            if (!needsUpload) {
+              try {
+                const testRes = await fetch(expectedCoverUrl, { method: 'HEAD' });
+                const contentType = testRes.headers.get('content-type') || '';
+                needsUpload = testRes.status === 404 || contentType.includes('text/html');
+              } catch {
+                needsUpload = true;
+              }
+            }
+
+            if (coverBlob && needsUpload) {
+              try {
+                const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
+                  method: 'POST',
+                  headers: {
+                    'x-file-path': coverUploadPath,
+                    'Content-Type': 'application/octet-stream'
+                  },
+                  body: coverBlob
+                });
+                if (uploadRes.ok) {
+                  console.log(`[Sync] Self-healing: Uploaded cover blob for ${book.title} to server`);
+                  normalizedUpdate.cover_url = expectedCoverUrl;
+                }
+              } catch (err) {
+                console.warn(`[Sync] Self-healing: Failed uploading cover for ${book.title}:`, err);
+              }
+            } else if (needsRewrite) {
+              normalizedUpdate.cover_url = expectedCoverUrl;
+            }
+          }
+
+          if (Object.keys(normalizedUpdate).length > 1) {
+            normalizedBookUpdates.push(normalizedUpdate);
+          }
+        }
+
+        if (normalizedBookUpdates.length > 0) {
+          console.log(`[Sync] Self-healing: Normalizing ${normalizedBookUpdates.length} book URLs on the local server...`);
+          await serverJson('/api/db/push', {
+            method: 'POST',
+            body: JSON.stringify({ items: [{ table: 'books', operation: 'upsert', payload: normalizedBookUpdates }] })
+          }).catch(err => console.warn('[Sync] Self-healing: Failed to normalize book URLs on local server:', err));
+
+          const nextLocalBooks = localBooks.map((localBook) => {
+            const update = normalizedBookUpdates.find((item) => item.id === localBook.id);
+            return update ? { ...localBook, ...update } : localBook;
+          });
+          await setTableData('books', nextLocalBooks);
+          notifyLocalTableChanged('books');
         }
       }
       

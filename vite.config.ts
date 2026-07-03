@@ -225,7 +225,6 @@ const contentSecurityPolicy = [
 const setupMiddlewares = (middlewares: any) => {
   middlewares.use((req: any, res: any, next: any) => {
     res.setHeader("Content-Security-Policy", contentSecurityPolicy);
-    res.setHeader("Content-Security-Policy-Report-Only", contentSecurityPolicy);
     // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
           if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
             res.statusCode = 403;
