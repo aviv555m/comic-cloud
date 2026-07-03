@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../integrations/supabase/types';
+import localforage from 'localforage';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -38,7 +39,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.108";
+const CURRENT_VERSION = "v1.0.109";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -171,30 +172,30 @@ if (typeof window !== 'undefined') {
 }
 
 // Local Database JSON storage
-export function getTableData(table: string): any[] {
+export async function getTableData(table: string): Promise<any[]> {
   try {
-    const data = safeLocalStorage.getItem(`local_db_${table}`);
-    return data ? JSON.parse(data) : [];
+    const data = await localforage.getItem(`local_db_${table}`);
+    return data ? (data as any[]) : [];
   } catch (e) {
     console.warn(`Failed to read local table ${table}:`, e);
     return [];
   }
 }
 
-export function setTableData(table: string, data: any[]) {
+export async function setTableData(table: string, data: any[]) {
   try {
-    safeLocalStorage.setItem(`local_db_${table}`, JSON.stringify(data));
+    await localforage.setItem(`local_db_${table}`, data);
   } catch (e) {
     console.warn(`Failed to save local table ${table}:`, e);
   }
 }
 
-function mergeRemoteData(table: string, remoteRows: any[]) {
+async function mergeRemoteData(table: string, remoteRows: any[]) {
   if (!remoteRows || !Array.isArray(remoteRows)) return;
-  const localRows = getTableData(table);
+  const localRows = await getTableData(table);
   const localMap = new Map(localRows.map(r => [r.id, r]));
   
-  const queue = getSyncQueue();
+  const queue = await getSyncQueue();
   const deletedIds = new Set(
     queue
       .filter(q => q.operation === 'delete' && q.table === table)
@@ -233,7 +234,7 @@ function mergeRemoteData(table: string, remoteRows: any[]) {
   }
   
   if (changed) {
-    setTableData(table, localRows);
+    await setTableData(table, localRows);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('local-db-synced', { detail: { table } }));
     }
@@ -481,7 +482,7 @@ async function _cloneRemoteData(userId: string) {
       // Self-healing: if online and fetching books, check for any unsynced local uploads
       if (table === "books" && data) {
         const remoteIds = new Set(data.map(b => b.id));
-        const localBooks = getTableData("books");
+        const localBooks = await getTableData("books");
         const unsyncedBooks = localBooks.filter(b => b.user_id === userId && !remoteIds.has(b.id));
         
         if (unsyncedBooks.length > 0) {
@@ -569,7 +570,7 @@ async function _cloneRemoteData(userId: string) {
       }
       
       if (data && data.length > 0) {
-        mergeRemoteData(table, data);
+        await mergeRemoteData(table, data);
         console.log(`[Clone] Synced ${data.length} rows for table ${table}`);
       }
     } catch (err) {
@@ -588,26 +589,28 @@ interface SyncItem {
 }
 
 // Read pending offline sync items
-function getSyncQueue(): SyncItem[] {
+async function getSyncQueue(): Promise<SyncItem[]> {
   try {
-    const q = safeLocalStorage.getItem("local_db_sync_queue");
-    return q ? JSON.parse(q) : [];
+    const q = await localforage.getItem("local_db_sync_queue");
+    return q ? (q as SyncItem[]) : [];
   } catch (e) {
     return [];
   }
 }
 
 // Save offline sync queue
-function setSyncQueue(queue: SyncItem[]) {
+async function setSyncQueue(queue: SyncItem[]) {
   try {
-    safeLocalStorage.setItem("local_db_sync_queue", JSON.stringify(queue));
-  } catch (e) {}
+    await localforage.setItem("local_db_sync_queue", queue);
+  } catch (e) {
+    console.error("Failed to save sync queue", e);
+  }
 }
 
 // Add item to offline sync queue
-function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'delete', payload: any, upsertConflict?: string) {
+async function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'delete', payload: any, upsertConflict?: string) {
   if (table === 'reading_locations') return; // local-only table
-  const queue = getSyncQueue();
+  const queue = await getSyncQueue();
   queue.push({
     table,
     operation,
@@ -615,7 +618,7 @@ function queueSync(table: string, operation: 'insert' | 'update' | 'upsert' | 'd
     upsertConflict,
     timestamp: Date.now()
   });
-  setSyncQueue(queue);
+  await setSyncQueue(queue);
   processSyncQueue().catch(console.error);
 }
 
@@ -638,7 +641,7 @@ async function _processSyncQueue() {
   const { data: { session } } = await originalSupabase.auth.getSession();
   if (!session?.user) return; // Must be authenticated to sync
 
-  const queue = getSyncQueue();
+  const queue = await getSyncQueue();
   if (queue.length === 0) return;
 
   console.log(`[Sync] Processing ${queue.length} offline changes...`);
@@ -678,7 +681,7 @@ async function _processSyncQueue() {
     }
   }
 
-  setSyncQueue(remainingQueue);
+  await setSyncQueue(remainingQueue);
 }
 
 // Add window online listener to auto-sync when network reconnects
@@ -855,7 +858,7 @@ class MockQueryBuilder {
 
   async execute() {
     try {
-      let data = getTableData(this.tableName);
+      let data = await getTableData(this.tableName);
 
       if (this.operation === 'select') {
         // Apply filters
@@ -918,10 +921,10 @@ class MockQueryBuilder {
           }
         }
 
-        setTableData(this.tableName, data);
+        await setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
-        queueSync(this.tableName, 'insert', inserted);
+        await queueSync(this.tableName, 'insert', inserted);
         
         const returnData = Array.isArray(this.payload) ? inserted : inserted[0];
         return { data: returnData, error: null };
@@ -948,11 +951,11 @@ class MockQueryBuilder {
           return row;
         });
 
-        setTableData(this.tableName, data);
+        await setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
         if (updatedRows.length > 0) {
-          queueSync(this.tableName, 'update', updatedRows);
+          await queueSync(this.tableName, 'update', updatedRows);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (updatedRows[0] || null) : updatedRows;
@@ -996,10 +999,10 @@ class MockQueryBuilder {
           }
         }
 
-        setTableData(this.tableName, data);
+        await setTableData(this.tableName, data);
         
         // Queue for offline remote synchronization
-        queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
+        await queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
         
         const returnData = Array.isArray(this.payload) ? upserted : upserted[0];
         return { data: returnData, error: null };
@@ -1023,11 +1026,11 @@ class MockQueryBuilder {
           }
         }
 
-        setTableData(this.tableName, remaining);
+        await setTableData(this.tableName, remaining);
         
         // Queue for offline remote synchronization
         if (deleted.length > 0) {
-          queueSync(this.tableName, 'delete', deleted);
+          await queueSync(this.tableName, 'delete', deleted);
         }
         
         const returnData = this.isSingle || this.isMaybeSingle ? (deleted[0] || null) : deleted;
@@ -1154,10 +1157,10 @@ const localAuthProxy = {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-      const profiles = getTableData('profiles');
+      const profiles = await getTableData('profiles');
       if (!profiles.some(p => p.id === userId)) {
         profiles.push(defaultProfile);
-        setTableData('profiles', profiles);
+        await setTableData('profiles', profiles);
       }
 
       triggerAuthEvent('SIGNED_IN', mockSession);
