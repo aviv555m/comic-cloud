@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import http from "http";
 import https from "https";
+import fs from "fs";
 
 const setupMiddlewares = (middlewares: any) => {
   middlewares.use((req: any, res: any, next: any) => {
@@ -48,7 +49,6 @@ const setupMiddlewares = (middlewares: any) => {
               return;
             }
             
-            const fs = require("fs");
             
             const saveToDir = (dir: string) => {
               if (!fs.existsSync(dir)) {
