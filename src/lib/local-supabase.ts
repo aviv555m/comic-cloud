@@ -39,7 +39,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.112";
+const CURRENT_VERSION = "v1.0.113";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -190,40 +190,66 @@ export async function setTableData(table: string, data: any[]) {
   }
 }
 
+function notifyLocalTableChanged(table: string) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('local-db-synced', { detail: { table } }));
+  }
+}
+
 function getRowKey(table: string, row: any) {
   if (!row) return "";
-  if (row.id) return String(row.id);
   if (table === "book_tags") return `${row.book_id || ""}:${row.tag_id || ""}`;
   if (table === "reading_list_books") return `${row.list_id || ""}:${row.book_id || ""}`;
+  if (row.id) return String(row.id);
   if (row.book_id) return String(row.book_id);
   return JSON.stringify(row);
 }
 
-async function mergeRemoteData(table: string, remoteRows: any[]) {
+function rowBelongsToUser(table: string, row: any, userId?: string) {
+  if (!userId) return false;
+  if (table === "profiles") return row.id === userId;
+  if (table === "book_tags" || table === "reading_list_books") return true;
+  return row.user_id === userId;
+}
+
+async function mergeRemoteData(table: string, remoteRows: any[], userId?: string) {
   if (!remoteRows || !Array.isArray(remoteRows)) return;
   const localRows = await getTableData(table);
-  const localMap = new Map(localRows.map(r => [getRowKey(table, r), r]));
   
   const queue = await getSyncQueue();
+  const pendingLocalKeys = new Set(
+    queue
+      .filter(q => q.table === table && q.operation !== 'delete')
+      .flatMap(q => Array.isArray(q.payload) ? q.payload.map((r: any) => getRowKey(table, r)) : [getRowKey(table, q.payload)])
+  );
   const deletedKeys = new Set(
     queue
       .filter(q => q.operation === 'delete' && q.table === table)
       .flatMap(q => Array.isArray(q.payload) ? q.payload.map((r: any) => getRowKey(table, r)) : [getRowKey(table, q.payload)])
   );
+  const remoteKeys = new Set(remoteRows.map(row => getRowKey(table, row)));
+  const reconciledRows = userId
+    ? localRows.filter(row => {
+        if (!rowBelongsToUser(table, row, userId)) return true;
+        const key = getRowKey(table, row);
+        return remoteKeys.has(key) || pendingLocalKeys.has(key);
+      })
+    : [...localRows];
+  const localMap = new Map(reconciledRows.map(r => [getRowKey(table, r), r]));
+  let changed = reconciledRows.length !== localRows.length;
 
-  let changed = false;
   for (const row of remoteRows) {
     const rowKey = getRowKey(table, row);
     if (!localMap.has(rowKey)) {
       if (deletedKeys.has(rowKey)) {
         continue; // Skip adding back a row we just deleted locally
       }
-      localRows.push(row);
+      reconciledRows.push(row);
       changed = true;
     } else {
-      const index = localRows.findIndex(r => getRowKey(table, r) === rowKey);
+      const index = reconciledRows.findIndex(r => getRowKey(table, r) === rowKey);
       if (index !== -1) {
-        const localRow = localRows[index];
+        const localRow = reconciledRows[index];
         
         // Extract timestamps for LWW (Last-Write-Wins) comparison
         const localTime = localRow.updated_at ? new Date(localRow.updated_at).getTime() : (localRow.created_at ? new Date(localRow.created_at).getTime() : 0);
@@ -235,7 +261,7 @@ async function mergeRemoteData(table: string, remoteRows: any[]) {
           const mergedRow = { ...localRow, ...row };
           const mergedStr = JSON.stringify(mergedRow);
           if (localStr !== mergedStr) {
-            localRows[index] = mergedRow;
+            reconciledRows[index] = mergedRow;
             changed = true;
           }
         }
@@ -244,10 +270,8 @@ async function mergeRemoteData(table: string, remoteRows: any[]) {
   }
   
   if (changed) {
-    await setTableData(table, localRows);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('local-db-synced', { detail: { table } }));
-    }
+    await setTableData(table, reconciledRows);
+    notifyLocalTableChanged(table);
   }
 }
 
@@ -465,6 +489,10 @@ export async function cloneRemoteData(userId: string, options: { force?: boolean
 }
 
 async function _cloneRemoteData(userId: string) {
+  if (navigator.onLine) {
+    await processSyncQueue();
+  }
+
   const BACKUP_TABLES = [
     "profiles",
     "books",
@@ -616,10 +644,8 @@ async function _cloneRemoteData(userId: string) {
         }
       }
       
-      if (data && data.length > 0) {
-        await mergeRemoteData(table, data);
-        console.log(`[Clone] Synced ${data.length} rows for table ${table}`);
-      }
+      await mergeRemoteData(table, data || [], userId);
+      console.log(`[Clone] Synced ${data?.length || 0} rows for table ${table}`);
     } catch (err) {
       console.error(`[Clone] Error cloning table ${table}:`, err);
     }
@@ -669,7 +695,9 @@ async function queueSync(table: string, operation: 'insert' | 'update' | 'upsert
     timestamp: Date.now()
   });
   await setSyncQueue(queue);
-  processSyncQueue().catch(console.error);
+  if (navigator.onLine) {
+    await processSyncQueue();
+  }
 }
 
 let isSyncing = false;
@@ -970,6 +998,7 @@ class MockQueryBuilder {
         }
 
         await setTableData(this.tableName, data);
+        notifyLocalTableChanged(this.tableName);
         
         // Queue for offline remote synchronization
         await queueSync(this.tableName, 'insert', inserted);
@@ -1000,6 +1029,7 @@ class MockQueryBuilder {
         });
 
         await setTableData(this.tableName, data);
+        notifyLocalTableChanged(this.tableName);
         
         // Queue for offline remote synchronization
         if (updatedRows.length > 0) {
@@ -1048,6 +1078,7 @@ class MockQueryBuilder {
         }
 
         await setTableData(this.tableName, data);
+        notifyLocalTableChanged(this.tableName);
         
         // Queue for offline remote synchronization
         await queueSync(this.tableName, 'upsert', upserted, this.upsertConflict);
@@ -1075,6 +1106,7 @@ class MockQueryBuilder {
         }
 
         await setTableData(this.tableName, remaining);
+        notifyLocalTableChanged(this.tableName);
 
         if (this.tableName === 'books' && deleted.length > 0) {
           const deletedIds = new Set(deleted.map(row => row.id).filter(Boolean));
@@ -1093,6 +1125,7 @@ class MockQueryBuilder {
             const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.book_id));
             if (cascadeDeleted.length > 0) {
               await setTableData(table, tableRows.filter(row => !deletedIds.has(row.book_id)));
+              notifyLocalTableChanged(table);
               await queueSync(table, 'delete', cascadeDeleted);
             }
           }
@@ -1104,6 +1137,7 @@ class MockQueryBuilder {
           const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.list_id));
           if (cascadeDeleted.length > 0) {
             await setTableData('reading_list_books', tableRows.filter(row => !deletedIds.has(row.list_id)));
+            notifyLocalTableChanged('reading_list_books');
             await queueSync('reading_list_books', 'delete', cascadeDeleted);
           }
         }
@@ -1114,6 +1148,7 @@ class MockQueryBuilder {
           const cascadeDeleted = tableRows.filter(row => deletedIds.has(row.tag_id));
           if (cascadeDeleted.length > 0) {
             await setTableData('book_tags', tableRows.filter(row => !deletedIds.has(row.tag_id)));
+            notifyLocalTableChanged('book_tags');
             await queueSync('book_tags', 'delete', cascadeDeleted);
           }
         }
