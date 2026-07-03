@@ -58,7 +58,6 @@ export const OfflineLibrary = () => {
   }
 
   const filteredBooks = offlineBooks.filter((book) => {
-    if (book.file_type === "cbz") return false;
     const query = searchQuery.toLowerCase().trim();
     if (!query) return true;
     return (

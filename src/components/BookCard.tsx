@@ -9,6 +9,8 @@ import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { originalSupabase, resolveBookAssetUrl } from "@/lib/local-supabase";
+import { parseStorageReference } from "@/lib/storage-paths";
 
 interface BookCardProps {
   id: string;
@@ -94,31 +96,15 @@ export const BookCard = ({
       }
 
       // Parse file path robustly
-      let filePath = null;
-      if (fileUrl?.includes('book-files/')) {
-        filePath = fileUrl.split('book-files/').pop()?.split('?')[0];
-      } else if (fileUrl?.includes('uploads/')) {
-        filePath = fileUrl.split('uploads/').pop()?.split('?')[0];
-      } else if (fileUrl) {
-        filePath = fileUrl.split('/').pop()?.split('?')[0];
-      }
-      if (filePath) {
-        await supabase.storage.from('book-files').remove([decodeURIComponent(filePath)]);
+      const fileRef = parseStorageReference(fileUrl, 'book-files');
+      if (fileRef) {
+        await supabase.storage.from('book-files').remove([fileRef.relativePath]);
       }
 
       // Delete cover if exists
-      if (coverUrl) {
-        let coverPath = null;
-        if (coverUrl.includes('book-covers/')) {
-          coverPath = coverUrl.split('book-covers/').pop()?.split('?')[0];
-        } else if (coverUrl.includes('uploads/')) {
-          coverPath = coverUrl.split('uploads/').pop()?.split('?')[0];
-        } else {
-          coverPath = coverUrl.split('/').pop()?.split('?')[0];
-        }
-        if (coverPath) {
-          await supabase.storage.from('book-covers').remove([decodeURIComponent(coverPath)]);
-        }
+      const coverRef = parseStorageReference(coverUrl, 'book-covers');
+      if (coverRef) {
+        await supabase.storage.from('book-covers').remove([coverRef.relativePath]);
       }
 
       // Delete book record
@@ -190,6 +176,34 @@ export const BookCard = ({
       setResolvedCover(coverUrl);
     }
   }, [coverUrl]);
+
+  const handleCoverError = async () => {
+    const localFallback = await resolveBookAssetUrl(coverUrl, 'book-covers');
+    if (localFallback && localFallback !== resolvedCover) {
+      setResolvedCover(localFallback);
+      return;
+    }
+
+    const coverRef = parseStorageReference(coverUrl, 'book-covers');
+    if (!coverRef) {
+      setResolvedCover(undefined);
+      return;
+    }
+
+    try {
+      const { data, error } = await originalSupabase.storage
+        .from('book-covers')
+        .createSignedUrl(coverRef.relativePath, 60 * 60 * 4);
+      if (error || !data?.signedUrl) {
+        setResolvedCover(undefined);
+        return;
+      }
+      setResolvedCover(data.signedUrl);
+    } catch (err) {
+      console.warn("Failed to resolve legacy cover fallback:", err);
+      setResolvedCover(undefined);
+    }
+  };
 
   const handlePressStart = (e: React.TouchEvent | React.MouseEvent) => {
     // Avoid mouse emulation triggers on touch devices
@@ -299,6 +313,9 @@ export const BookCard = ({
             <img
               src={resolvedCover}
               alt={title}
+              onError={() => {
+                handleCoverError().catch((err) => console.warn("Cover fallback failed:", err));
+              }}
               className={cn(
                 "w-full h-full object-cover",
                 isCompleted && "opacity-60"

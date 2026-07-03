@@ -152,7 +152,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
 
     try {
       // Upload file
-      const fileExt = file.name.split(".").pop();
+      const fileExt = file.name.split(".").pop()?.toLowerCase();
       const fileName = `${userId}/${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage

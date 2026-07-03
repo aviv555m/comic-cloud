@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../integrations/supabase/types';
 import localforage from 'localforage';
+import { parseStorageReference, type StorageBucket } from './storage-paths';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -39,7 +40,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.114";
+const CURRENT_VERSION = "v1.0.115";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -176,33 +177,87 @@ async function getOfflineStoredFile(bookId: string): Promise<{ file: Blob | null
   }
 }
 
-function extractUploadPath(url: string | null | undefined, preferredBucket: 'book-files' | 'book-covers'): string | null {
-  if (!url) return null;
-  const value = String(url);
-  if (value.includes('/local-file-route/')) {
-    const encoded = value.split('/local-file-route/').pop()?.split('?')[0];
-    if (!encoded) return null;
-    const decoded = decodeURIComponent(encoded);
-    return decoded.startsWith(`${preferredBucket}/`) ? decoded : null;
-  }
-  if (value.includes('/uploads/')) {
-    const afterUploads = value.split('/uploads/').pop()?.split('?')[0];
-    if (!afterUploads) return null;
-    if (afterUploads.startsWith(`${preferredBucket}/`)) return decodeURIComponent(afterUploads);
-  }
-  if (value.includes(`${preferredBucket}/`)) {
-    const afterBucket = value.split(`${preferredBucket}/`).pop()?.split('?')[0];
-    if (!afterBucket) return null;
-    return `${preferredBucket}/${decodeURIComponent(afterBucket)}`;
-  }
-  return null;
+function extractUploadPath(url: string | null | undefined, preferredBucket: StorageBucket): string | null {
+  return parseStorageReference(url, preferredBucket)?.fullPath || null;
 }
 
-function normalizeServerHostedUrl(url: string | null | undefined, preferredBucket: 'book-files' | 'book-covers'): string | null | undefined {
+function normalizeServerHostedUrl(url: string | null | undefined, preferredBucket: StorageBucket): string | null | undefined {
   if (!url) return url;
   const uploadPath = extractUploadPath(url, preferredBucket);
   if (!uploadPath) return url;
   return `${getServerUrl()}/uploads/${uploadPath}`;
+}
+
+async function getLegacySignedStorageUrl(bucket: StorageBucket, relativePath: string): Promise<string | null> {
+  try {
+    const { data, error } = await originalSupabase.storage
+      .from(bucket)
+      .createSignedUrl(relativePath, 60 * 60 * 4);
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch (err) {
+    console.warn(`[Storage] Failed to create legacy signed URL for ${bucket}/${relativePath}:`, err);
+    return null;
+  }
+}
+
+async function mirrorLegacyStorageToServer(bucket: StorageBucket, relativePath: string, remoteUrl: string): Promise<void> {
+  try {
+    const remoteRes = await fetch(remoteUrl);
+    if (!remoteRes.ok) {
+      throw new Error(`Legacy storage fetch failed (${remoteRes.status})`);
+    }
+    const blob = await remoteRes.blob();
+    const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
+      method: 'POST',
+      headers: {
+        'x-file-path': `${bucket}/${relativePath}`,
+        'Content-Type': blob.type || 'application/octet-stream'
+      },
+      body: blob
+    });
+    if (!uploadRes.ok) {
+      throw new Error(`Local server upload failed (${uploadRes.status})`);
+    }
+    await saveLocalFile(`${bucket}/${relativePath}`, blob).catch(() => {});
+  } catch (err) {
+    console.warn(`[Storage] Failed to mirror legacy ${bucket}/${relativePath} to local server:`, err);
+  }
+}
+
+export async function resolveBookAssetUrl(
+  rawUrl: string | null | undefined,
+  preferredBucket: StorageBucket
+): Promise<string | null> {
+  if (!rawUrl) return null;
+  const ref = parseStorageReference(rawUrl, preferredBucket);
+  if (!ref) return rawUrl;
+
+  const localServerUrl = `${getServerUrl()}/uploads/${ref.fullPath}`;
+  if (navigator.onLine) {
+    try {
+      const headRes = await fetch(localServerUrl, { method: 'HEAD' });
+      const contentType = headRes.headers.get('content-type') || '';
+      if (headRes.ok && !contentType.includes('text/html')) {
+        return localServerUrl;
+      }
+    } catch (err) {
+      console.warn(`[Storage] Failed local HEAD for ${ref.fullPath}:`, err);
+    }
+
+    const legacyUrl = await getLegacySignedStorageUrl(ref.bucket, ref.relativePath);
+    if (legacyUrl) {
+      void mirrorLegacyStorageToServer(ref.bucket, ref.relativePath, legacyUrl);
+      return legacyUrl;
+    }
+  }
+
+  const offlineBlob = await getLocalFile(ref.fullPath);
+  if (offlineBlob) {
+    return `${window.location.origin}/local-file-route/${encodeURIComponent(ref.fullPath)}`;
+  }
+
+  return rawUrl;
 }
 
 // Monkey-patch window.fetch to intercept local-file-route requests
@@ -1436,6 +1491,11 @@ export function getServerUrl() {
   return "https://cc.displayname.top";
 }
 
+function normalizeStorageRelativePath(bucket: string, filePath: string) {
+  const ref = parseStorageReference(filePath, bucket as StorageBucket);
+  return ref?.relativePath || filePath;
+}
+
 
 async function serverJson(path: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
@@ -1475,7 +1535,8 @@ const localStorageProxy = {
   from: (bucket: string) => ({
     upload: async (filePath: string, file: any, options?: any) => {
       try {
-        const fullPath = `${bucket}/${filePath}`;
+        const normalizedPath = normalizeStorageRelativePath(bucket, filePath);
+        const fullPath = `${bucket}/${normalizedPath}`;
         await saveLocalFile(fullPath, file);
         console.log(`[Storage] Uploaded ${fullPath} locally to IndexedDB`);
 
@@ -1495,7 +1556,7 @@ const localStorageProxy = {
           console.log(`[Storage] Successfully synced ${fullPath} to local server`);
         }
 
-        return { data: { path: filePath }, error: null };
+        return { data: { path: normalizedPath }, error: null };
       } catch (e: any) {
         console.error('[Storage] Local upload failed:', e);
         return { data: null, error: e };
@@ -1508,7 +1569,8 @@ const localStorageProxy = {
         const transaction = db.transaction(LOCAL_FILES_STORE, 'readwrite');
         const store = transaction.objectStore(LOCAL_FILES_STORE);
         for (const p of paths) {
-          const fullPath = `${bucket}/${p}`;
+          const normalizedPath = normalizeStorageRelativePath(bucket, p);
+          const fullPath = `${bucket}/${normalizedPath}`;
           store.delete(fullPath);
           if (navigator.onLine) {
             await fetch(`${getServerUrl()}/api/upload`, {
@@ -1524,28 +1586,28 @@ const localStorageProxy = {
     },
     
     createSignedUrl: async (filePath: string, expiresIn: number) => {
-      const fullPath = `${bucket}/${filePath}`;
-      
-      // 1. If online, serve directly from the local Node server static path
-      if (navigator.onLine) {
-        const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
-        return { data: { signedUrl: serverUrl }, error: null };
+      const normalizedPath = normalizeStorageRelativePath(bucket, filePath);
+      const fullPath = `${bucket}/${normalizedPath}`;
+
+      const resolvedUrl = await resolveBookAssetUrl(`${getServerUrl()}/uploads/${fullPath}`, bucket as StorageBucket);
+      if (resolvedUrl) {
+        return { data: { signedUrl: resolvedUrl }, error: null };
       }
-      
-      // 2. If offline, fallback to IndexedDB file blob
+
       const localFile = await getLocalFile(fullPath);
       if (localFile) {
         const localUrl = `${window.location.origin}/local-file-route/${encodeURIComponent(fullPath)}`;
         return { data: { signedUrl: localUrl }, error: null };
       }
-      
-      return { data: null, error: new Error("File not available offline") };
+
+      return { data: null, error: new Error("File not available locally or on the server") };
     },
     
     getPublicUrl: (filePath: string) => {
-      const fullPath = `${bucket}/${filePath}`;
+      const normalizedPath = normalizeStorageRelativePath(bucket, filePath);
+      const fullPath = `${bucket}/${normalizedPath}`;
       // Return local server URL for cover images and other public assets
-      const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
+      const serverUrl = `${getServerUrl()}/uploads/${fullPath}`;
       return { data: { publicUrl: serverUrl } };
     }
   })

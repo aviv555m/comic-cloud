@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { parseStorageReference } from "@/lib/storage-paths";
 import { Capacitor } from "@capacitor/core";
 import {
   Dialog,
@@ -155,31 +156,15 @@ export const BookDetailsDialog = ({
       }
 
       // Delete from storage
-      let filePath = null;
-      if (book.file_url?.includes('book-files/')) {
-        filePath = book.file_url.split('book-files/').pop()?.split('?')[0];
-      } else if (book.file_url?.includes('uploads/')) {
-        filePath = book.file_url.split('uploads/').pop()?.split('?')[0];
-      } else if (book.file_url) {
-        filePath = book.file_url.split('/').pop()?.split('?')[0];
-      }
-      if (filePath) {
-        await supabase.storage.from('book-files').remove([decodeURIComponent(filePath)]);
+      const fileRef = parseStorageReference(book.file_url, 'book-files');
+      if (fileRef) {
+        await supabase.storage.from('book-files').remove([fileRef.relativePath]);
       }
 
       // Delete cover if exists
-      if (book.cover_url) {
-        let coverPath = null;
-        if (book.cover_url.includes('book-covers/')) {
-          coverPath = book.cover_url.split('book-covers/').pop()?.split('?')[0];
-        } else if (book.cover_url.includes('uploads/')) {
-          coverPath = book.cover_url.split('uploads/').pop()?.split('?')[0];
-        } else {
-          coverPath = book.cover_url.split('/').pop()?.split('?')[0];
-        }
-        if (coverPath) {
-          await supabase.storage.from('book-covers').remove([decodeURIComponent(coverPath)]);
-        }
+      const coverRef = parseStorageReference(book.cover_url, 'book-covers');
+      if (coverRef) {
+        await supabase.storage.from('book-covers').remove([coverRef.relativePath]);
       }
 
       // Delete book record
