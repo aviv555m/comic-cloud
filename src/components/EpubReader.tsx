@@ -184,8 +184,6 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         rendition = book.renderTo(viewerRef.current, {
           width: "100%",
           height: "100%",
-          manager: "continuous",
-          flow: "scrolled",
           spread: "none",
         });
         renditionRef.current = rendition;
