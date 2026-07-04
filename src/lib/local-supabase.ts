@@ -189,13 +189,43 @@ export function setTableData(table: string, data: any[]) {
   }
 }
 
+// Tombstone set for IDs deleted locally (prevents mergeRemoteData from re-inserting them)
+function getDeletedIds(): Set<string> {
+  try {
+    const raw = safeLocalStorage.getItem("local_db_deleted_ids");
+    return new Set<string>(raw ? JSON.parse(raw) : []);
+  } catch (e) {
+    return new Set<string>();
+  }
+}
+
+function saveDeletedIds(ids: Set<string>) {
+  try {
+    safeLocalStorage.setItem("local_db_deleted_ids", JSON.stringify([...ids]));
+  } catch (e) {}
+}
+
+function addDeletedIds(ids: string[]) {
+  const set = getDeletedIds();
+  for (const id of ids) set.add(id);
+  saveDeletedIds(set);
+}
+
+function removeDeletedIds(ids: string[]) {
+  const set = getDeletedIds();
+  for (const id of ids) set.delete(id);
+  saveDeletedIds(set);
+}
+
 function mergeRemoteData(table: string, remoteRows: any[]) {
   if (!remoteRows || !Array.isArray(remoteRows)) return;
   const localRows = getTableData(table);
   const localMap = new Map(localRows.map(r => [r.id, r]));
   
   let changed = false;
+  const deletedIds = getDeletedIds();
   for (const row of remoteRows) {
+    if (deletedIds.has(row.id)) continue;
     if (!localMap.has(row.id)) {
       localRows.push(row);
       changed = true;
@@ -625,6 +655,10 @@ async function _processSyncQueue() {
           
         if (error) throw error;
       }
+      if (item.operation === 'delete') {
+        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        removeDeletedIds(payloadToSync.map((r: any) => r.id));
+      }
       console.log(`[Sync] Successfully synced offline ${item.operation} for table ${item.table}`);
     } catch (err) {
       console.warn(`[Sync] Failed to sync ${item.operation} for table ${item.table}:`, err);
@@ -936,6 +970,11 @@ class MockQueryBuilder {
         }
 
         setTableData(this.tableName, remaining);
+        
+        // Track deleted IDs to prevent re-insertion by cloneRemoteData
+        if (deleted.length > 0) {
+          addDeletedIds(deleted.map((r: any) => r.id));
+        }
         
         // Queue for offline remote synchronization
         if (deleted.length > 0) {

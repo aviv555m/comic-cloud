@@ -9,7 +9,7 @@ interface UpdatePluginType {
 
 const UpdatePlugin = registerPlugin<UpdatePluginType>("UpdatePlugin");
 import { supabase } from '@/integrations/supabase/client';
-import { openLocalDB } from '@/lib/local-supabase';
+import { openLocalDB, saveLocalFile } from '@/lib/local-supabase';
 import JSZip from 'jszip';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { useState, useEffect } from 'react';
@@ -799,6 +799,14 @@ class DownloadManager {
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
       });
+
+      // Also save to local-files store so proxy's offline createSignedUrl can find it
+      try {
+        const filePath = `book-files/${insertedBook.id}.cbz`;
+        await saveLocalFile(filePath, cbzBlob);
+      } catch (e) {
+        console.warn('Failed to save CBZ to local-files store:', e);
+      }
     }
   }
 }

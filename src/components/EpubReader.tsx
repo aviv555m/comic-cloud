@@ -206,6 +206,11 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
             "line-height": `${lineHeight} !important`,
             "padding": `0 ${marginSize} !important`,
           },
+          "p, span, div, h1, h2, h3, h4, h5, h6, li, ul, ol, section": {
+            "background": "transparent !important",
+            "background-color": "transparent !important",
+            "color": "inherit !important",
+          },
           p: {
             "font-family": `${activeFont} !important`,
             "font-size": `${fontSize}px !important`,
@@ -215,23 +220,23 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         };
 
         rendition.themes.register("light", {
-          body: { ...styles.body, "background-color": "#ffffff", "color": "#111827" },
-          p: styles.p
+          ...styles,
+          body: { ...styles.body, "background-color": "#ffffff", "color": "#111827" }
         });
 
         rendition.themes.register("sepia", {
-          body: { ...styles.body, "background-color": "#f7f1e3", "color": "#5d4037" },
-          p: styles.p
+          ...styles,
+          body: { ...styles.body, "background-color": "#f7f1e3", "color": "#5d4037" }
         });
 
         rendition.themes.register("dark", {
-          body: { ...styles.body, "background-color": "#0b0f19", "color": "#e5e7eb" },
-          p: styles.p
+          ...styles,
+          body: { ...styles.body, "background-color": "#0b0f19", "color": "#e5e7eb" }
         });
 
         rendition.themes.register("black", {
-          body: { ...styles.body, "background-color": "#000000", "color": "#e5e7eb" },
-          p: styles.p
+          ...styles,
+          body: { ...styles.body, "background-color": "#000000", "color": "#e5e7eb" }
         });
 
         // Select the active theme (either loaded from localStorage or default)
@@ -428,6 +433,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         "padding": `0 ${marginSize} !important`,
       },
       "p, span, div, h1, h2, h3, h4, h5, h6, li, ul, ol, section": {
+        "background": "transparent !important",
         "background-color": "transparent !important",
         "color": "inherit !important",
       },
@@ -440,23 +446,23 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
     };
 
     renditionRef.current.themes.register("light", {
-      body: { ...styles.body, "background-color": "#ffffff", "color": "#111827" },
-      p: styles.p
+      ...styles,
+      body: { ...styles.body, "background-color": "#ffffff", "color": "#111827" }
     });
 
     renditionRef.current.themes.register("sepia", {
-      body: { ...styles.body, "background-color": "#f7f1e3", "color": "#5d4037" },
-      p: styles.p
+      ...styles,
+      body: { ...styles.body, "background-color": "#f7f1e3", "color": "#5d4037" }
     });
 
     renditionRef.current.themes.register("dark", {
-      body: { ...styles.body, "background-color": "#0b0f19", "color": "#e5e7eb" },
-      p: styles.p
+      ...styles,
+      body: { ...styles.body, "background-color": "#0b0f19", "color": "#e5e7eb" }
     });
 
     renditionRef.current.themes.register("black", {
-      body: { ...styles.body, "background-color": "#000000", "color": "#e5e7eb" },
-      p: styles.p
+      ...styles,
+      body: { ...styles.body, "background-color": "#000000", "color": "#e5e7eb" }
     });
 
     renditionRef.current.themes.select(theme);

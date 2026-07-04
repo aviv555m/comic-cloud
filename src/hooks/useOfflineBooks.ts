@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { openLocalDB, originalSupabase } from '@/lib/local-supabase';
+import { openLocalDB, originalSupabase, saveLocalFile } from '@/lib/local-supabase';
 import { downloadQueue } from '@/lib/download-manager';
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
@@ -323,6 +323,15 @@ export function useOfflineBooks() {
         transaction.oncomplete = resolve;
         transaction.onerror = () => reject(transaction.error);
       });
+
+      // Also save to local-files store so proxy's offline createSignedUrl can find it
+      try {
+        const blob = new Blob([arrayBuffer], { type: `application/${book.file_type}` });
+        const filePath = `book-files/${book.id}.${book.file_type}`;
+        await saveLocalFile(filePath, blob);
+      } catch (e) {
+        console.warn('Failed to save file to local-files store:', e);
+      }
       
       await loadOfflineBooks();
       
