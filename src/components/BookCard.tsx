@@ -3,7 +3,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen, Globe, Lock, CheckCircle2, CloudOff, DownloadCloud, Trash2, Loader2, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Capacitor } from "@capacitor/core";
@@ -26,6 +37,7 @@ interface BookCardProps {
   onClick?: () => void;
   onLongPress?: () => void;
   onCoverGenerated?: () => void;
+  onDelete?: () => void;
 }
 
 export const BookCard = ({
@@ -40,13 +52,16 @@ export const BookCard = ({
   isCompleted = false,
   readingProgress = 0,
   lastPageRead = 0,
+  canEdit = false,
   onClick,
   onLongPress,
+  onDelete,
 }: BookCardProps) => {
   const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
   const { toast } = useToast();
   const isOffline = isBookOffline(id);
   const isDownloading = isBookDownloading(id);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
   const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressActiveRef = useRef(false);
@@ -77,6 +92,47 @@ export const BookCard = ({
         last_page_read: lastPageRead || 0,
         series: series || null,
       });
+    }
+  };
+
+  const handleDeleteCard = async () => {
+    setIsDeleting(true);
+    try {
+      await removeBookOffline(id);
+
+      const filePath = fileUrl?.split('/book-files/')[1];
+      if (filePath) {
+        await supabase.storage.from('book-files').remove([filePath]);
+      }
+
+      if (coverUrl) {
+        const coverPath = coverUrl.split('/book-covers/')[1];
+        if (coverPath) {
+          await supabase.storage.from('book-covers').remove([coverPath]);
+        }
+      }
+
+      const { error } = await supabase
+        .from('books')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Book deleted",
+        description: `"${title}" has been removed from your library`,
+      });
+
+      onDelete?.();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete book",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -283,6 +339,44 @@ export const BookCard = ({
                     <DropdownMenuItem onClick={handleOfflineAction}>
                       <DownloadCloud className="w-4 h-4 mr-2" /> Download Offline
                     </DropdownMenuItem>
+                  )}
+                  {canEdit && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <DropdownMenuItem
+                            className="text-red-500"
+                            onSelect={(e) => e.preventDefault()}
+                            disabled={isDeleting}
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 mr-2" />
+                            )}
+                            Delete Book
+                          </DropdownMenuItem>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Book</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{title}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={handleDeleteCard}
+                              className="bg-red-500 hover:bg-red-600"
+                            >
+                              {isDeleting ? "Deleting..." : "Delete"}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
