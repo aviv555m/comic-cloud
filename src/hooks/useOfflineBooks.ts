@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { openLocalDB } from '@/lib/local-supabase';
+import { openLocalDB, originalSupabase } from '@/lib/local-supabase';
 import { downloadQueue } from '@/lib/download-manager';
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
@@ -239,11 +239,10 @@ export function useOfflineBooks() {
         if (first && first.ok) return first;
 
         try {
-          const { supabase } = await import('@/integrations/supabase/client');
           const parts = url.split('/book-files/');
           const path = parts[1] ? parts[1].split('?')[0] : null;
           if (path) {
-            const { data } = await supabase.storage
+            const { data } = await originalSupabase.storage
               .from('book-files')
               .createSignedUrl(decodeURIComponent(path), 60 * 60 * 24 * 7);
             if (data?.signedUrl) {
