@@ -509,6 +509,14 @@ async function _cloneRemoteData(userId: string) {
                         console.log(`[Sync] Self-healing: Proactively uploaded file blob for ${book.title} to server`);
                       }
                     }).catch(() => {});
+                    // Also sync to remote Supabase Storage
+                    originalSupabase.storage.from('book-files').upload(
+                      decodeURIComponent(filePath),
+                      fileBlob,
+                      { cacheControl: '3600', upsert: true }
+                    ).then(({ error }) => {
+                      if (error) console.warn(`[Sync] Failed to sync ${book.title} to remote Supabase:`, error.message);
+                    });
                   }
                 }).catch(() => {});
               }
@@ -1272,6 +1280,22 @@ const localStorageProxy = {
           }).catch(err => {
             console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, err);
           });
+
+          // Also upload to remote Supabase Storage so signed URL fallback works
+          originalSupabase.auth.getSession().then(({ data: { session } }) => {
+            if (session?.user) {
+              originalSupabase.storage.from(bucket).upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: true
+              }).then(({ data, error }) => {
+                if (error) {
+                  console.warn(`[Storage] Failed to sync ${fullPath} to remote Supabase:`, error.message);
+                } else {
+                  console.log(`[Storage] Successfully synced ${fullPath} to remote Supabase Storage`);
+                }
+              });
+            }
+          }).catch(() => {});
         }
 
         return { data: { path: filePath }, error: null };

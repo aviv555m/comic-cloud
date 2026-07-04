@@ -612,6 +612,18 @@ const Reader = () => {
                 },
                 body: fileBlob
               });
+              // Also upload to remote Supabase Storage so signed URL fallback works
+              originalSupabase.auth.getSession().then(({ data: { session } }) => {
+                if (session?.user) {
+                  originalSupabase.storage.from('book-files').upload(
+                    decodeURIComponent(filePath || ''),
+                    fileBlob,
+                    { cacheControl: '3600', upsert: true }
+                  ).then(({ error }) => {
+                    if (error) console.warn("[Reader] Failed to sync healed file to remote Supabase:", error.message);
+                  });
+                }
+              }).catch(() => {});
               if (uploadRes.ok) {
                 console.log("[Reader] Self-healing file upload succeeded. Retrying loader...");
                 const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + 'healed=' + Date.now();
