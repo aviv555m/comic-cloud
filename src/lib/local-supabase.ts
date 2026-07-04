@@ -1284,29 +1284,6 @@ const localStorageProxy = {
           }).catch(err => {
             console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, err);
           });
-
-          // Also upload to remote Supabase Storage so signed URL fallback works
-          try {
-            originalSupabase?.auth?.getSession?.().then((res: any) => {
-              const session = res?.data?.session ?? null;
-              if (session?.user) {
-                originalSupabase?.storage?.from(bucket)?.upload(filePath, file, {
-                  cacheControl: '3600',
-                  upsert: true
-                }).then((uploadRes: any) => {
-                  if (uploadRes?.error) {
-                    console.warn(`[Storage] Failed to sync ${fullPath} to remote Supabase:`, uploadRes.error.message);
-                  } else {
-                    console.log(`[Storage] Successfully synced ${fullPath} to remote Supabase Storage`);
-                  }
-                }).catch((err: any) => {
-                  console.warn(`[Storage] Remote upload failed for ${fullPath}:`, err);
-                });
-              }
-            }).catch(() => {});
-          } catch (e) {
-            // Silently ignore — remote sync is best-effort
-          }
         }
 
         return { data: { path: filePath }, error: null };

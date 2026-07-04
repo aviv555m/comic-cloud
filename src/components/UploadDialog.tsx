@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { originalSupabase } from "@/lib/local-supabase";
 import { Loader2, Upload, Sparkles } from "lucide-react";
 import { useExistingSeries } from "@/hooks/useExistingSeries";
 import { SeriesCombobox } from "@/components/SeriesCombobox";
@@ -129,6 +130,21 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       if (signedUrlError) throw signedUrlError;
 
       const fileUrl = signedUrlData.signedUrl;
+
+      // Sync to remote Supabase Storage in background for signed URL fallback
+      originalSupabase?.auth?.getSession?.().then((res: any) => {
+        const session = res?.data?.session ?? null;
+        if (session?.user) {
+          originalSupabase?.storage?.from('book-files')?.upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: true
+          }).then((uploadRes: any) => {
+            if (uploadRes?.error) {
+              console.warn('[Upload] Failed to sync to remote Supabase:', uploadRes.error.message);
+            }
+          }).catch(() => {});
+        }
+      }).catch(() => {});
 
       // Upload custom cover if provided
       let finalCoverUrl = coverUrl || null;
