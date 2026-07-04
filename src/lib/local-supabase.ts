@@ -510,13 +510,17 @@ async function _cloneRemoteData(userId: string) {
                       }
                     }).catch(() => {});
                     // Also sync to remote Supabase Storage
-                    originalSupabase.storage.from('book-files').upload(
-                      decodeURIComponent(filePath),
-                      fileBlob,
-                      { cacheControl: '3600', upsert: true }
-                    ).then(({ error }) => {
-                      if (error) console.warn(`[Sync] Failed to sync ${book.title} to remote Supabase:`, error.message);
-                    });
+                    try {
+                      originalSupabase?.storage?.from('book-files')?.upload(
+                        decodeURIComponent(filePath),
+                        fileBlob,
+                        { cacheControl: '3600', upsert: true }
+                      ).then((uploadRes: any) => {
+                        if (uploadRes?.error) console.warn(`[Sync] Failed to sync ${book.title} to remote Supabase:`, uploadRes.error.message);
+                      }).catch(() => {});
+                    } catch (e) {
+                      // Silently ignore
+                    }
                   }
                 }).catch(() => {});
               }
@@ -1282,20 +1286,27 @@ const localStorageProxy = {
           });
 
           // Also upload to remote Supabase Storage so signed URL fallback works
-          originalSupabase.auth.getSession().then(({ data: { session } }) => {
-            if (session?.user) {
-              originalSupabase.storage.from(bucket).upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: true
-              }).then(({ data, error }) => {
-                if (error) {
-                  console.warn(`[Storage] Failed to sync ${fullPath} to remote Supabase:`, error.message);
-                } else {
-                  console.log(`[Storage] Successfully synced ${fullPath} to remote Supabase Storage`);
-                }
-              });
-            }
-          }).catch(() => {});
+          try {
+            originalSupabase?.auth?.getSession?.().then((res: any) => {
+              const session = res?.data?.session ?? null;
+              if (session?.user) {
+                originalSupabase?.storage?.from(bucket)?.upload(filePath, file, {
+                  cacheControl: '3600',
+                  upsert: true
+                }).then((uploadRes: any) => {
+                  if (uploadRes?.error) {
+                    console.warn(`[Storage] Failed to sync ${fullPath} to remote Supabase:`, uploadRes.error.message);
+                  } else {
+                    console.log(`[Storage] Successfully synced ${fullPath} to remote Supabase Storage`);
+                  }
+                }).catch((err: any) => {
+                  console.warn(`[Storage] Remote upload failed for ${fullPath}:`, err);
+                });
+              }
+            }).catch(() => {});
+          } catch (e) {
+            // Silently ignore — remote sync is best-effort
+          }
         }
 
         return { data: { path: filePath }, error: null };
@@ -1315,13 +1326,18 @@ const localStorageProxy = {
         }
         
         // Propagate deletion to remote Supabase storage in background if authenticated
-        originalSupabase.auth.getSession().then(({ data: { session } }) => {
-          if (session?.user) {
-            originalSupabase.storage.from(bucket).remove(paths).catch(err => {
-              console.warn(`[Storage] Failed to remove ${paths} from remote storage:`, err);
-            });
-          }
-        }).catch(() => {});
+        try {
+          originalSupabase?.auth?.getSession?.().then((res: any) => {
+            const session = res?.data?.session ?? null;
+            if (session?.user) {
+              originalSupabase?.storage?.from(bucket)?.remove(paths)?.catch((err: any) => {
+                console.warn(`[Storage] Failed to remove ${paths} from remote storage:`, err);
+              });
+            }
+          }).catch(() => {});
+        } catch (e) {
+          // Silently ignore
+        }
 
         return { data: null, error: null };
       } catch (e: any) {
