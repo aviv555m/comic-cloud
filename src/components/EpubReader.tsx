@@ -4,11 +4,11 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Loader2, Settings, X } from "lucide-react";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
 import { Separator } from "@/components/ui/separator";
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 
 interface EpubReaderProps {
-  url: string;
+  url: string | ArrayBuffer;
   onLocationChange?: (location: string, progressPercent: number) => void;
   onThemeChange?: (theme: string) => void;
   onToggleControls?: () => void;
@@ -127,48 +127,33 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
 
         let inputData: ArrayBuffer;
 
-        // Fetch the EPUB file as an ArrayBuffer to bypass CORS and sandboxing completely
-        if (url.startsWith('blob:')) {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Blob fetch failed (Status ${res.status})`);
-          inputData = await res.arrayBuffer();
-        } else if (url.startsWith('data:')) {
-          const base64 = url.split(',')[1];
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          inputData = bytes.buffer;
-        } else if (url.includes('/local-file-route/')) {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Local file not found on device (Status ${res.status})`);
-          inputData = await res.arrayBuffer();
-        } else {
-          const isNative = Capacitor.isNativePlatform();
-          if (isNative) {
-            const response = await CapacitorHttp.get({
-              url: url,
-              responseType: 'arraybuffer'
-            });
-            if (response.status < 200 || response.status >= 300 || !response.data) {
-              throw new Error(`Failed to fetch EPUB file: Status ${response.status}`);
+        if (url instanceof ArrayBuffer) {
+          inputData = url;
+        } else if (typeof url === 'string') {
+          // Fetch the EPUB file as an ArrayBuffer to bypass CORS and sandboxing completely
+          if (url.startsWith('blob:')) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Blob fetch failed (Status ${res.status})`);
+            inputData = await res.arrayBuffer();
+          } else if (url.startsWith('data:')) {
+            const base64 = url.split(',')[1];
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
             }
-            if (typeof response.data === 'string') {
-              const binaryString = atob(response.data);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              inputData = bytes.buffer;
-            } else {
-              inputData = response.data;
-            }
+            inputData = bytes.buffer;
+          } else if (url.includes('/local-file-route/')) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Local file not found on device (Status ${res.status})`);
+            inputData = await res.arrayBuffer();
           } else {
             const res = await fetch(url);
             if (!res.ok) throw new Error(`File fetch failed (Status ${res.status})`);
             inputData = await res.arrayBuffer();
           }
+        } else {
+          throw new Error('Invalid URL format');
         }
 
         if (!active) return;

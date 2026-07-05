@@ -298,7 +298,7 @@ export const BookDetailsDialog = ({
       />
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] bg-neutral-950/95 backdrop-blur-xl border border-violet-500/20 rounded-3xl p-6 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <DialogContent className="sm:max-w-md max-h-[90vh] glass-panel border border-white/10 rounded-3xl p-6 shadow-strong overflow-hidden animate-in fade-in zoom-in-95 duration-300">
           <ScrollArea className="max-h-[calc(90vh-3rem)] pr-2">
             <DialogHeader className="space-y-4">
               <div className="flex gap-4 items-start">

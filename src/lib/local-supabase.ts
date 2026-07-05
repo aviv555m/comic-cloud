@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { Capacitor } from '@capacitor/core';
 import type { Database } from '../integrations/supabase/types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -38,7 +40,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.122";
+const CURRENT_VERSION = "v1.0.124";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -1290,6 +1292,14 @@ const localAuthProxy = {
 
 export function getServerUrl() {
   if (typeof window === 'undefined') return "https://cc.displayname.top";
+  
+  // In Capacitor apps, localhost is the device sandbox, not the remote backend.
+  // We must return the remote server URL.
+  // Capacitor is imported at the top of the file already
+  if (Capacitor.isNativePlatform()) {
+    return "https://cc.displayname.top";
+  }
+  
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.')) {
     return window.location.origin;
   }
@@ -1314,7 +1324,7 @@ const localStorageProxy = {
                 'x-file-path': `${bucket}/${filePath}`,
                 'Content-Type': 'application/octet-stream'
               },
-              body: await file.arrayBuffer()
+              body: file
             });
             if (res.ok) {
               console.log(`[Storage] Successfully synced ${fullPath} to local server`);

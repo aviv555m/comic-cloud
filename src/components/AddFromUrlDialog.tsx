@@ -152,10 +152,10 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-4 sm:p-6 glass-panel border border-white/10 shadow-strong animate-in zoom-in-95 duration-300">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-            <LinkIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+          <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-gradient">
+            <LinkIcon className="w-5 h-5 text-violet-400" />
             Add Book from URL
           </DialogTitle>
         </DialogHeader>
@@ -243,7 +243,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:shadow-violet-500/40 font-bold">
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -328,40 +328,40 @@ const Settings = () => {
         </Button>
 
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Settings</h1>
+          <h1 className="text-3xl font-extrabold mb-2 text-gradient tracking-tight">Settings</h1>
           <p className="text-muted-foreground">Manage your account and preferences</p>
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-6">
-            <TabsTrigger value="profile" className="gap-2">
+          <TabsList className="grid w-full grid-cols-6 mb-8 h-12 bg-black/20 backdrop-blur-md border border-white/5 p-1 rounded-xl shadow-inner">
+            <TabsTrigger value="profile" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
-            <TabsTrigger value="subscription" className="gap-2">
+            <TabsTrigger value="subscription" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline">Plan</span>
             </TabsTrigger>
-            <TabsTrigger value="security" className="gap-2">
+            <TabsTrigger value="security" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
               <Lock className="w-4 h-4" />
               <span className="hidden sm:inline">Security</span>
             </TabsTrigger>
-            <TabsTrigger value="appearance" className="gap-2">
+            <TabsTrigger value="appearance" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
               <Palette className="w-4 h-4" />
-              <span className="hidden sm:inline">Theme</span>
+              <span className="hidden sm:inline">Style</span>
             </TabsTrigger>
-            <TabsTrigger value="anilist" className="gap-2">
-              <Sparkles className="w-4 h-4 text-sky-400" />
-              <span className="hidden sm:inline">AniList</span>
-            </TabsTrigger>
-            <TabsTrigger value="data" className="gap-2">
+            <TabsTrigger value="data" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Data</span>
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+              <Sparkles className="w-4 h-4" />
+              <span className="hidden sm:inline">Sync</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
-            <Card>
+            <Card className="glass-panel border-white/10 shadow-strong">
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
                 <CardDescription>Update your personal details</CardDescription>
@@ -410,7 +410,7 @@ const Settings = () => {
                   />
                 </div>
 
-                <Button onClick={updateProfile} disabled={loading} className="w-full">
+                <Button onClick={updateProfile} disabled={loading} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:-translate-y-0.5 rounded-xl font-semibold">
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -425,7 +425,7 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="subscription">
-            <Card>
+            <Card className="glass-panel border-white/10 shadow-strong">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   {isSubscribed ? (
@@ -499,7 +499,7 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="security">
-            <Card>
+            <Card className="glass-panel border-white/10 shadow-strong">
               <CardHeader>
                 <CardTitle>Change Password</CardTitle>
                 <CardDescription>Update your password to keep your account secure</CardDescription>
@@ -527,7 +527,7 @@ const Settings = () => {
                   />
                 </div>
 
-                <Button onClick={updatePassword} disabled={loading} className="w-full">
+                <Button onClick={updatePassword} disabled={loading} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:-translate-y-0.5 rounded-xl font-semibold">
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -543,7 +543,7 @@ const Settings = () => {
 
           <TabsContent value="appearance">
             <div className="space-y-6">
-              <Card>
+              <Card className="glass-panel border-white/10 shadow-strong">
                 <CardHeader>
                   <CardTitle>Theme</CardTitle>
                   <CardDescription>Choose your preferred color scheme</CardDescription>
@@ -578,7 +578,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="glass-panel border-white/10 shadow-strong">
                 <CardHeader>
                   <CardTitle>Font Size</CardTitle>
                   <CardDescription>Adjust the base font size</CardDescription>
@@ -600,7 +600,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="glass-panel border-white/10 shadow-strong">
                 <CardHeader>
                   <CardTitle>Daily Reading Goal</CardTitle>
                   <CardDescription>Set your daily reading target in minutes</CardDescription>
@@ -625,8 +625,8 @@ const Settings = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="anilist">
-            <Card>
+          <TabsContent value="integrations">
+            <Card className="glass-panel border-white/10 shadow-strong">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-sky-400" />
@@ -702,7 +702,7 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="data">
-            <Card>
+            <Card className="glass-panel border-white/10 shadow-strong">
               <CardHeader>
                 <CardTitle>Export & Backup</CardTitle>
                 <CardDescription>Download your library data and reading history</CardDescription>

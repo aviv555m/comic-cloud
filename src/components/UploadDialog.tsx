@@ -182,7 +182,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       }).catch(() => {});
 
       // Upload custom cover if provided
-      let finalCoverUrl = coverUrl || null;
+      let finalCoverUrl = (coverUrl && !coverUrl.startsWith('blob:')) ? coverUrl : null;
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop();
         const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
@@ -268,9 +268,9 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md glass-panel border border-white/10 shadow-strong animate-in zoom-in-95 duration-300">
         <DialogHeader>
-          <DialogTitle>Upload a Book</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-gradient">Upload a Book</DialogTitle>
           <DialogDescription>
             Add a new book or manga to your library
           </DialogDescription>
@@ -369,7 +369,11 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button 
+            type="submit" 
+            className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:shadow-violet-500/40 hover:-translate-y-0.5 rounded-xl font-bold mt-2" 
+            disabled={loading}
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

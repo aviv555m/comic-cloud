@@ -258,8 +258,8 @@ export const BookCard = ({
   return (
     <Card
       className={cn(
-        "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1 select-none active:scale-[0.98]",
-        "glass-card"
+        "group cursor-pointer overflow-hidden border border-white/5 transition-all duration-300 hover:shadow-strong hover:-translate-y-1.5 select-none active:scale-[0.97]",
+        "glass-card animate-scale-in"
       )}
       style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
       onMouseDown={handlePressStart}
@@ -285,7 +285,7 @@ export const BookCard = ({
       }}
     >
       <CardContent className="p-0">
-        <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
+        <div className="relative aspect-[2/3] bg-gradient-to-br from-violet-500/20 via-background to-fuchsia-500/10 group-hover:from-violet-500/30 group-hover:to-fuchsia-500/20 transition-colors duration-500">
           {resolvedCover ? (
             <img
               src={resolvedCover}
@@ -296,16 +296,16 @@ export const BookCard = ({
               )}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center w-full h-full gap-3">
-              <BookOpen className="w-16 h-16 text-muted-foreground/40" />
+            <div className="flex flex-col items-center justify-center w-full h-full gap-3 animate-pulse-glow">
+              <BookOpen className="w-16 h-16 text-violet-500/40" />
             </div>
           )}
           
           {/* Progress bar */}
           {readingProgress > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20">
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40 backdrop-blur-sm z-20">
               <div 
-                className="h-full bg-primary transition-all duration-300"
+                className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-[0_0_10px_rgba(139,92,246,0.5)] transition-all duration-300"
                 style={{ width: `${readingProgress}%` }}
               />
             </div>
@@ -417,16 +417,16 @@ export const BookCard = ({
           </Badge>
 
           {/* Title and author overlay */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black/80 to-transparent">
+          <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent z-10 pb-4 md:pb-5">
             {isCompleted && (
-              <Badge className="bg-green-500 mb-2 text-xs">
+              <Badge className="bg-green-500/90 backdrop-blur-sm border-0 mb-2 text-xs font-semibold shadow-lg">
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 Completed
               </Badge>
             )}
-            <h3 className="font-semibold text-white line-clamp-2 mb-1 text-sm md:text-base">{title}</h3>
+            <h3 className="font-semibold text-white line-clamp-2 mb-1 text-sm md:text-base leading-tight drop-shadow-md group-hover:text-violet-300 transition-colors">{title}</h3>
             {author && (
-              <p className="text-xs md:text-sm text-white/80 line-clamp-1">{author}</p>
+              <p className="text-xs md:text-sm text-white/80 line-clamp-1 drop-shadow-md">{author}</p>
             )}
             {series && (
               <p className="text-xs text-white/60 line-clamp-1 mt-1">{series}</p>

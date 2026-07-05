@@ -86,7 +86,7 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
 
   return (
     <>
-      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50 safe-area-inset-top">
+      <nav className="glass-panel sticky top-0 z-50 safe-area-inset-top animate-fade-in">
         <div className="container mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
           <div className="flex items-center justify-between">
             {/* Left: hamburger + logo */}

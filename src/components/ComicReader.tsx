@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
 
 interface ComicReaderProps {
-  url: string;
+  url: string | ArrayBuffer;
   onPageChange?: (page: number) => void;
   initialPage?: number;
   showControls?: boolean;
@@ -65,7 +65,7 @@ export const ComicReader = ({
       setLoading(true);
       
       // Check if file is CBR (RAR format)
-      if (url.toLowerCase().includes('.cbr')) {
+      if (typeof url === 'string' && url.toLowerCase().includes('.cbr')) {
         toast({
           variant: "destructive",
           title: "CBR format not supported",
@@ -75,8 +75,16 @@ export const ComicReader = ({
         return;
       }
 
-      const response = await fetch(url);
-      const arrayBuffer = await response.arrayBuffer();
+      let arrayBuffer: ArrayBuffer;
+      if (url instanceof ArrayBuffer) {
+        arrayBuffer = url;
+      } else if (typeof url === 'string') {
+        const response = await fetch(url);
+        arrayBuffer = await response.arrayBuffer();
+      } else {
+        throw new Error('Invalid URL format');
+      }
+      
       const zip = await JSZip.loadAsync(arrayBuffer);
 
       // Extract all image files with folder info
@@ -390,39 +398,41 @@ export const ComicReader = ({
       )}
 
       {/* Floating progress overlay at the bottom in Page Mode */}
-      <div className={`flex flex-col items-center gap-3 transition-all duration-300 ${
-        showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 transition-all duration-400 z-50 ${
+        showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8 pointer-events-none"
       }`}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 glass-panel px-4 py-2 rounded-full shadow-strong border border-white/10">
           <Button
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage === 0}
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="rounded-full hover:bg-white/10"
           >
-            <ChevronLeft className="w-4 h-4 mr-2" />
-            Previous
+            <ChevronLeft className="w-4 h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Previous</span>
           </Button>
           
-          <div className="text-sm font-medium">
-            Page {currentPage + 1} of {images.length}
+          <div className="text-sm font-medium px-2">
+            {currentPage + 1} / {images.length}
           </div>
 
           <Button
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= images.length - 1}
-            variant="outline"
+            variant="ghost"
             size="sm"
+            className="rounded-full hover:bg-white/10"
           >
-            Next
-            <ChevronRight className="w-4 h-4 ml-2" />
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight className="w-4 h-4 ml-1 sm:ml-2" />
           </Button>
 
           <Button
             onClick={() => handleToggleReadingMode("scroll")}
-            variant="outline"
+            variant="ghost"
             size="sm"
-            className="ml-2 text-xs"
+            className="ml-1 sm:ml-2 text-xs rounded-full bg-violet-500/20 text-violet-300 hover:bg-violet-500/30"
           >
             Scroll Mode
           </Button>
@@ -471,8 +481,8 @@ export const ComicReader = ({
       </div>
 
       {/* Floating progress overlay for Comic Reader (Page Mode) */}
-      <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
-        <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5">
+      <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-400 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
+        <div className="glass-panel border border-white/10 px-4 py-2.5 rounded-2xl shadow-strong flex flex-col gap-1.5">
           <div className="flex justify-between items-center text-xs font-semibold">
             <span className="truncate text-violet-300 max-w-[70%]">
               {chapterTitle || "Reading"}

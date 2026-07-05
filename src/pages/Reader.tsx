@@ -63,7 +63,7 @@ const Reader = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
-  const [signedUrl, setSignedUrl] = useState<string>("");
+  const [signedUrl, setSignedUrl] = useState<string | ArrayBuffer | Blob>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
   const [initialEpubCfi, setInitialEpubCfi] = useState<string | undefined>(undefined);
@@ -76,7 +76,7 @@ const Reader = () => {
 
   useEffect(() => {
     return () => {
-      if (signedUrl && signedUrl.startsWith('blob:')) {
+      if (typeof signedUrl === 'string' && signedUrl.startsWith('blob:')) {
         URL.revokeObjectURL(signedUrl);
       }
     };
@@ -461,9 +461,10 @@ const Reader = () => {
         if (hasOfflineCopy && bookId) {
           const offlineFile = await getOfflineFile(bookId);
           if (offlineFile) {
-            // Try to get metadata from IndexedDB offline books list
-            const url = URL.createObjectURL(offlineFile);
-            setSignedUrl(url);
+            // Do NOT use URL.createObjectURL to avoid CORS/Worker issues in Capacitor
+            // Pass the Blob directly to components
+            const arrayBuffer = await offlineFile.arrayBuffer();
+            setSignedUrl(arrayBuffer);
             setIsReadingOffline(true);
             // Try to get book metadata from database (may fail if offline)
             try {
@@ -545,11 +546,13 @@ const Reader = () => {
                 if (offlineMeta.series) {
                   fetchSiblingBooks(offlineMeta.series, "");
                 }
+                if (offlineMeta.file_type === 'txt') {
+                  const decoder = new TextDecoder('utf-8');
+                  setTextContent(decoder.decode(arrayBuffer));
+                }
               }
             }
             
-            setSignedUrl(url);
-            setIsReadingOffline(true);
             setLoading(false);
             
             toast({
@@ -939,11 +942,11 @@ const Reader = () => {
   };
 
   const getHeaderBgClass = () => {
-    if (!isEPUB) return "bg-card/90 border-b";
-    if (readerTheme === "black") return "bg-black/90 border-neutral-900 text-gray-200";
-    if (readerTheme === "dark") return "bg-[#0b0f19]/90 border-slate-800 text-gray-200";
-    if (readerTheme === "sepia") return "bg-[#f7f1e3]/90 border-[#e3dcd0] text-[#5d4037]";
-    return "bg-white/90 border-gray-200 text-gray-900";
+    if (!isEPUB) return "glass-panel border-b-0";
+    if (readerTheme === "black") return "bg-black/80 border-neutral-900/50 text-gray-200 backdrop-blur-xl";
+    if (readerTheme === "dark") return "bg-[#0b0f19]/80 border-slate-800/50 text-gray-200 backdrop-blur-xl";
+    if (readerTheme === "sepia") return "bg-[#f7f1e3]/80 border-[#e3dcd0]/50 text-[#5d4037] backdrop-blur-xl";
+    return "bg-white/80 border-white/20 text-gray-900 backdrop-blur-xl shadow-sm";
   };
 
   return (
@@ -951,11 +954,11 @@ const Reader = () => {
       {/* Header */}
       <div 
         ref={headerRef} 
-        className={`backdrop-blur-sm fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${getHeaderBgClass()} ${
-          showControls ? "translate-y-0" : "-translate-y-full"
-        }`}
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-400 ease-in-out ${getHeaderBgClass()} ${
+          showControls ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"
+        } shadow-lg`}
       >
-        <div className="container mx-auto px-2 sm:px-4 py-2">
+        <div className="container mx-auto px-3 sm:px-4 py-3">
           <div className="flex flex-col gap-2">
             {/* Top row: back button and title */}
             <div className="flex items-center gap-2 w-full">
@@ -1082,7 +1085,7 @@ const Reader = () => {
         {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-4 sm:gap-6">
             <Document
-              file={signedUrl}
+              file={signedUrl instanceof ArrayBuffer ? { data: signedUrl } : signedUrl}
               onLoadSuccess={onDocumentLoadSuccessWrapper}
               loading={
                 <div className="flex items-center justify-center py-20">

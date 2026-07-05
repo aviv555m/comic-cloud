@@ -461,7 +461,7 @@ const Library = () => {
         <div className="flex flex-col gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold mb-1 sm:mb-2">My Library</h1>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold mb-1 sm:mb-2 text-gradient tracking-tight">My Library</h1>
               <p className="text-sm text-muted-foreground">
                 {uniqueItemsCount} {uniqueItemsCount === 1 ? "item" : "items"} in your collection
               </p>
@@ -469,7 +469,7 @@ const Library = () => {
             {isOnline && user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="lg" className="gap-2 w-full sm:w-auto h-11 sm:h-10">
+                  <Button size="lg" className="gap-2 w-full sm:w-auto h-11 sm:h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:shadow-violet-500/40 hover:-translate-y-0.5 rounded-xl font-semibold">
                     <Plus className="w-5 h-5" />
                     Add Book
                   </Button>
@@ -509,12 +509,12 @@ const Library = () => {
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="mb-3 sm:mb-4 w-full sm:w-auto grid grid-cols-2 sm:inline-flex">
-              <TabsTrigger value="library" className="gap-2 h-10 sm:h-9">
+            <TabsList className="mb-3 sm:mb-5 w-full sm:w-auto grid grid-cols-2 sm:inline-flex bg-black/20 backdrop-blur-md border border-white/5 p-1 rounded-xl shadow-inner">
+              <TabsTrigger value="library" className="gap-2 h-10 sm:h-10 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all">
                 <LibraryIcon className="w-4 h-4" />
                 <span>Library</span>
               </TabsTrigger>
-              <TabsTrigger value="offline" className="gap-2 h-10 sm:h-9">
+              <TabsTrigger value="offline" className="gap-2 h-10 sm:h-10 rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white data-[state=active]:shadow-sm transition-all">
                 <CloudOff className="w-4 h-4" />
                 <span>Offline</span>
               </TabsTrigger>
