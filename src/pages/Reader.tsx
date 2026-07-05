@@ -620,6 +620,10 @@ const Reader = () => {
         }
       }
 
+      if (fileUrl && session?.access_token && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
+        fileUrl += (fileUrl.includes('?') ? '&' : '?') + `token=${session.access_token}`;
+      }
+
       // Self-healing: verify if file exists on server disk
       if (currentlyOnline && fileUrl && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
         try {

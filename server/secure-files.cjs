@@ -63,6 +63,9 @@ async function authenticate(req, res, next) {
     token = cookies['sb-access-token'];
   }
   if (!token) {
+    token = req.query.token;
+  }
+  if (!token) {
     req.user = null;
     return next();
   }

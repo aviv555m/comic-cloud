@@ -79,6 +79,7 @@ const AppContent = () => {
   const { isUpdateAvailable, updateServiceWorker } = useServiceWorker();
   const [nativeUpdateAvailable, setNativeUpdateAvailable] = useState(false);
   const [latestReleaseInfo, setLatestReleaseInfo] = useState<{ tag: string; body: string } | null>(null);
+  const [optionalUpdateInfo, setOptionalUpdateInfo] = useState<{ tag: string; body: string } | null>(null);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
 
   useEffect(() => {
@@ -98,7 +99,7 @@ const AppContent = () => {
           const data = await res.json();
           const latestTag = data.tag_name;
           // IMPORTANT: Update this whenever a new GitHub release is created
-          const currentTag = "v1.0.124"; // Hardcoded current native app version
+          const currentTag = "v1.0.126"; // Hardcoded current native app version
           
           if (latestTag) {
             const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
@@ -117,6 +118,10 @@ const AppContent = () => {
                 setNativeUpdateAvailable(true);
               } else {
                 localStorage.setItem("app_outdated", "false");
+                setOptionalUpdateInfo({
+                  tag: latestTag,
+                  body: data.body || ""
+                });
               }
             } else {
               localStorage.setItem("app_outdated", "false");
@@ -140,7 +145,7 @@ const AppContent = () => {
             </div>
             <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
             <p className="text-sm text-muted-foreground">
-              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.124</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.125</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
             </p>
           </div>
           
@@ -206,6 +211,53 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
         <DownloadProgressOverlay />
+        
+        {/* Optional Update Banner */}
+        {optionalUpdateInfo && (
+          <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
+            <div className="glass-panel border border-white/10 rounded-2xl p-4 shadow-strong flex flex-col sm:flex-row items-center gap-4 max-w-sm">
+              <div className="p-2 bg-violet-500/10 rounded-full text-violet-400 shrink-0">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-bold text-sm text-white">Update Available ({optionalUpdateInfo.tag})</h3>
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">New features and improvements are ready!</p>
+              </div>
+              <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                <Button 
+                  size="sm" 
+                  disabled={isInstallingUpdate}
+                  className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white border-0"
+                  onClick={async () => {
+                    setIsInstallingUpdate(true);
+                    try {
+                      await UpdatePlugin.downloadAndInstall({
+                        url: `https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`
+                      });
+                    } catch (err: any) {
+                      console.error("Installation failed:", err);
+                      window.open(`https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk?t=${Date.now()}`, "_system");
+                    } finally {
+                      setIsInstallingUpdate(false);
+                      setOptionalUpdateInfo(null);
+                    }
+                  }}
+                >
+                  {isInstallingUpdate ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Download className="w-3 h-3 mr-1" />}
+                  Update
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="w-full text-xs text-muted-foreground hover:text-white"
+                  onClick={() => setOptionalUpdateInfo(null)}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </BrowserRouter>
     </>
   );

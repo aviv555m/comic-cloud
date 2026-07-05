@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { CURRENT_VERSION } from "@/lib/local-supabase";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -727,6 +728,10 @@ const Settings = () => {
 
         <ExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} />
         <BackupRestoreDialog open={showBackupDialog} onOpenChange={setShowBackupDialog} />
+
+        <div className="text-center text-xs text-muted-foreground mt-8 pb-4">
+          Comic Cloud {CURRENT_VERSION}
+        </div>
       </div>
     </div>
   );
