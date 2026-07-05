@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.121";
+const CURRENT_VERSION = "v1.0.122";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -533,7 +533,7 @@ async function _cloneRemoteData(userId: string) {
                         'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
                         'Content-Type': 'application/octet-stream'
                       },
-                      body: fileBlob
+                      body: await fileBlob.arrayBuffer()
                     }).then(res => {
                       if (res.ok) {
                         console.log(`[Sync] Self-healing: Proactively uploaded file blob for ${book.title} to server`);
@@ -1314,7 +1314,7 @@ const localStorageProxy = {
                 'x-file-path': `${bucket}/${filePath}`,
                 'Content-Type': 'application/octet-stream'
               },
-              body: file
+              body: await file.arrayBuffer()
             });
             if (res.ok) {
               console.log(`[Storage] Successfully synced ${fullPath} to local server`);
@@ -1384,7 +1384,7 @@ const localStorageProxy = {
     getPublicUrl: (filePath: string) => {
       const fullPath = `${bucket}/${filePath}`;
       // Return local server URL for cover images and other public assets
-      const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
+      const serverUrl = `${getServerUrl()}/db/file/${bucket}/${filePath}`;
       return { data: { publicUrl: serverUrl } };
     }
   })
@@ -1477,6 +1477,50 @@ originalSupabase.auth.onAuthStateChange((event, session) => {
     if (navigator.onLine && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
       saveLocalSession(null);
       triggerAuthEvent('SIGNED_OUT', null);
+    }
+  }
+});
+
+let activeSyncChannel: any = null;
+
+function setupRealtimeSync() {
+  if (typeof window === 'undefined') return;
+  if (!navigator.onLine) return;
+  
+  if (activeSyncChannel) {
+    originalSupabase.removeChannel(activeSyncChannel);
+  }
+
+  activeSyncChannel = originalSupabase.channel('public-sync')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public' },
+      (payload) => {
+        console.log(`[Realtime Sync] Detected remote change:`, payload);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('offline-books-updated'));
+        }
+        debounceClone();
+      }
+    )
+    .subscribe();
+}
+
+let cloneTimeout: any;
+function debounceClone() {
+  clearTimeout(cloneTimeout);
+  cloneTimeout = setTimeout(() => {
+    if (navigator.onLine) cloneRemoteData();
+  }, 2000);
+}
+
+originalSupabase.auth.onAuthStateChange((event, session) => {
+  if (session && event === 'SIGNED_IN') {
+    setupRealtimeSync();
+  } else if (event === 'SIGNED_OUT') {
+    if (activeSyncChannel) {
+      originalSupabase.removeChannel(activeSyncChannel);
+      activeSyncChannel = null;
     }
   }
 });

@@ -262,7 +262,12 @@ export function useOfflineBooks() {
         throw new Error('Failed to download book file (URL may be expired)');
       };
 
-      const response = await fetchWithRetry(book.file_url);
+      let resolvedUrl = book.file_url;
+      if (resolvedUrl && !resolvedUrl.startsWith('http') && !resolvedUrl.startsWith('blob:') && !resolvedUrl.startsWith('data:')) {
+        resolvedUrl = `${getServerUrl()}/uploads/book-files/${resolvedUrl}`;
+      }
+      
+      const response = await fetchWithRetry(resolvedUrl);
       const blob = await response.blob();
       const arrayBuffer = await blob.arrayBuffer();
       
