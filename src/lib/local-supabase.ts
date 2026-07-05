@@ -38,7 +38,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-const CURRENT_VERSION = "v1.0.120";
+const CURRENT_VERSION = "v1.0.121";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -1305,24 +1305,25 @@ const localStorageProxy = {
         await saveLocalFile(fullPath, file);
         console.log(`[Storage] Uploaded ${fullPath} locally to IndexedDB`);
         
-        // Propagate file upload to local server in background if online
+        // Propagate file upload to local server if online
         if (navigator.onLine) {
-          fetch(`${getServerUrl()}/api/upload`, {
-            method: 'POST',
-            headers: {
-              'x-file-path': `${bucket}/${filePath}`,
-              'Content-Type': 'application/octet-stream'
-            },
-            body: file
-          }).then(async (res) => {
+          try {
+            const res = await fetch(`${getServerUrl()}/api/upload`, {
+              method: 'POST',
+              headers: {
+                'x-file-path': `${bucket}/${filePath}`,
+                'Content-Type': 'application/octet-stream'
+              },
+              body: file
+            });
             if (res.ok) {
               console.log(`[Storage] Successfully synced ${fullPath} to local server`);
             } else {
               console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, res.statusText);
             }
-          }).catch(err => {
+          } catch (err) {
             console.warn(`[Storage] Failed to sync ${fullPath} to local server:`, err);
-          });
+          }
         }
 
         return { data: { path: filePath }, error: null };

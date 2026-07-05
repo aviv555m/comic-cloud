@@ -10,6 +10,7 @@ import { originalSupabase } from "@/lib/local-supabase";
 import { Loader2, Upload, Sparkles } from "lucide-react";
 import { useExistingSeries } from "@/hooks/useExistingSeries";
 import { SeriesCombobox } from "@/components/SeriesCombobox";
+import Epub from "epubjs";
 
 interface UploadDialogProps {
   open: boolean;
@@ -86,14 +87,48 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
+      
+      let newTitle = title;
       // Auto-fill title from filename if empty
       if (!title) {
-        const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, "");
-        setTitle(nameWithoutExt);
+        newTitle = selectedFile.name.replace(/\.[^/.]+$/, "");
+        setTitle(newTitle);
+      }
+      
+      // Auto-extract EPUB metadata and cover
+      if (selectedFile.name.toLowerCase().endsWith('.epub')) {
+        toast({ title: "Parsing EPUB...", description: "Extracting metadata and cover" });
+        try {
+          const arrayBuffer = await selectedFile.arrayBuffer();
+          const epub = Epub(arrayBuffer);
+          await epub.ready;
+          
+          const metadata = await epub.loaded.metadata;
+          if (metadata.title) {
+            setTitle(metadata.title);
+            newTitle = metadata.title;
+          }
+          if (metadata.creator && !author) {
+            setAuthor(metadata.creator);
+          }
+          
+          const coverUrl = await epub.coverUrl();
+          if (coverUrl) {
+            // fetch the blob URL to convert to a real File
+            const res = await fetch(coverUrl);
+            const blob = await res.blob();
+            const extractedCover = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
+            setCoverFile(extractedCover);
+            setCoverUrl(URL.createObjectURL(blob));
+            toast({ title: "Cover Extracted", description: "Successfully extracted cover from EPUB" });
+          }
+        } catch (err) {
+          console.warn("Failed to parse EPUB metadata locally:", err);
+        }
       }
     }
   };
