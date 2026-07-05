@@ -49,9 +49,15 @@ export function useOfflineBooks() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     
+    const handleOfflineBooksUpdated = () => {
+      loadOfflineBooks();
+    };
+    window.addEventListener('offline-books-updated', handleOfflineBooksUpdated);
+    
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('offline-books-updated', handleOfflineBooksUpdated);
     };
   }, []);
 
@@ -334,6 +340,7 @@ export function useOfflineBooks() {
       }
       
       await loadOfflineBooks();
+      window.dispatchEvent(new Event('offline-books-updated'));
       
       toast({
         title: 'Saved for offline',
@@ -370,6 +377,7 @@ export function useOfflineBooks() {
       });
       
       await loadOfflineBooks();
+      window.dispatchEvent(new Event('offline-books-updated'));
       
       toast({
         title: 'Removed from offline',

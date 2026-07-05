@@ -465,8 +465,6 @@ const Reader = () => {
             const url = URL.createObjectURL(offlineFile);
             setSignedUrl(url);
             setIsReadingOffline(true);
-            setLoading(false);
-            
             // Try to get book metadata from database (may fail if offline)
             try {
               const { data } = await supabase
@@ -476,6 +474,10 @@ const Reader = () => {
                 .maybeSingle();
                 
               if (data) {
+                if (data.file_type === 'manga' || data.file_type === 'cbz') {
+                  navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}&offline=true&id=${bookId}`);
+                  return;
+                }
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
                 setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
@@ -483,9 +485,13 @@ const Reader = () => {
                   fetchSiblingBooks(data.series, data.user_id);
                 }
               } else {
-                // Try reading from offline books store
                 const offlineMeta = await getOfflineBookAsync(bookId);
                 if (offlineMeta) {
+                  if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
+                    navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
+                    return;
+                  }
+                  
                   setBook({
                     id: offlineMeta.id,
                     title: offlineMeta.title,
@@ -513,6 +519,11 @@ const Reader = () => {
               // Try reading from offline books store
               const offlineMeta = await getOfflineBookAsync(bookId);
               if (offlineMeta) {
+                if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
+                  navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
+                  return;
+                }
+
                 setBook({
                   id: offlineMeta.id,
                   title: offlineMeta.title,
@@ -536,6 +547,10 @@ const Reader = () => {
                 }
               }
             }
+            
+            setSignedUrl(url);
+            setIsReadingOffline(true);
+            setLoading(false);
             
             toast({
               title: "Reading offline",
@@ -579,8 +594,16 @@ const Reader = () => {
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
       let fileUrl = data.file_url;
-      const fileParts = fileUrl.split('/book-files/');
-      const filePath = fileParts[1] ? fileParts[1].split('?')[0] : null;
+      let filePath = data.file_url;
+      
+      // If it's a relative path, prepend the server URL
+      if (fileUrl && !fileUrl.startsWith('http') && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
+        fileUrl = `${getServerUrl()}/uploads/book-files/${fileUrl}`;
+      } else {
+        const fileParts = fileUrl.split('/book-files/');
+        filePath = fileParts[1] ? fileParts[1].split('?')[0] : data.file_url;
+      }
+      
       if (filePath) {
         try {
           const { data: signedData, error: signedError } = await supabase.storage
