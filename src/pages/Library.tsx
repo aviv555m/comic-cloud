@@ -171,13 +171,18 @@ const Library = () => {
 
   const fetchReadingStats = async (userId: string) => {
     try {
+      // Only pull the last 60 days — enough for streak + today/week totals,
+      // avoids scanning every session every render.
+      const sinceIso = new Date(Date.now() - 60 * 86400000).toISOString();
       const { data: sessions } = await supabase
         .from("reading_sessions")
-        .select("*")
+        .select("start_time, duration_minutes")
         .eq("user_id", userId)
+        .gte("start_time", sinceIso)
         .order("start_time", { ascending: false });
 
       if (!sessions) return;
+
 
       const today = new Date().toDateString();
       const weekAgo = new Date();
