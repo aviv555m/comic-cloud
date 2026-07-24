@@ -77,8 +77,13 @@ const Library = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check auth state
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    let currentUserId: string | null = null;
+
+    const handleSession = (session: { user: User } | null) => {
+      const nextUserId = session?.user?.id ?? null;
+      if (nextUserId === currentUserId) return; // ignore token refreshes, tab focus events
+      currentUserId = nextUserId;
+
       if (session?.user) {
         setUser(session.user);
         fetchBooks(session.user.id);
@@ -86,22 +91,17 @@ const Library = () => {
       } else {
         navigate("/auth");
       }
-    });
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => handleSession(session));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          setUser(session.user);
-          fetchBooks(session.user.id);
-          fetchTags(session.user.id);
-        } else {
-          navigate("/auth");
-        }
-      }
+      (_event, session) => handleSession(session)
     );
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
 
   const fetchBooks = async (userId: string) => {
     setLoading(true);
@@ -171,13 +171,18 @@ const Library = () => {
 
   const fetchReadingStats = async (userId: string) => {
     try {
+      // Only pull the last 60 days — enough for streak + today/week totals,
+      // avoids scanning every session every render.
+      const sinceIso = new Date(Date.now() - 60 * 86400000).toISOString();
       const { data: sessions } = await supabase
         .from("reading_sessions")
-        .select("*")
+        .select("start_time, duration_minutes")
         .eq("user_id", userId)
+        .gte("start_time", sinceIso)
         .order("start_time", { ascending: false });
 
       if (!sessions) return;
+
 
       const today = new Date().toDateString();
       const weekAgo = new Date();

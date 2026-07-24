@@ -27,18 +27,23 @@ const Series = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
-    });
+    let currentUserId: string | null = null;
 
+    const apply = (session: { user: User } | null) => {
+      const nextId = session?.user?.id ?? null;
+      if (nextId === currentUserId) return;
+      currentUserId = nextId;
+      setUser(session?.user || null);
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => apply(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setUser(session?.user || null);
-      }
+      (_event, session) => apply(session)
     );
 
     return () => subscription.unsubscribe();
   }, []);
+
 
   useEffect(() => {
     if (seriesName) {
