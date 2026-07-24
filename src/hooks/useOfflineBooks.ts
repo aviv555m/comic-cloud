@@ -13,7 +13,7 @@ interface OfflineBook {
 }
 
 const DB_NAME = 'comic-cloud-offline';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BOOKS_STORE = 'offline-books';
 const FILES_STORE = 'offline-files';
 
