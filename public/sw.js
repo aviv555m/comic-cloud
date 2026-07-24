@@ -5,7 +5,7 @@
 //   - Other same-origin GETs: stale-while-revalidate
 //   - Cross-origin (Supabase, fonts, etc.): pass through
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL_CACHE = `shell-${VERSION}`;
 const ASSETS_CACHE = `assets-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
