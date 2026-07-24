@@ -14,12 +14,8 @@ interface Book {
   author: string | null;
   series: string | null;
   cover_url: string | null;
-  file_url: string;
   file_type: string;
   is_public: boolean;
-  is_completed?: boolean;
-  reading_progress?: number;
-  last_page_read?: number;
 }
 
 const Series = () => {
@@ -139,16 +135,10 @@ const Series = () => {
                 author={book.author || undefined}
                 series={book.series || undefined}
                 coverUrl={book.cover_url || undefined}
-                fileUrl={book.file_url}
                 fileType={book.file_type}
                 isPublic={book.is_public}
-                isCompleted={book.is_completed}
-                readingProgress={book.reading_progress}
-                lastPageRead={book.last_page_read}
-                canEdit={!!user}
                 onClick={() => navigate(`/reader/${book.id}`)}
                 onCoverGenerated={fetchSeriesBooks}
-                onDelete={() => fetchSeriesBooks()}
               />
             ))}
           </div>

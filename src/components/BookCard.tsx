@@ -1,25 +1,8 @@
-import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Globe, Lock, CheckCircle2, CloudOff, DownloadCloud, Trash2, Loader2, MoreVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { BookOpen, Globe, Lock, CheckCircle2, CloudOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { Capacitor } from "@capacitor/core";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
 
 interface BookCardProps {
   id: string;
@@ -35,9 +18,7 @@ interface BookCardProps {
   lastPageRead?: number;
   canEdit?: boolean;
   onClick?: () => void;
-  onLongPress?: () => void;
   onCoverGenerated?: () => void;
-  onDelete?: () => void;
 }
 
 export const BookCard = ({
@@ -46,249 +27,28 @@ export const BookCard = ({
   author,
   series,
   coverUrl,
-  fileUrl,
   fileType,
   isPublic,
   isCompleted = false,
   readingProgress = 0,
-  lastPageRead = 0,
-  canEdit = false,
   onClick,
-  onLongPress,
-  onDelete,
 }: BookCardProps) => {
-  const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
-  const { toast } = useToast();
+  const { isBookOffline } = useOfflineBooks();
   const isOffline = isBookOffline(id);
-  const isDownloading = isBookDownloading(id);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
-  const touchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const longPressActiveRef = useRef(false);
-  const startCoordsRef = useRef({ x: 0, y: 0 });
-  const wasDraggedRef = useRef(false);
-
-  const handleOfflineAction = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!fileUrl && !isOffline) {
-      toast({
-        title: "Cannot Download",
-        description: "This book doesn't have an offline file available.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (isOffline) {
-      await removeBookOffline(id);
-    } else {
-      await saveBookOffline({
-        id,
-        title,
-        author: author || null,
-        file_url: fileUrl,
-        file_type: fileType,
-        cover_url: coverUrl || null,
-        last_page_read: lastPageRead || 0,
-        series: series || null,
-      });
-    }
-  };
-
-  const handleDeleteCard = async () => {
-    setIsDeleting(true);
-    try {
-      await removeBookOffline(id);
-
-      const filePath = fileUrl?.split('/book-files/')[1];
-      if (filePath) {
-        await supabase.storage.from('book-files').remove([filePath]);
-      }
-
-      if (coverUrl) {
-        const coverPath = coverUrl.split('/book-covers/')[1];
-        if (coverPath) {
-          await supabase.storage.from('book-covers').remove([coverPath]);
-        }
-      }
-
-      const { error } = await supabase
-        .from('books')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Book deleted",
-        description: `"${title}" has been removed from your library`,
-      });
-
-      onDelete?.();
-    } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete book",
-      });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!coverUrl) {
-      setResolvedCover(undefined);
-      return;
-    }
-    
-    if (coverUrl.startsWith("data:")) {
-      setResolvedCover(coverUrl);
-      return;
-    }
-    
-    const isNative = Capacitor.isNativePlatform();
-    const isProdOrNative = isNative || !import.meta.env.DEV;
-    
-    if (isProdOrNative && coverUrl.startsWith("/api-image-proxy?url=")) {
-      const targetUrl = decodeURIComponent(coverUrl.split("/api-image-proxy?url=")[1]);
-      
-      let active = true;
-      const fetchCover = async () => {
-        try {
-          const { data, error } = await supabase.functions.invoke("public-library-proxy", {
-            body: { url: targetUrl, responseType: "text" },
-          });
-          if (active && !error && data?.success && data.data) {
-            setResolvedCover(`data:image/jpeg;base64,${data.data}`);
-          }
-        } catch (e) {
-          console.warn("Failed to load native cover via edge proxy:", e);
-        }
-      };
-      
-      fetchCover();
-      return () => {
-        active = false;
-      };
-    } else {
-      setResolvedCover(coverUrl);
-    }
-  }, [coverUrl]);
-
-  const handlePressStart = (e: React.TouchEvent | React.MouseEvent) => {
-    // Avoid mouse emulation triggers on touch devices
-    if (e.type === 'mousedown' && 'ontouchstart' in window) return;
-    
-    if (e.type === 'touchstart') {
-      const touch = (e as React.TouchEvent).touches[0];
-      startCoordsRef.current = { x: touch.clientX, y: touch.clientY };
-    }
-    
-    wasDraggedRef.current = false;
-    longPressActiveRef.current = false;
-    touchTimeoutRef.current = setTimeout(() => {
-      if (onLongPress) {
-        onLongPress();
-        longPressActiveRef.current = true;
-        if (navigator.vibrate) {
-          try {
-            navigator.vibrate(40);
-          } catch (err) {}
-        }
-      }
-    }, 400); // 400ms hold
-  };
-
-  const handlePressEnd = (e: React.TouchEvent | React.MouseEvent) => {
-    if (e.type === 'mouseup' && 'ontouchstart' in window) return;
-    
-    if (touchTimeoutRef.current) {
-      clearTimeout(touchTimeoutRef.current);
-      touchTimeoutRef.current = null;
-    }
-    
-    if (longPressActiveRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      longPressActiveRef.current = false;
-      return;
-    }
-    
-    // Ignore clicks if the user dragged/scrolled their finger during touch
-    if (wasDraggedRef.current) {
-      wasDraggedRef.current = false;
-      return;
-    }
-    
-    if (onClick) {
-      onClick();
-    }
-  };
-
-  const handlePressCancel = () => {
-    if (touchTimeoutRef.current) {
-      clearTimeout(touchTimeoutRef.current);
-      touchTimeoutRef.current = null;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    const dx = touch.clientX - startCoordsRef.current.x;
-    const dy = touch.clientY - startCoordsRef.current.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    // Only cancel hold if user actually scrolled/dragged their finger (distance > 10px)
-    if (distance > 10) {
-      wasDraggedRef.current = true;
-      if (touchTimeoutRef.current) {
-        clearTimeout(touchTimeoutRef.current);
-        touchTimeoutRef.current = null;
-      }
-    }
-  };
 
   return (
     <Card
       className={cn(
-        "group cursor-pointer overflow-hidden border border-white/5 transition-all duration-300 hover:shadow-strong hover:-translate-y-1.5 select-none active:scale-[0.97]",
-        "glass-card animate-scale-in"
+        "group cursor-pointer overflow-hidden border-0 transition-smooth hover:shadow-lg hover:-translate-y-1",
+        "glass-card"
       )}
-      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none', WebkitTapHighlightColor: 'transparent' }}
-      onMouseDown={handlePressStart}
-      onMouseUp={handlePressEnd}
-      onMouseLeave={handlePressCancel}
-      onTouchStart={handlePressStart}
-      onTouchEnd={handlePressEnd}
-      onTouchMove={handleTouchMove}
-      onTouchCancel={handlePressCancel}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        if (touchTimeoutRef.current) {
-          clearTimeout(touchTimeoutRef.current);
-          touchTimeoutRef.current = null;
-        }
-        if (onLongPress) {
-          onLongPress();
-          longPressActiveRef.current = true;
-          if (navigator.vibrate) {
-            try { navigator.vibrate(40); } catch(err) {}
-          }
-        }
-      }}
+      onClick={onClick}
     >
       <CardContent className="p-0">
-        <div className="relative aspect-[2/3] bg-gradient-to-br from-violet-500/20 via-background to-fuchsia-500/10 group-hover:from-violet-500/30 group-hover:to-fuchsia-500/20 transition-colors duration-500">
-          {resolvedCover ? (
+        <div className="relative aspect-[2/3] bg-gradient-to-br from-muted to-secondary/50">
+          {coverUrl ? (
             <img
-              src={resolvedCover}
+              src={coverUrl}
               alt={title}
               className={cn(
                 "w-full h-full object-cover",
@@ -296,93 +56,23 @@ export const BookCard = ({
               )}
             />
           ) : (
-            <div className="flex flex-col items-center justify-center w-full h-full gap-3 animate-pulse-glow">
-              <BookOpen className="w-16 h-16 text-violet-500/40" />
+            <div className="flex flex-col items-center justify-center w-full h-full gap-3">
+              <BookOpen className="w-16 h-16 text-muted-foreground/40" />
             </div>
           )}
           
           {/* Progress bar */}
           {readingProgress > 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/40 backdrop-blur-sm z-20">
+            <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-black/20">
               <div 
-                className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 shadow-[0_0_10px_rgba(139,92,246,0.5)] transition-all duration-300"
+                className="h-full bg-primary transition-all duration-300"
                 style={{ width: `${readingProgress}%` }}
               />
             </div>
           )}
 
-          {/* Status badges and Options Menu */}
-          <div className="absolute top-2 right-2 flex flex-col gap-1 z-10 items-end">
-            <div 
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onMouseUp={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchEnd={(e) => e.stopPropagation()}
-            >
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full bg-black/40 backdrop-blur-md text-white hover:bg-black/60 border-0">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                  {isOffline ? (
-                    <DropdownMenuItem onClick={handleOfflineAction} className="text-red-500">
-                      <Trash2 className="w-4 h-4 mr-2" /> Remove Download
-                    </DropdownMenuItem>
-                  ) : isDownloading ? (
-                    <DropdownMenuItem disabled>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Downloading...
-                    </DropdownMenuItem>
-                  ) : (
-                    <DropdownMenuItem onClick={handleOfflineAction}>
-                      <DownloadCloud className="w-4 h-4 mr-2" /> Download Offline
-                    </DropdownMenuItem>
-                  )}
-                  {canEdit && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <DropdownMenuItem
-                            className="text-red-500"
-                            onSelect={(e) => e.preventDefault()}
-                            disabled={isDeleting}
-                          >
-                            {isDeleting ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4 mr-2" />
-                            )}
-                            Delete Book
-                          </DropdownMenuItem>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Book</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{title}"? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={handleDeleteCard}
-                              className="bg-red-500 hover:bg-red-600"
-                            >
-                              {isDeleting ? "Deleting..." : "Delete"}
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
-
+          {/* Status badges */}
+          <div className="absolute top-2 right-2 flex flex-col gap-1">
             {isOffline && (
               <Badge variant="secondary" className="bg-green-500/90 text-white border-0 text-xs">
                 <CloudOff className="w-3 h-3" />
@@ -417,16 +107,16 @@ export const BookCard = ({
           </Badge>
 
           {/* Title and author overlay */}
-          <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent z-10 pb-4 md:pb-5">
+          <div className="absolute bottom-0 left-0 right-0 p-3 md:p-4 bg-gradient-to-t from-black/80 to-transparent">
             {isCompleted && (
-              <Badge className="bg-green-500/90 backdrop-blur-sm border-0 mb-2 text-xs font-semibold shadow-lg">
+              <Badge className="bg-green-500 mb-2 text-xs">
                 <CheckCircle2 className="w-3 h-3 mr-1" />
                 Completed
               </Badge>
             )}
-            <h3 className="font-semibold text-white line-clamp-2 mb-1 text-sm md:text-base leading-tight drop-shadow-md group-hover:text-violet-300 transition-colors">{title}</h3>
+            <h3 className="font-semibold text-white line-clamp-2 mb-1 text-sm md:text-base">{title}</h3>
             {author && (
-              <p className="text-xs md:text-sm text-white/80 line-clamp-1 drop-shadow-md">{author}</p>
+              <p className="text-xs md:text-sm text-white/80 line-clamp-1">{author}</p>
             )}
             {series && (
               <p className="text-xs text-white/60 line-clamp-1 mt-1">{series}</p>

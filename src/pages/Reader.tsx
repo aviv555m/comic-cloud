@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +26,6 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { openLocalDB, getServerUrl, originalSupabase } from "@/lib/local-supabase";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
@@ -46,58 +44,27 @@ interface Book {
   last_page_read: number;
   total_pages: number | null;
   user_id: string;
-  series?: string | null;
 }
 
 const Reader = () => {
   const { bookId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isOnline, getOfflineFile, checkBookOfflineAsync, getOfflineBookAsync } = useOfflineBooks();
+  const { isOnline, getOfflineFile, checkBookOfflineAsync } = useOfflineBooks();
   
   const [book, setBook] = useState<Book | null>(null);
-  const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [scale, setScale] = useState(typeof window !== "undefined" && window.innerWidth < 768 ? 1.5 : 1.0);
+  const [scale, setScale] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
-  const [signedUrl, setSignedUrl] = useState<string | ArrayBuffer | Blob>("");
+  const [signedUrl, setSignedUrl] = useState<string>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
-  const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
-  const [initialEpubCfi, setInitialEpubCfi] = useState<string | undefined>(undefined);
-  const [loadingLocation, setLoadingLocation] = useState(true);
-  const [showOverlayPage, setShowOverlayPage] = useState(false);
-  const pageNumTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [readingMode, setReadingMode] = useState<"page" | "scroll">("page");
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (typeof signedUrl === 'string' && signedUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(signedUrl);
-      }
-    };
-  }, [signedUrl]);
-
-  useEffect(() => {
-    if (book?.file_type === 'pdf') {
-      setShowOverlayPage(true);
-      if (pageNumTimerRef.current) {
-        clearTimeout(pageNumTimerRef.current);
-      }
-      pageNumTimerRef.current = setTimeout(() => {
-        setShowOverlayPage(false);
-      }, 2000);
-    }
-    return () => {
-      if (pageNumTimerRef.current) {
-        clearTimeout(pageNumTimerRef.current);
-      }
-    };
-  }, [currentPage, book?.file_type]);
   const [showAnnotations, setShowAnnotations] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [highlightMenuPos, setHighlightMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -105,110 +72,6 @@ const Reader = () => {
   const [isReadingOffline, setIsReadingOffline] = useState(false);
   const [checkingOffline, setCheckingOffline] = useState(true);
   const [pdfChapters, setPdfChapters] = useState<Chapter[]>([]);
-  const [siblingBooks, setSiblingBooks] = useState<Book[]>([]);
-  const [readerTheme, setReaderTheme] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return document.documentElement.classList.contains("dark") ? "dark" : "light";
-    }
-    return "light";
-  });
-
-  const getChapterNumber = (title: string): number => {
-    const match = title.match(/(?:ch|chapter)\.?[^\d]*([0-9.]+)/i);
-    if (match && match[1]) {
-      const val = parseFloat(match[1]);
-      if (!isNaN(val)) return val;
-    }
-    const cleanTitle = title.replace(/(?:vol|volume)\.?[^\d]*[0-9.]+/i, "");
-    const anyNum = cleanTitle.match(/([0-9.]+)/);
-    if (anyNum && anyNum[1]) {
-      const val = parseFloat(anyNum[1]);
-      if (!isNaN(val)) return val;
-    }
-    const fallbackNum = title.match(/([0-9.]+)/);
-    if (fallbackNum && fallbackNum[1]) {
-      const val = parseFloat(fallbackNum[1]);
-      if (!isNaN(val)) return val;
-    }
-    return 0;
-  };
-
-  const fetchSiblingBooks = async (seriesName: string, userId: string) => {
-    try {
-      let booksList: any[] = [];
-      
-      // 1. Try querying Supabase (proxies locally if offline)
-      try {
-        const { data, error } = await supabase
-          .from("books")
-          .select("*")
-          .eq("series", seriesName)
-          .eq("file_type", "cbz");
-          
-        if (!error && data && data.length > 0) {
-          booksList = data;
-        }
-      } catch (e) {
-        console.warn("Supabase sibling query failed, will try IndexedDB:", e);
-      }
-      
-      // 2. Also fetch from IndexedDB offline-books store to ensure offline downloads are listed
-      try {
-        const db = await openLocalDB();
-        const transaction = db.transaction("offline-books", "readonly");
-        const store = transaction.objectStore("offline-books");
-        const request = store.getAll();
-        
-        const idbBooks = await new Promise<any[]>((resolve) => {
-          request.onsuccess = () => {
-            const list = request.result || [];
-            const cleanSeries = seriesName.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-            const matched = list.filter((b: any) => {
-              if (b.file_type !== "cbz") return false;
-              const cleanBookSeries = b.series ? b.series.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
-              const cleanBookTitle = b.title ? b.title.toLowerCase().replace(/[^a-z0-9]/g, "").trim() : "";
-              return cleanBookSeries === cleanSeries || cleanBookTitle.includes(cleanSeries);
-            });
-            resolve(matched);
-          };
-          request.onerror = () => resolve([]);
-        });
-        
-        const existingIds = new Set(booksList.map(b => b.id));
-        for (const idbBook of idbBooks) {
-          if (!existingIds.has(idbBook.id)) {
-            booksList.push({
-              id: idbBook.id,
-              title: idbBook.title,
-              author: idbBook.author,
-              series: idbBook.series,
-              file_url: idbBook.file_url || "",
-              file_type: idbBook.file_type,
-              last_page_read: idbBook.last_page_read || 0,
-              total_pages: null,
-              user_id: userId || "",
-            });
-          }
-        }
-      } catch (idbErr) {
-        console.warn("IndexedDB sibling query failed:", idbErr);
-      }
-      
-      // Sort chronologically using getChapterNumber
-      const sorted = [...booksList].sort((a, b) => {
-        const numA = getChapterNumber(a.title);
-        const numB = getChapterNumber(b.title);
-        if (numA !== numB) {
-          return numA - numB;
-        }
-        return a.title.localeCompare(b.title, undefined, { numeric: true });
-      });
-      
-      setSiblingBooks(sorted);
-    } catch (err) {
-      console.error("fetchSiblingBooks failed:", err);
-    }
-  };
   const audioRef = useRef<HTMLAudioElement>(null);
   const sessionStartTime = useRef<Date>(new Date());
   const startPageRef = useRef<number>(1);
@@ -217,54 +80,11 @@ const Reader = () => {
 
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(360);
-
-  const handleContentClick = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (
-      target.closest('button') || 
-      target.closest('input') || 
-      target.closest('a') || 
-      target.closest('[role="button"]') ||
-      target.closest('.interactive-element') ||
-      target.closest('.chapter-nav-trigger')
-    ) {
-      return;
-    }
-
-    // If text is selected, do not trigger page turning
-    if (window.getSelection()?.toString().trim()) {
-      return;
-    }
-
-    // PDF page mode navigation support
-    if (book?.file_type === 'pdf' && readingMode === 'page') {
-      const clickX = e.clientX;
-      const width = window.innerWidth;
-      
-      if (clickX < width * 0.3) {
-        if (currentPage > 1) changePage(-1);
-      } else if (clickX > width * 0.7) {
-        if (numPages && currentPage < numPages) changePage(1);
-      } else {
-        setShowControls(prev => !prev);
-      }
-    } else {
-      setShowControls(prev => !prev);
-    }
-  };
 
   useEffect(() => {
     const measure = () => {
       const h = headerRef.current?.getBoundingClientRect().height ?? 0;
       setHeaderHeight(h);
-
-      const w = window.innerWidth;
-      if (w < 768) {
-        setContainerWidth(Math.round(w * 0.9));
-      } else {
-        setContainerWidth(Math.min(800, Math.round(w * 0.8)));
-      }
     };
 
     measure();
@@ -377,7 +197,7 @@ const Reader = () => {
       const text = selection?.toString().trim();
       
       if (text && text.length > 0 && book?.file_type === 'pdf') {
-        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined;
+        const range = selection?.getRangeAt(0);
         const rect = range?.getBoundingClientRect();
         
         if (rect) {
@@ -396,56 +216,7 @@ const Reader = () => {
     return () => document.removeEventListener("mouseup", handleSelection);
   }, [book]);
 
-  // Fetch saved EPUB CFI location from the local-only reading_locations database table
-  useEffect(() => {
-    if (!book || book.file_type !== 'epub') {
-      setLoadingLocation(false);
-      return;
-    }
-    
-    const loadLocation = async () => {
-      try {
-        const localCfi = localStorage.getItem(`epub_cfi_${book.id}`);
-        if (localCfi) {
-          setInitialEpubCfi(localCfi);
-          setLoadingLocation(false);
-          return;
-        }
-
-        // Try book.tts_position (synced from remote DB!)
-        if (book.tts_position && typeof book.tts_position === 'object') {
-          const ttsObj = book.tts_position as Record<string, any>;
-          if (ttsObj.epub_cfi) {
-            setInitialEpubCfi(ttsObj.epub_cfi);
-            setLoadingLocation(false);
-            return;
-          }
-        }
-
-        const { data: locData } = await supabase
-          .from("reading_locations")
-          .select("cfi_location")
-          .eq("book_id", book.id)
-          .maybeSingle();
-        if (locData?.cfi_location) {
-          setInitialEpubCfi(locData.cfi_location);
-        }
-      } catch (e) {
-        console.warn("Failed to load local EPUB cfi location:", e);
-      } finally {
-        setLoadingLocation(false);
-      }
-    };
-    
-    loadLocation();
-  }, [book?.id]);
-
   const fetchBook = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user && Capacitor.isNativePlatform() && navigator.onLine) {
-      navigate("/auth");
-      return;
-    }
     setCheckingOffline(true);
     
     try {
@@ -461,11 +232,12 @@ const Reader = () => {
         if (hasOfflineCopy && bookId) {
           const offlineFile = await getOfflineFile(bookId);
           if (offlineFile) {
-            // Do NOT use URL.createObjectURL to avoid CORS/Worker issues in Capacitor
-            // Pass the Blob directly to components
-            const arrayBuffer = await offlineFile.arrayBuffer();
-            setSignedUrl(arrayBuffer);
+            // Try to get metadata from IndexedDB offline books list
+            const url = URL.createObjectURL(offlineFile);
+            setSignedUrl(url);
             setIsReadingOffline(true);
+            setLoading(false);
+            
             // Try to get book metadata from database (may fail if offline)
             try {
               const { data } = await supabase
@@ -475,85 +247,13 @@ const Reader = () => {
                 .maybeSingle();
                 
               if (data) {
-                if (data.file_type === 'manga' || data.file_type === 'cbz') {
-                  navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}&offline=true&id=${bookId}`);
-                  return;
-                }
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
-                setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
-                if (data.series) {
-                  fetchSiblingBooks(data.series, data.user_id);
-                }
-              } else {
-                const offlineMeta = await getOfflineBookAsync(bookId);
-                if (offlineMeta) {
-                  if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
-                    navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
-                    return;
-                  }
-                  
-                  setBook({
-                    id: offlineMeta.id,
-                    title: offlineMeta.title,
-                    author: offlineMeta.author,
-                    series: offlineMeta.series || null,
-                    cover_url: offlineMeta.cover_url,
-                    file_url: "",
-                    file_type: offlineMeta.file_type,
-                    is_public: false,
-                    is_completed: false,
-                    reading_progress: 0,
-                    last_page_read: offlineMeta.last_page_read || 0,
-                    total_pages: null,
-                    file_size: offlineMeta.fileSize,
-                    created_at: new Date(offlineMeta.cachedAt).toISOString(),
-                    user_id: "",
-                  } as any);
-                  setCurrentPage(offlineMeta.last_page_read || 1);
-                  if (offlineMeta.series) {
-                    fetchSiblingBooks(offlineMeta.series, "");
-                  }
-                }
+                setReadingMode(data.reading_mode as "page" | "scroll" || "page");
               }
             } catch {
-              // Try reading from offline books store
-              const offlineMeta = await getOfflineBookAsync(bookId);
-              if (offlineMeta) {
-                if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
-                  navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
-                  return;
-                }
-
-                setBook({
-                  id: offlineMeta.id,
-                  title: offlineMeta.title,
-                  author: offlineMeta.author,
-                  series: offlineMeta.series || null,
-                  cover_url: offlineMeta.cover_url,
-                  file_url: "",
-                  file_type: offlineMeta.file_type,
-                  is_public: false,
-                  is_completed: false,
-                  reading_progress: 0,
-                  last_page_read: offlineMeta.last_page_read || 0,
-                  total_pages: null,
-                  file_size: offlineMeta.fileSize,
-                  created_at: new Date(offlineMeta.cachedAt).toISOString(),
-                  user_id: "",
-                } as any);
-                setCurrentPage(offlineMeta.last_page_read || 1);
-                if (offlineMeta.series) {
-                  fetchSiblingBooks(offlineMeta.series, "");
-                }
-                if (offlineMeta.file_type === 'txt') {
-                  const decoder = new TextDecoder('utf-8');
-                  setTextContent(decoder.decode(arrayBuffer));
-                }
-              }
+              // If we can't fetch from DB, that's okay for offline mode
             }
-            
-            setLoading(false);
             
             toast({
               title: "Reading offline",
@@ -582,99 +282,19 @@ const Reader = () => {
 
       if (error) throw error;
       
-      if (data.file_type === "manga") {
-        navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}`);
-        return;
-      }
-      
       setBook(data);
       setCurrentPage(data.last_page_read || 1);
-      setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
+      setReadingMode(data.reading_mode as "page" | "scroll" || "page");
       setIsReadingOffline(false); // Explicitly set to false for online reads
-      if (data.series) {
-        fetchSiblingBooks(data.series, data.user_id);
-      }
       
-      // Dynamically generate a fresh signed URL if online to avoid expired URL issues
-      let fileUrl = data.file_url;
-      let filePath = data.file_url;
-      
-      // If it's a relative path, prepend the server URL
-      if (fileUrl && !fileUrl.startsWith('http') && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
-        fileUrl = `${getServerUrl()}/uploads/book-files/${fileUrl}`;
-      } else {
-        const fileParts = fileUrl.split('/book-files/');
-        filePath = fileParts[1] ? fileParts[1].split('?')[0] : data.file_url;
+      // Use public URL for files (bucket is public)
+      if (data.file_type === 'pdf' || data.file_type === 'epub') {
+        setSignedUrl(data.file_url);
       }
-      
-      if (filePath) {
-        try {
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from('book-files')
-            .createSignedUrl(decodeURIComponent(filePath), 60 * 60 * 4); // 4 hours
-          if (!signedError && signedData?.signedUrl) {
-            fileUrl = signedData.signedUrl;
-          }
-        } catch (err) {
-          console.error("Failed to generate fresh signed URL:", err);
-        }
-      }
-
-      if (fileUrl && session?.access_token && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
-        fileUrl += (fileUrl.includes('?') ? '&' : '?') + `token=${session.access_token}`;
-      }
-
-      // Self-healing: verify if file exists on server disk
-      if (currentlyOnline && fileUrl && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
-        try {
-          const testRes = await fetch(fileUrl, { method: 'HEAD' });
-          const contentType = testRes.headers.get('content-type') || '';
-          if (testRes.status === 404 || contentType.includes('text/html')) {
-            console.log("[Reader] File not found on server (404 or HTML fallback). Checking local offline cache for upload...");
-            const fileBlob = await getOfflineFile(data.id);
-            if (fileBlob) {
-              console.log("[Reader] Found local file blob. Syncing to server disk...");
-              const uploadRes = await fetch(`${getServerUrl()}/api/upload`, {
-                method: 'POST',
-                headers: {
-                  'x-file-path': `book-files/${decodeURIComponent(filePath || '')}`,
-                  'Content-Type': 'application/octet-stream'
-                },
-                body: fileBlob
-              });
-              if (uploadRes.ok) {
-                console.log("[Reader] Self-healing file upload succeeded. Retrying loader...");
-                const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + 'healed=' + Date.now();
-                setSignedUrl(fileUrl + cacheBuster);
-                setLoading(false);
-                return;
-              }
-            } else {
-              // Fallback to remote Supabase Storage for existing files
-              console.log("[Reader] No local cache found. Falling back to remote Supabase Storage...");
-              try {
-                const { data: remoteSigned, error: remoteSignedError } = await originalSupabase.storage
-                  .from('book-files')
-                  .createSignedUrl(decodeURIComponent(filePath || ''), 60 * 60 * 4);
-                if (!remoteSignedError && remoteSigned?.signedUrl) {
-                  console.log("[Reader] Resolved remote signed URL fallback.");
-                  fileUrl = remoteSigned.signedUrl;
-                }
-              } catch (remoteErr) {
-                console.warn("Failed to generate remote signed URL fallback:", remoteErr);
-              }
-            }
-          }
-        } catch (headErr) {
-          console.warn("Failed to check server file availability:", headErr);
-        }
-      }
-
-      setSignedUrl(fileUrl);
       
       // If it's a text file, fetch and display content
       if (data.file_type === 'txt') {
-        const response = await fetch(fileUrl);
+        const response = await fetch(data.file_url);
         const text = await response.text();
         setTextContent(text);
       }
@@ -933,46 +553,23 @@ const Reader = () => {
   const isCBR = book.file_type === 'cbr';
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
-  const currentBookIndex = siblingBooks.findIndex(b => b.id === book.id);
-  const prevBook = currentBookIndex > 0 ? siblingBooks[currentBookIndex - 1] : null;
-  const nextBook = currentBookIndex >= 0 && currentBookIndex < siblingBooks.length - 1 ? siblingBooks[currentBookIndex + 1] : null;
-
-  const getPageBgClass = () => {
-    if (!isEPUB) return "bg-background text-foreground";
-    if (readerTheme === "black") return "bg-black text-gray-200";
-    if (readerTheme === "dark") return "bg-[#0b0f19] text-gray-200";
-    if (readerTheme === "sepia") return "bg-[#f7f1e3] text-[#5d4037]";
-    return "bg-white text-gray-900";
-  };
-
-  const getHeaderBgClass = () => {
-    if (!isEPUB) return "glass-panel border-b-0";
-    if (readerTheme === "black") return "bg-black/80 border-neutral-900/50 text-gray-200 backdrop-blur-xl";
-    if (readerTheme === "dark") return "bg-[#0b0f19]/80 border-slate-800/50 text-gray-200 backdrop-blur-xl";
-    if (readerTheme === "sepia") return "bg-[#f7f1e3]/80 border-[#e3dcd0]/50 text-[#5d4037] backdrop-blur-xl";
-    return "bg-white/80 border-white/20 text-gray-900 backdrop-blur-xl shadow-sm";
-  };
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${getPageBgClass()}`}>
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div 
-        ref={headerRef} 
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-400 ease-in-out ${getHeaderBgClass()} ${
-          showControls ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"
-        } shadow-lg`}
-      >
-        <div className="container mx-auto px-3 sm:px-4 py-3">
+      <div ref={headerRef} className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-2 sm:px-4 py-2">
           <div className="flex flex-col gap-2">
             {/* Top row: back button and title */}
             <div className="flex items-center gap-2 w-full">
               <Button
                 variant="ghost"
+                size="sm"
                 onClick={() => navigate("/")}
-                className="shrink-0 h-10 px-3 sm:px-4 text-sm sm:text-base translate-y-[2px] flex items-center justify-center gap-2"
+                className="shrink-0 h-8 px-2 sm:px-3"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="hidden sm:inline">Back</span>
+                <ArrowLeft className="w-4 h-4" />
+                <span className="hidden sm:inline ml-2">Back</span>
               </Button>
               <div className="min-w-0 flex-1 flex items-center gap-2">
                 <div className="min-w-0">
@@ -1081,15 +678,11 @@ const Reader = () => {
       </div>
 
       {/* Reader Content */}
-      <div 
-        onClick={handleContentClick}
-        className="container mx-auto px-1 sm:px-4 pb-2 sm:py-8 overflow-x-hidden"
-        style={{ paddingTop: `${headerHeight || 80}px` }}
-      >
+      <div className="container mx-auto px-1 sm:px-4 py-2 sm:py-8 overflow-x-hidden">
         {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-4 sm:gap-6">
             <Document
-              file={signedUrl instanceof ArrayBuffer ? { data: signedUrl } : signedUrl}
+              file={signedUrl}
               onLoadSuccess={onDocumentLoadSuccessWrapper}
               loading={
                 <div className="flex items-center justify-center py-20">
@@ -1103,59 +696,26 @@ const Reader = () => {
               }
             >
               {readingMode === "page" ? (
-                <div className="shadow-lg rounded mx-auto bg-card border overflow-x-auto overflow-y-hidden w-full relative">
-                  <div className="mx-auto" style={{ width: `${containerWidth * scale}px`, minWidth: `${containerWidth * scale}px` }}>
-                    <Page
-                      pageNumber={currentPage}
-                      scale={scale}
-                      width={containerWidth}
-                      renderTextLayer={true}
-                      renderAnnotationLayer={true}
-                      className="mx-auto"
-                    />
-                  </div>
-                  
-                  {/* Invisible Tap Zones for page turning */}
-                  <div className="absolute inset-0 flex z-10">
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (currentPage > 1) changePage(-1);
-                      }}
-                      className="w-[30%] h-full cursor-w-resize"
-                      title="Previous Page"
-                    />
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowControls(prev => !prev);
-                      }}
-                      className="w-[40%] h-full cursor-pointer"
-                      title="Toggle Controls"
-                    />
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (numPages && currentPage < numPages) changePage(1);
-                      }}
-                      className="w-[30%] h-full cursor-e-resize"
-                      title="Next Page"
-                    />
-                  </div>
+                <div className="shadow-lg rounded overflow-hidden w-full mx-auto" style={{ maxWidth: '100%' }}>
+                  <Page
+                    pageNumber={currentPage}
+                    scale={scale}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+                  />
                 </div>
               ) : (
                 <ScrollModePDF 
                   ref={scrollModePDFRef}
                   numPages={numPages || 0}
                   scale={scale}
-                  width={containerWidth}
                   initialPage={currentPage}
                   topOffset={Math.max(80, Math.round(headerHeight) + 8)}
                   onPageChange={(page) => {
                     setCurrentPage(page);
                     updateProgress(page, numPages || undefined);
                   }}
-                  showControls={showControls}
                 />
               )}
             </Document>
@@ -1209,44 +769,19 @@ const Reader = () => {
           </div>
         )}
 
-        {isEPUB && signedUrl && !loadingLocation && (
+        {isEPUB && signedUrl && (
           <EpubReader
             url={signedUrl}
-            onLocationChange={(location, progressPercent) => {
+            onLocationChange={(location) => {
+              // Save location for progress tracking
               if (book) {
-                // Save to localStorage immediately (100% reliable synchronous write)
-                try {
-                  localStorage.setItem(`epub_cfi_${book.id}`, location);
-                } catch (e) {}
-
-                const isCompleted = progressPercent >= 98;
                 supabase
                   .from("books")
-                  .update({ 
-                    reading_progress: progressPercent,
-                    is_completed: isCompleted,
-                    last_page_read: 1, // EPUB locations rely on cfi, but set placeholder to mark started
-                    tts_position: { epub_cfi: location } as any
-                  })
-                  .eq("id", book.id)
-                  .then(() => {});
-                
-                // Save cfi position in local-only reading_locations database table
-                supabase
-                  .from("reading_locations")
-                  .upsert({
-                    book_id: book.id,
-                    cfi_location: location,
-                    progress_percent: progressPercent
-                  }, { onConflict: "book_id" })
-                  .then(() => {})
-                  .catch(err => console.warn("Failed to upsert local cfi:", err));
+                  .update({ last_page_read: currentPage })
+                  .eq("id", book.id);
               }
             }}
-            initialLocation={initialEpubCfi}
-            showControls={showControls}
-            onThemeChange={setReaderTheme}
-            onToggleControls={() => setShowControls(prev => !prev)}
+            initialLocation={book.last_page_read ? String(book.last_page_read) : undefined}
           />
         )}
 
@@ -1258,18 +793,13 @@ const Reader = () => {
               updateProgress(page);
             }}
             initialPage={book.last_page_read || 0}
-            showControls={showControls}
-            onToggleControls={() => setShowControls(prev => !prev)}
-            chapterTitle={book?.title}
-            onPrevChapter={prevBook ? () => navigate(`/reader/${prevBook.id}`) : undefined}
-            onNextChapter={nextBook ? () => navigate(`/reader/${nextBook.id}`) : undefined}
           />
         )}
 
         {isTXT && (
           <div className="max-w-4xl mx-auto">
-            <div className="glass-card p-4 sm:p-8 rounded-lg">
-              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed text-lg sm:text-xl md:text-2xl">
+            <div className="glass-card p-8 rounded-lg">
+              <pre className="whitespace-pre-wrap font-serif text-foreground leading-relaxed">
                 {textContent}
               </pre>
             </div>
@@ -1340,19 +870,8 @@ const Reader = () => {
         />
       )}
 
-      {/* Floating Temporary Page Number Overlay for PDF */}
-      {showOverlayPage && book?.file_type === 'pdf' && numPages && (
-        <div className="fixed bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-50 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
-          Page {currentPage} of {numPages}
-        </div>
-      )}
-
       {/* Reading Timer / Pomodoro */}
-      <div 
-        className={`fixed bottom-4 right-4 z-40 transition-all duration-300 ${
-          showControls ? "translate-y-0 opacity-100 scale-100" : "translate-y-12 opacity-0 scale-95 pointer-events-none"
-        }`}
-      >
+      <div className="fixed bottom-4 right-4 z-40">
         <ReadingTimer />
       </div>
     </div>

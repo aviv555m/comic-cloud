@@ -1,7 +1,6 @@
 import { Download, Loader2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { cn } from "@/lib/utils";
 import {
   Tooltip,
   TooltipContent,
@@ -21,15 +20,13 @@ interface OfflineBookButtonProps {
   size?: "sm" | "default" | "lg" | "icon";
   variant?: "default" | "outline" | "ghost" | "secondary";
   showLabel?: boolean;
-  className?: string;
 }
 
 export const OfflineBookButton = ({ 
   book, 
   size = "icon",
   variant = "ghost",
-  showLabel = false,
-  className
+  showLabel = false 
 }: OfflineBookButtonProps) => {
   const { 
     saveBookOffline, 
@@ -74,10 +71,7 @@ export const OfflineBookButton = ({
           size={size}
           onClick={handleClick}
           disabled={isDownloading}
-          className={cn(
-            isOffline ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "",
-            className
-          )}
+          className={isOffline ? "bg-green-500/20 text-green-500 hover:bg-green-500/30" : ""}
         >
           <Icon className={`w-4 h-4 ${isDownloading ? "animate-spin" : ""} ${showLabel ? "mr-2" : ""}`} />
           {showLabel && label}

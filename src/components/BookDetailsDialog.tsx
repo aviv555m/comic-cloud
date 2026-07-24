@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Capacitor } from "@capacitor/core";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +31,6 @@ import {
 } from "lucide-react";
 import { EditBookDialog } from "./EditBookDialog";
 import { OfflineBookButton } from "./OfflineBookButton";
-import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { TagPicker } from "./TagPicker";
 import { BookReviewSection } from "./BookReviewSection";
 import { AddToListDialog } from "./AddToListDialog";
@@ -91,53 +89,11 @@ export const BookDetailsDialog = ({
 }: BookDetailsDialogProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { removeBookOffline } = useOfflineBooks();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [listDialogOpen, setListDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (!book?.cover_url) {
-      setResolvedCover(undefined);
-      return;
-    }
-    
-    if (book.cover_url.startsWith("data:")) {
-      setResolvedCover(book.cover_url);
-      return;
-    }
-    
-    const isNative = Capacitor.isNativePlatform();
-    const isProdOrNative = isNative || !import.meta.env.DEV;
-    
-    if (isProdOrNative && book.cover_url.startsWith("/api-image-proxy?url=")) {
-      const targetUrl = decodeURIComponent(book.cover_url.split("/api-image-proxy?url=")[1]);
-      
-      let active = true;
-      const fetchCover = async () => {
-        try {
-          const { data, error } = await supabase.functions.invoke("public-library-proxy", {
-            body: { url: targetUrl, responseType: "text" },
-          });
-          if (active && !error && data?.success && data.data) {
-            setResolvedCover(`data:image/jpeg;base64,${data.data}`);
-          }
-        } catch (e) {
-          console.warn("Failed to load native cover via edge proxy:", e);
-        }
-      };
-      
-      fetchCover();
-      return () => {
-        active = false;
-      };
-    } else {
-      setResolvedCover(book.cover_url);
-    }
-  }, [book?.cover_url]);
 
   const handleRead = () => {
     onOpenChange(false);
@@ -147,13 +103,6 @@ export const BookDetailsDialog = ({
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      // Delete from local IndexedDB offline storage
-      try {
-        await removeBookOffline(book.id);
-      } catch (offlineErr) {
-        console.warn("Failed to remove offline copy:", offlineErr);
-      }
-
       // Delete from storage
       const filePath = book.file_url.split('/book-files/')[1];
       if (filePath) {
@@ -298,76 +247,74 @@ export const BookDetailsDialog = ({
       />
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md max-h-[90vh] glass-panel border border-white/10 rounded-3xl p-6 shadow-strong overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-          <ScrollArea className="max-h-[calc(90vh-3rem)] pr-2">
-            <DialogHeader className="space-y-4">
-              <div className="flex gap-4 items-start">
-                {/* Cover Card with Premium shadow/glow */}
-                <div className="w-24 h-36 shrink-0 rounded-xl overflow-hidden bg-neutral-900 border border-white/5 shadow-xl shadow-black/40 relative group">
-                  {resolvedCover ? (
+        <DialogContent className="sm:max-w-lg max-h-[90vh]">
+          <ScrollArea className="max-h-[calc(90vh-2rem)]">
+            <DialogHeader>
+              <div className="flex gap-4">
+                {/* Cover */}
+                <div className="w-24 h-36 shrink-0 rounded-lg overflow-hidden bg-muted">
+                  {book.cover_url ? (
                     <img
-                      src={resolvedCover}
+                      src={book.cover_url}
                       alt={book.title}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                      <BookOpen className="w-8 h-8 text-neutral-600" />
+                    <div className="w-full h-full flex items-center justify-center">
+                      <BookOpen className="w-8 h-8 text-muted-foreground" />
                     </div>
                   )}
                 </div>
 
-                {/* Info block */}
-                <div className="flex-1 min-w-0 space-y-2">
-                  <DialogTitle className="text-lg font-bold text-white tracking-tight leading-snug line-clamp-2">
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <DialogTitle className="text-lg line-clamp-2 mb-1">
                     {book.title}
                   </DialogTitle>
-                  
                   {book.author && (
-                    <DialogDescription className="text-sm text-neutral-400 font-medium">
+                    <DialogDescription className="text-sm mb-2">
                       by {book.author}
                     </DialogDescription>
                   )}
-                  
                   {book.series && (
-                    <p className="text-xs text-violet-400 font-semibold bg-violet-500/10 px-2 py-0.5 rounded-md inline-block">
-                      {book.series}
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Series: {book.series}
                     </p>
                   )}
 
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    <Badge variant="outline" className="text-[10px] text-neutral-400 border-neutral-800 uppercase px-1.5 py-0">
-                      {book.file_type}
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    <Badge variant="outline" className="text-xs">
+                      {book.file_type.toUpperCase()}
                     </Badge>
                     {book.is_public ? (
-                      <Badge variant="secondary" className="text-[10px] bg-white/5 hover:bg-white/10 text-neutral-300 border-0 px-1.5 py-0">
-                        <Globe className="w-2.5 h-2.5 mr-1 text-violet-400" />
+                      <Badge variant="secondary" className="text-xs">
+                        <Globe className="w-3 h-3 mr-1" />
                         Public
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="text-[10px] bg-white/5 hover:bg-white/10 text-neutral-300 border-0 px-1.5 py-0">
-                        <Lock className="w-2.5 h-2.5 mr-1 text-amber-500" />
+                      <Badge variant="secondary" className="text-xs">
+                        <Lock className="w-3 h-3 mr-1" />
                         Private
                       </Badge>
                     )}
                     {book.is_completed && (
-                      <Badge className="bg-emerald-500/20 text-emerald-400 border-0 text-[10px] px-1.5 py-0 font-medium">
-                        <CheckCircle2 className="w-2.5 h-2.5 mr-1" />
+                      <Badge className="bg-green-500 text-xs">
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
                         Completed
                       </Badge>
                     )}
                   </div>
 
-                  {/* Reading Progress */}
+                  {/* Progress */}
                   {book.reading_progress > 0 && (
-                    <div className="space-y-1 pt-1.5">
-                      <div className="flex justify-between text-[11px] font-medium text-neutral-400">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
                         <span>Progress</span>
-                        <span className="text-violet-400">{book.reading_progress}%</span>
+                        <span>{book.reading_progress}%</span>
                       </div>
-                      <Progress value={book.reading_progress} className="h-1 bg-neutral-900" style={{'--progress-background': 'linear-gradient(to right, var(--violet-500), var(--indigo-500))'} as any} />
+                      <Progress value={book.reading_progress} className="h-2" />
                       {book.last_page_read && book.total_pages && (
-                        <p className="text-[10px] text-neutral-500 font-medium">
+                        <p className="text-xs text-muted-foreground">
                           Page {book.last_page_read} of {book.total_pages}
                         </p>
                       )}
@@ -379,55 +326,51 @@ export const BookDetailsDialog = ({
 
             {/* Tags Section */}
             {canEdit && (
-              <div className="py-3 mt-4 border-t border-neutral-900">
+              <div className="py-3 border-t">
                 <div className="flex items-center gap-2 mb-2">
-                  <Tag className="w-4 h-4 text-neutral-500" />
-                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Tags</span>
+                  <Tag className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Tags</span>
                 </div>
                 <TagPicker bookId={book.id} userId={book.user_id} />
               </div>
             )}
 
-            {/* Book Details Grid */}
-            <div className="grid grid-cols-2 gap-3 py-4 border-t border-b border-neutral-900 my-2">
-              <div className="flex items-center gap-2 text-xs font-medium text-neutral-400">
-                <FileText className="w-4 h-4 text-neutral-600" />
-                <span>Size: {formatFileSize(book.file_size)}</span>
+            {/* Details */}
+            <div className="grid grid-cols-2 gap-3 py-4 border-t border-b">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <FileText className="w-4 h-4" />
+                <span>{formatFileSize(book.file_size)}</span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-medium text-neutral-400">
-                <Clock className="w-4 h-4 text-neutral-600" />
-                <span>Added: {new Date(book.created_at).toLocaleDateString()}</span>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <span>Added {new Date(book.created_at).toLocaleDateString()}</span>
               </div>
             </div>
 
             {/* Review Section */}
             {canEdit && (
-              <div className="py-3 border-b border-neutral-900">
+              <div className="py-4 border-b">
                 <BookReviewSection bookId={book.id} userId={book.user_id} />
               </div>
             )}
 
-            {/* Action Buttons Panel */}
+            {/* Actions */}
             <div className="space-y-3 pt-4">
-              {/* Main Call to Action */}
-              <Button 
-                onClick={handleRead} 
-                className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold transition-all duration-300 shadow-md shadow-violet-500/10 hover:shadow-violet-500/20 active:scale-[0.98] py-6 rounded-2xl text-base"
-              >
-                <Play className="w-5 h-5 mr-2 fill-white" />
+              {/* Primary Action */}
+              <Button onClick={handleRead} className="w-full" size="lg">
+                <Play className="w-4 h-4 mr-2" />
                 {book.reading_progress > 0 ? "Continue Reading" : "Start Reading"}
               </Button>
 
-              {/* Action Buttons Grid */}
+              {/* Secondary Actions */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {canEdit && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform"
                     onClick={() => setEditDialogOpen(true)}
                   >
-                    <Edit className="w-4 h-4 mr-1 text-violet-400" />
+                    <Edit className="w-4 h-4 mr-1" />
                     Edit
                   </Button>
                 )}
@@ -436,10 +379,9 @@ export const BookDetailsDialog = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform"
                     onClick={() => setListDialogOpen(true)}
                   >
-                    <List className="w-4 h-4 mr-1 text-indigo-400" />
+                    <List className="w-4 h-4 mr-1" />
                     Lists
                   </Button>
                 )}
@@ -447,10 +389,9 @@ export const BookDetailsDialog = ({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform"
                   onClick={() => setShareDialogOpen(true)}
                 >
-                  <Share2 className="w-4 h-4 mr-1 text-sky-400" />
+                  <Share2 className="w-4 h-4 mr-1" />
                   Share
                 </Button>
 
@@ -466,28 +407,25 @@ export const BookDetailsDialog = ({
                   }}
                   size="sm"
                   variant="outline"
-                  className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform w-full"
                   showLabel
                 />
               </div>
 
-              {/* Utility settings list */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2">
                 {canEdit && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform py-5"
                     onClick={togglePublic}
                   >
                     {book.is_public ? (
                       <>
-                        <Lock className="w-4 h-4 mr-1.5 text-amber-500" />
+                        <Lock className="w-4 h-4 mr-1" />
                         Make Private
                       </>
                     ) : (
                       <>
-                        <Globe className="w-4 h-4 mr-1.5 text-violet-400" />
+                        <Globe className="w-4 h-4 mr-1" />
                         Make Public
                       </>
                     )}
@@ -498,54 +436,53 @@ export const BookDetailsDialog = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-neutral-900 bg-neutral-950 hover:bg-neutral-900 text-neutral-300 hover:text-white rounded-xl active:scale-95 transition-transform py-5"
                     onClick={markAsCompleted}
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-1.5 text-emerald-400" />
+                    <CheckCircle2 className="w-4 h-4 mr-1" />
                     {book.is_completed ? "Unfinish" : "Complete"}
                   </Button>
                 )}
               </div>
 
-              {/* AI helper features */}
+              {/* Generate Cover */}
               {canEdit && !book.cover_url && (
                 <Button
                   variant="secondary"
-                  className="w-full bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-white rounded-xl py-5"
+                  className="w-full"
                   onClick={handleGenerateCover}
                   disabled={generating}
                 >
-                  <Sparkles className="w-4 h-4 mr-2 text-violet-400 animate-pulse" />
+                  <Sparkles className="w-4 h-4 mr-2" />
                   {generating ? "Generating..." : "Generate AI Cover"}
                 </Button>
               )}
 
-              {/* Delete action */}
+              {/* Delete */}
               {canEdit && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full text-neutral-500 hover:text-red-400 hover:bg-red-950/20 rounded-xl py-4 mt-2"
+                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
                       disabled={deleting}
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
                       Delete Book
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent className="bg-neutral-950 border border-neutral-900 rounded-3xl p-6 shadow-2xl">
+                  <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-white font-bold text-lg">Delete "{book.title}"?</AlertDialogTitle>
-                      <AlertDialogDescription className="text-neutral-400 text-sm">
+                      <AlertDialogTitle>Delete "{book.title}"?</AlertDialogTitle>
+                      <AlertDialogDescription>
                         This will permanently delete this book from your library. 
                         This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="gap-2">
-                      <AlertDialogCancel className="bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800 rounded-xl">Cancel</AlertDialogCancel>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleDelete}
-                        className="bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl"
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
                         Delete
                       </AlertDialogAction>

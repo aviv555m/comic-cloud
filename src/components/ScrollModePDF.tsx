@@ -5,12 +5,10 @@ import { Progress } from "@/components/ui/progress";
 interface ScrollModePDFProps {
   numPages: number;
   scale: number;
-  width: number;
   initialPage?: number;
   /** Pixels to offset for sticky headers (mobile/desktop) */
   topOffset?: number;
   onPageChange: (page: number) => void;
-  showControls?: boolean;
 }
 
 type IntersectionState = {
@@ -25,11 +23,9 @@ export interface ScrollModePDFHandle {
 export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>(({
   numPages,
   scale,
-  width,
   initialPage = 1,
   topOffset = 96,
   onPageChange,
-  showControls = true,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -219,9 +215,7 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
       className="space-y-4 w-full max-w-4xl mx-auto pb-20 px-2 sm:px-0"
     >
       {/* Fixed progress bar at bottom */}
-      <div className={`fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-sm border-t px-4 py-2 transition-transform duration-300 ${
-        showControls ? "translate-y-0" : "translate-y-full"
-      }`}>
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-sm border-t px-4 py-2">
         <div className="max-w-4xl mx-auto flex items-center gap-3">
           <Progress value={progressPercent} className="flex-1 h-2" />
           <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
@@ -231,12 +225,7 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
       </div>
 
       {/* Current page indicator - sticky */}
-      <div 
-        className={`sticky z-40 flex justify-center pointer-events-none transition-all duration-300 ${
-          showControls ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
-        }`} 
-        style={{ top: topOffset }}
-      >
+      <div className="sticky z-40 flex justify-center pointer-events-none" style={{ top: topOffset }}>
         <div className="bg-background/95 backdrop-blur-sm border rounded-full px-4 py-1.5 shadow-sm pointer-events-auto">
           <span className="text-sm font-medium">
             Page {visiblePage} of {numPages}
@@ -245,43 +234,28 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
       </div>
 
       {/* Render all pages */}
-      {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-        const isNear = Math.abs(pageNum - visiblePage) <= 2;
-        return (
-          <div
-            key={pageNum}
-            ref={(el) => setPageRef(pageNum, el)}
-            data-page={pageNum}
-            className="shadow-lg rounded bg-card border border-border/50 mx-auto overflow-x-auto overflow-y-hidden w-full"
-            style={{ maxWidth: `${width * scale}px` }}
-          >
-            {isNear ? (
-              <div style={{ width: `${width * scale}px`, minWidth: `${width * scale}px` }} className="mx-auto">
-                <Page
-                  pageNumber={pageNum}
-                  scale={scale}
-                  width={width}
-                  renderTextLayer={true}
-                  renderAnnotationLayer={false}
-                  className="mx-auto"
-                  loading={
-                    <div className="flex items-center justify-center bg-muted/10" style={{ height: `${width * scale * 1.414}px` }}>
-                      <span className="text-muted-foreground text-sm animate-pulse">Loading page {pageNum}...</span>
-                    </div>
-                  }
-                />
+      {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+        <div
+          key={pageNum}
+          ref={(el) => setPageRef(pageNum, el)}
+          data-page={pageNum}
+          className="shadow-lg rounded overflow-hidden bg-card border border-border/50 mx-auto"
+          style={{ maxWidth: "100%" }}
+        >
+          <Page
+            pageNumber={pageNum}
+            scale={scale}
+            renderTextLayer={true}
+            renderAnnotationLayer={false}
+            className="mx-auto [&_.react-pdf__Page__canvas]:!max-w-full [&_.react-pdf__Page__canvas]:!h-auto"
+            loading={
+              <div className="flex items-center justify-center h-[400px] sm:h-[600px] bg-muted/30">
+                <span className="text-muted-foreground text-sm">Loading page {pageNum}...</span>
               </div>
-            ) : (
-              <div 
-                className="flex items-center justify-center bg-muted/5 mx-auto" 
-                style={{ width: `${width * scale}px`, height: `${width * scale * 1.414}px` }}
-              >
-                <span className="text-muted-foreground/30 text-xs">Page {pageNum}</span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+            }
+          />
+        </div>
+      ))}
     </div>
   );
 });

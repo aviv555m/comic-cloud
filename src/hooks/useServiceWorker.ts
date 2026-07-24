@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Capacitor } from "@capacitor/core";
 
 export const useServiceWorker = () => {
   const [isReady, setIsReady] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
 
   useEffect(() => {
-    // In preview/dev or native platform we should not register a service worker
-    if (!import.meta.env.PROD || Capacitor.isNativePlatform()) {
+    // In preview/dev we should not register a service worker because it can cache
+    // old builds and make new routes/components appear "missing".
+    if (!import.meta.env.PROD) {
       void unregisterServiceWorkersInDev();
       return;
     }
@@ -18,30 +18,26 @@ export const useServiceWorker = () => {
   }, []);
 
   const unregisterServiceWorkersInDev = async () => {
-    try {
-      if (!("serviceWorker" in navigator)) return;
+    if (!("serviceWorker" in navigator)) return;
 
-      // Avoid reload loops.
-      if (sessionStorage.getItem("sw_unregistered_once") === "1") return;
+    // Avoid reload loops.
+    if (sessionStorage.getItem("sw_unregistered_once") === "1") return;
 
-      const regs = await navigator.serviceWorker.getRegistrations();
-      if (regs.length === 0) return;
+    const regs = await navigator.serviceWorker.getRegistrations();
+    if (regs.length === 0) return;
 
-      sessionStorage.setItem("sw_unregistered_once", "1");
+    sessionStorage.setItem("sw_unregistered_once", "1");
 
-      await Promise.all(regs.map((r) => r.unregister()));
+    await Promise.all(regs.map((r) => r.unregister()));
 
-      // Clear caches if available (prevents stale assets)
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
-      }
-
-      // Reload to ensure the latest build is fetched.
-      window.location.reload();
-    } catch (e) {
-      console.warn("Failed to unregister service workers in dev environment:", e);
+    // Clear caches if available (prevents stale assets)
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
     }
+
+    // Reload to ensure the latest build is fetched.
+    window.location.reload();
   };
 
   const registerServiceWorker = async () => {

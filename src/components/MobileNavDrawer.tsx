@@ -1,7 +1,5 @@
 import { useState } from "react";
-import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv, Download } from "lucide-react";
-import { Capacitor } from "@capacitor/core";
-import { Logo } from "./Logo";
+import { Menu, Home, BookOpen, List, Trophy, MessageSquare, Crown, BarChart3, Settings, LogOut, Award, BookMarked, Users, Sparkles, Bell, PenLine, Quote, Activity, BookCopy, Compass, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -30,7 +28,6 @@ const navSections = [
   {
     label: "Reading",
     items: [
-      { path: "/manga", label: "Manga & Manhwa", icon: Sparkles },
       { path: "/journal", label: "Journal", icon: PenLine },
       { path: "/quotes", label: "Quotes", icon: Quote },
       { path: "/vocabulary", label: "Vocabulary", icon: BookMarked },
@@ -63,8 +60,6 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
   const { toast } = useToast();
   const { isSubscribed } = useSubscription();
 
-  const isGuest = !userEmail;
-
   const handleNavigation = (path: string) => {
     navigate(path);
     setOpen(false);
@@ -83,19 +78,6 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Filtered sections for guests
-  const displayedSections = isGuest
-    ? [
-        {
-          label: "Library",
-          items: [
-            { path: "/public", label: "Public Library", icon: BookOpen },
-            { path: "/manga", label: "Manga & Manhwa", icon: Sparkles },
-          ],
-        },
-      ]
-    : navSections;
-
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -107,10 +89,10 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
       <SheetContent side="left" className="w-[80vw] max-w-[300px] p-0">
         <SheetHeader className="p-4 pb-2 border-b">
           <SheetTitle className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg text-white">
-              <Logo size={16} className="w-4.5 h-4.5" />
+            <div className="flex items-center justify-center w-8 h-8 gradient-warm rounded-lg">
+              <BookOpen className="w-4 h-4 text-white" />
             </div>
-            <span className="text-base">ComicCloud</span>
+            <span className="text-base">Bookshelf</span>
           </SheetTitle>
         </SheetHeader>
 
@@ -118,23 +100,23 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
           {/* User info */}
           <div className="px-4 py-3 border-b bg-muted/30">
             <div className="flex items-center gap-3">
-              {avatarUrl && !isGuest ? (
+              {avatarUrl ? (
                 <img src={avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
               ) : (
                 <div className="w-9 h-9 rounded-full gradient-warm flex items-center justify-center text-white font-medium">
-                  {isGuest ? "G" : (username || userEmail || "U").charAt(0).toUpperCase()}
+                  {(username || userEmail || "U").charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <p className="font-medium truncate text-sm">{isGuest ? "Guest User" : (username || "User")}</p>
-                <p className="text-xs text-muted-foreground truncate">{isGuest ? "Anonymous access" : userEmail}</p>
+                <p className="font-medium truncate text-sm">{username || "User"}</p>
+                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
               </div>
             </div>
           </div>
 
           {/* Grouped navigation */}
           <nav className="flex-1 overflow-y-auto py-2">
-            {displayedSections.map((section, sIdx) => (
+            {navSections.map((section, sIdx) => (
               <div key={section.label}>
                 {sIdx > 0 && <Separator className="my-1.5" />}
                 <p className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -157,74 +139,48 @@ export const MobileNavDrawer = ({ userEmail, username, avatarUrl }: MobileNavDra
               </div>
             ))}
 
-            {!isGuest && (
-              <>
-                <Separator className="my-1.5" />
+            <Separator className="my-1.5" />
 
-                {/* Chat with premium badge */}
-                <button
-                  onClick={() => handleNavigation("/chat")}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    isActive("/chat") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
-                  }`}
-                >
-                  <MessageSquare className="w-4 h-4 shrink-0" />
-                  <span className="text-sm">AI Chat</span>
-                  {!isSubscribed && <Crown className="w-3.5 h-3.5 text-amber-500 ml-auto" />}
-                </button>
+            {/* Chat with premium badge */}
+            <button
+              onClick={() => handleNavigation("/chat")}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                isActive("/chat") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span className="text-sm">AI Chat</span>
+              {!isSubscribed && <Crown className="w-3.5 h-3.5 text-amber-500 ml-auto" />}
+            </button>
 
-                <button
-                  onClick={() => handleNavigation("/pricing")}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted active:bg-muted transition-colors"
-                >
-                  <Crown className="w-4 h-4 shrink-0 text-amber-500" />
-                  <span className="text-sm">{isSubscribed ? "Your Plan" : "Upgrade"}</span>
-                </button>
+            <button
+              onClick={() => handleNavigation("/pricing")}
+              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted active:bg-muted transition-colors"
+            >
+              <Crown className="w-4 h-4 shrink-0 text-amber-500" />
+              <span className="text-sm">{isSubscribed ? "Your Plan" : "Upgrade"}</span>
+            </button>
 
-                <button
-                  onClick={() => handleNavigation("/settings")}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                    isActive("/settings") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
-                  }`}
-                >
-                  <Settings className="w-4 h-4 shrink-0" />
-                  <span className="text-sm">Settings</span>
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => handleNavigation("/settings")}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                isActive("/settings") ? "bg-primary text-primary-foreground" : "hover:bg-muted active:bg-muted"
+              }`}
+            >
+              <Settings className="w-4 h-4 shrink-0" />
+              <span className="text-sm">Settings</span>
+            </button>
           </nav>
 
-          {/* Sign out / Sign in */}
-          <div className="p-2 border-t flex flex-col gap-1">
-            {!Capacitor.isNativePlatform() && (
-              <button
-                onClick={() => {
-                  window.open("https://github.com/aviv555m/comic-cloud/releases/latest/download/comic-cloud-release.apk", "_blank");
-                  setOpen(false);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-violet-400 hover:bg-violet-500/10 transition-colors"
-              >
-                <Download className="w-4 h-4 shrink-0 text-violet-400" />
-                <span className="text-sm font-medium">Download Android App</span>
-              </button>
-            )}
-            {isGuest ? (
-              <button
-                onClick={() => handleNavigation("/auth")}
-                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-violet-400 hover:bg-violet-500/10 transition-colors"
-              >
-                <LogOut className="w-4 h-4 shrink-0 rotate-180 text-violet-400" />
-                <span className="text-sm font-medium">Sign In</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleSignOut}
-                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-destructive hover:bg-destructive/10 transition-colors"
-              >
-                <LogOut className="w-4 h-4 shrink-0" />
-                <span className="text-sm">Sign out</span>
-              </button>
-            )}
+          {/* Sign out */}
+          <div className="p-2 border-t">
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+              <span className="text-sm">Sign out</span>
+            </button>
           </div>
         </div>
       </SheetContent>

@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { CURRENT_VERSION } from "@/lib/local-supabase";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,14 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Navigation } from "@/components/Navigation";
-import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download, Sparkles } from "lucide-react";
+import { ArrowLeft, User, Lock, Palette, Loader2, Moon, Sun, Monitor, Crown, CreditCard, Download } from "lucide-react";
 import { ExportDialog } from "@/components/ExportDialog";
 import { BackupRestoreDialog } from "@/components/BackupRestoreDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Slider } from "@/components/ui/slider";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Badge } from "@/components/ui/badge";
-import { ANILIST_AUTH_URL, fetchAniListUser } from "@/lib/anilist";
 // AdminPremiumToggle removed for security - premium status managed via secure user_subscriptions table
 
 const Settings = () => {
@@ -43,70 +41,6 @@ const Settings = () => {
   const [readingGoal, setReadingGoal] = useState(30);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showBackupDialog, setShowBackupDialog] = useState(false);
-
-  // AniList integration state
-  const [aniListToken, setAniListToken] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("anilist_token");
-    } catch (e) {
-      return null;
-    }
-  });
-  const [aniListUser, setAniListUser] = useState<any | null>(null);
-  const [manualToken, setManualToken] = useState("");
-
-  useEffect(() => {
-    // Check if OAuth redirect hash contains access token
-    const hash = window.location.hash;
-    if (hash) {
-      const params = new URLSearchParams(hash.substring(1));
-      const token = params.get("access_token");
-      if (token) {
-        localStorage.setItem("anilist_token", token);
-        setAniListToken(token);
-        // Clear hash from URL bar
-        window.history.replaceState(null, "", window.location.pathname);
-        toast({ title: "Connected to AniList!" });
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (aniListToken) {
-      fetchAniListUser(aniListToken)
-        .then(setAniListUser)
-        .catch((err) => {
-          console.error("Failed to fetch AniList user info:", err);
-          // If token expired/invalid, clear it
-          localStorage.removeItem("anilist_token");
-          setAniListToken(null);
-          toast({
-            variant: "destructive",
-            title: "AniList Connection Error",
-            description: err.message || "Failed to fetch profile details",
-          });
-        });
-    }
-  }, [aniListToken]);
-
-  const connectAniList = () => {
-    window.location.href = ANILIST_AUTH_URL;
-  };
-
-  const disconnectAniList = () => {
-    localStorage.removeItem("anilist_token");
-    setAniListToken(null);
-    setAniListUser(null);
-    toast({ title: "Disconnected from AniList" });
-  };
-
-  const saveManualToken = () => {
-    if (!manualToken.trim()) return;
-    localStorage.setItem("anilist_token", manualToken.trim());
-    setAniListToken(manualToken.trim());
-    setManualToken("");
-    toast({ title: "AniList token saved!" });
-  };
 
   const handleManageSubscription = async () => {
     try {
@@ -329,40 +263,36 @@ const Settings = () => {
         </Button>
 
         <div className="mb-8">
-          <h1 className="text-3xl font-extrabold mb-2 text-gradient tracking-tight">Settings</h1>
+          <h1 className="text-3xl font-bold mb-2">Settings</h1>
           <p className="text-muted-foreground">Manage your account and preferences</p>
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8 h-12 bg-black/20 backdrop-blur-md border border-white/5 p-1 rounded-xl shadow-inner">
-            <TabsTrigger value="profile" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsTrigger value="profile" className="gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Profile</span>
             </TabsTrigger>
-            <TabsTrigger value="subscription" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+            <TabsTrigger value="subscription" className="gap-2">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline">Plan</span>
             </TabsTrigger>
-            <TabsTrigger value="security" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+            <TabsTrigger value="security" className="gap-2">
               <Lock className="w-4 h-4" />
               <span className="hidden sm:inline">Security</span>
             </TabsTrigger>
-            <TabsTrigger value="appearance" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+            <TabsTrigger value="appearance" className="gap-2">
               <Palette className="w-4 h-4" />
-              <span className="hidden sm:inline">Style</span>
+              <span className="hidden sm:inline">Theme</span>
             </TabsTrigger>
-            <TabsTrigger value="data" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
+            <TabsTrigger value="data" className="gap-2">
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Data</span>
-            </TabsTrigger>
-            <TabsTrigger value="integrations" className="gap-2 h-full rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white transition-all">
-              <Sparkles className="w-4 h-4" />
-              <span className="hidden sm:inline">Sync</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile">
-            <Card className="glass-panel border-white/10 shadow-strong">
+            <Card>
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
                 <CardDescription>Update your personal details</CardDescription>
@@ -411,7 +341,7 @@ const Settings = () => {
                   />
                 </div>
 
-                <Button onClick={updateProfile} disabled={loading} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:-translate-y-0.5 rounded-xl font-semibold">
+                <Button onClick={updateProfile} disabled={loading} className="w-full">
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -426,7 +356,7 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="subscription">
-            <Card className="glass-panel border-white/10 shadow-strong">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   {isSubscribed ? (
@@ -500,7 +430,7 @@ const Settings = () => {
           </TabsContent>
 
           <TabsContent value="security">
-            <Card className="glass-panel border-white/10 shadow-strong">
+            <Card>
               <CardHeader>
                 <CardTitle>Change Password</CardTitle>
                 <CardDescription>Update your password to keep your account secure</CardDescription>
@@ -528,7 +458,7 @@ const Settings = () => {
                   />
                 </div>
 
-                <Button onClick={updatePassword} disabled={loading} className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:-translate-y-0.5 rounded-xl font-semibold">
+                <Button onClick={updatePassword} disabled={loading} className="w-full">
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -544,7 +474,7 @@ const Settings = () => {
 
           <TabsContent value="appearance">
             <div className="space-y-6">
-              <Card className="glass-panel border-white/10 shadow-strong">
+              <Card>
                 <CardHeader>
                   <CardTitle>Theme</CardTitle>
                   <CardDescription>Choose your preferred color scheme</CardDescription>
@@ -579,7 +509,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
 
-              <Card className="glass-panel border-white/10 shadow-strong">
+              <Card>
                 <CardHeader>
                   <CardTitle>Font Size</CardTitle>
                   <CardDescription>Adjust the base font size</CardDescription>
@@ -601,7 +531,7 @@ const Settings = () => {
                 </CardContent>
               </Card>
 
-              <Card className="glass-panel border-white/10 shadow-strong">
+              <Card>
                 <CardHeader>
                   <CardTitle>Daily Reading Goal</CardTitle>
                   <CardDescription>Set your daily reading target in minutes</CardDescription>
@@ -626,84 +556,8 @@ const Settings = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="integrations">
-            <Card className="glass-panel border-white/10 shadow-strong">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-sky-400" />
-                  AniList Integration
-                </CardTitle>
-                <CardDescription>
-                  Connect your AniList account to sync your manga reading progress automatically.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {aniListToken ? (
-                  <>
-                    {aniListUser ? (
-                      <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-lg border">
-                        <Avatar className="w-12 h-12">
-                          <AvatarImage src={aniListUser.avatar.large} />
-                          <AvatarFallback className="bg-sky-500 text-white font-medium">
-                            {aniListUser.name[0]?.toUpperCase() || "A"}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm">{aniListUser.name}</p>
-                          <p className="text-xs text-muted-foreground">Connected to AniList</p>
-                        </div>
-                        <Badge variant="secondary" className="bg-green-500/10 text-green-500 border-0">
-                          Connected
-                        </Badge>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center p-6">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                      </div>
-                    )}
-                    <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10" onClick={disconnectAniList}>
-                      Disconnect Account
-                    </Button>
-                  </>
-                ) : (
-                  <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      Connect your account to sync manga reading progress. You will be redirected to AniList to authorize the app.
-                    </p>
-                    <div className="flex gap-2">
-                      <Button onClick={connectAniList} className="flex-1 bg-sky-500 hover:bg-sky-600 text-white">
-                        <Sparkles className="w-4 h-4 mr-2" /> Connect AniList
-                      </Button>
-                    </div>
-                    <div className="relative flex items-center justify-center py-2">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <span className="relative px-3 bg-background text-xs text-muted-foreground uppercase">
-                        Or enter token manually
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="token-input">Access Token</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="token-input"
-                          type="password"
-                          placeholder="Paste AniList OAuth token here"
-                          value={manualToken}
-                          onChange={(e) => setManualToken(e.target.value)}
-                        />
-                        <Button onClick={saveManualToken}>Save</Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           <TabsContent value="data">
-            <Card className="glass-panel border-white/10 shadow-strong">
+            <Card>
               <CardHeader>
                 <CardTitle>Export & Backup</CardTitle>
                 <CardDescription>Download your library data and reading history</CardDescription>
@@ -728,10 +582,6 @@ const Settings = () => {
 
         <ExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} />
         <BackupRestoreDialog open={showBackupDialog} onOpenChange={setShowBackupDialog} />
-
-        <div className="text-center text-xs text-muted-foreground mt-8 pb-4">
-          Comic Cloud {CURRENT_VERSION}
-        </div>
       </div>
     </div>
   );

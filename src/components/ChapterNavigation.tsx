@@ -22,7 +22,6 @@ interface ChapterNavigationProps {
   chapters: Chapter[];
   currentPage?: number;
   currentCfi?: string;
-  activeChapterLabel?: string;
   totalPages?: number;
   onChapterSelect: (chapter: Chapter) => void;
   fileType: string;
@@ -32,20 +31,14 @@ export const ChapterNavigation = ({
   chapters,
   currentPage = 1,
   currentCfi,
-  activeChapterLabel,
   totalPages,
   onChapterSelect,
   fileType,
 }: ChapterNavigationProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Find current chapter based on label, page, or cfi
+  // Find current chapter based on page or cfi
   const getCurrentChapterIndex = () => {
-    if (fileType === "epub" && activeChapterLabel) {
-      const idx = chapters.findIndex(c => c.label.trim().toLowerCase() === activeChapterLabel.trim().toLowerCase());
-      if (idx !== -1) return idx;
-    }
-
     if (fileType === "epub" && currentCfi) {
       // For EPUB, use CFI comparison (simplified)
       for (let i = chapters.length - 1; i >= 0; i--) {

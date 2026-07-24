@@ -6,11 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { originalSupabase } from "@/lib/local-supabase";
-import { Loader2, Upload, Sparkles } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { useExistingSeries } from "@/hooks/useExistingSeries";
 import { SeriesCombobox } from "@/components/SeriesCombobox";
-import Epub from "epubjs";
 
 interface UploadDialogProps {
   open: boolean;
@@ -23,112 +21,21 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [series, setSeries] = useState("");
-  const [coverUrl, setCoverUrl] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fetchingMetadata, setFetchingMetadata] = useState(false);
   const { toast } = useToast();
   const { series: existingSeries } = useExistingSeries(userId);
 
-  const handleAutoFill = async () => {
-    const searchQuery = title || series;
-    if (!searchQuery) {
-      toast({
-        variant: "destructive",
-        title: "Search criteria needed",
-        description: "Please enter a Title or Series name first to search for details.",
-      });
-      return;
-    }
-    
-    setFetchingMetadata(true);
-    try {
-      const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}`);
-      if (!res.ok) throw new Error("Metadata request failed");
-      const data = await res.json();
-      
-      if (!data.items || data.items.length === 0) {
-        toast({
-          variant: "destructive",
-          title: "Not found",
-          description: "Could not find any matching books on Google Books.",
-        });
-        return;
-      }
-      
-      const volumeInfo = data.items[0].volumeInfo;
-      const authorsList = volumeInfo.authors || [];
-      const imageLinks = volumeInfo.imageLinks || {};
-      
-      const scrapedAuthor = authorsList[0] || "";
-      const scrapedCover = (imageLinks.thumbnail || imageLinks.smallThumbnail || "").replace("http://", "https://");
-      
-      if (scrapedAuthor && !author) {
-        setAuthor(scrapedAuthor);
-      }
-      if (scrapedCover) {
-        setCoverUrl(scrapedCover);
-      }
-      
-      toast({
-        title: "Metadata populated",
-        description: `Found: "${volumeInfo.title}" by ${scrapedAuthor || "Unknown Author"}`,
-      });
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Search failed",
-        description: err.message,
-      });
-    } finally {
-      setFetchingMetadata(false);
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      
-      let newTitle = title;
       // Auto-fill title from filename if empty
       if (!title) {
-        newTitle = selectedFile.name.replace(/\.[^/.]+$/, "");
-        setTitle(newTitle);
-      }
-      
-      // Auto-extract EPUB metadata and cover
-      if (selectedFile.name.toLowerCase().endsWith('.epub')) {
-        toast({ title: "Parsing EPUB...", description: "Extracting metadata and cover" });
-        try {
-          const arrayBuffer = await selectedFile.arrayBuffer();
-          const epub = Epub(arrayBuffer);
-          await epub.ready;
-          
-          const metadata = await epub.loaded.metadata;
-          if (metadata.title) {
-            setTitle(metadata.title);
-            newTitle = metadata.title;
-          }
-          if (metadata.creator && !author) {
-            setAuthor(metadata.creator);
-          }
-          
-          const coverUrl = await epub.coverUrl();
-          if (coverUrl) {
-            // fetch the blob URL to convert to a real File
-            const res = await fetch(coverUrl);
-            const blob = await res.blob();
-            const extractedCover = new File([blob], 'cover.jpg', { type: blob.type || 'image/jpeg' });
-            setCoverFile(extractedCover);
-            setCoverUrl(URL.createObjectURL(blob));
-            toast({ title: "Cover Extracted", description: "Successfully extracted cover from EPUB" });
-          }
-        } catch (err) {
-          console.warn("Failed to parse EPUB metadata locally:", err);
-        }
+        const nameWithoutExt = selectedFile.name.replace(/\.[^/.]+$/, "");
+        setTitle(nameWithoutExt);
       }
     }
   };
@@ -166,23 +73,8 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
 
       const fileUrl = signedUrlData.signedUrl;
 
-      // Sync to remote Supabase Storage in background for signed URL fallback
-      originalSupabase?.auth?.getSession?.().then((res: any) => {
-        const session = res?.data?.session ?? null;
-        if (session?.user) {
-          originalSupabase?.storage?.from('book-files')?.upload(fileName, file, {
-            cacheControl: '3600',
-            upsert: true
-          }).then((uploadRes: any) => {
-            if (uploadRes?.error) {
-              console.warn('[Upload] Failed to sync to remote Supabase:', uploadRes.error.message);
-            }
-          }).catch(() => {});
-        }
-      }).catch(() => {});
-
       // Upload custom cover if provided
-      let finalCoverUrl = (coverUrl && !coverUrl.startsWith('blob:')) ? coverUrl : null;
+      let coverUrl = null;
       if (coverFile) {
         const coverExt = coverFile.name.split('.').pop();
         const coverPath = `${userId}/${Date.now()}-cover.${coverExt}`;
@@ -202,7 +94,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           const { data: coverData } = supabase.storage
             .from('book-covers')
             .getPublicUrl(coverPath);
-          finalCoverUrl = coverData.publicUrl;
+          coverUrl = coverData.publicUrl;
         }
       }
 
@@ -218,7 +110,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           file_type: fileExt || "unknown",
           file_size: file.size,
           is_public: isPublic,
-          cover_url: finalCoverUrl,
+          cover_url: coverUrl,
         })
         .select()
         .single();
@@ -233,7 +125,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
         }).catch(console.error);
 
         // Generate cover only if no custom cover was uploaded
-        if (!finalCoverUrl) {
+        if (!coverUrl) {
           supabase.functions.invoke('generate-cover', {
             body: { bookId: insertData.id }
           }).catch(console.error);
@@ -249,7 +141,6 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
       setTitle("");
       setAuthor("");
       setSeries("");
-      setCoverUrl("");
       setIsPublic(false);
       setFile(null);
       setCoverFile(null);
@@ -268,9 +159,9 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md glass-panel border border-white/10 shadow-strong animate-in zoom-in-95 duration-300">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-gradient">Upload a Book</DialogTitle>
+          <DialogTitle>Upload a Book</DialogTitle>
           <DialogDescription>
             Add a new book or manga to your library
           </DialogDescription>
@@ -322,31 +213,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
           </div>
 
           <div className="space-y-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full text-xs font-bold gap-1.5 text-violet-400 hover:text-violet-300 border-violet-500/20"
-              onClick={handleAutoFill}
-              disabled={fetchingMetadata}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-              {fetchingMetadata ? "Searching web details..." : "Auto-fill cover & author"}
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="coverUrl">Cover Image URL</Label>
-            <Input
-              id="coverUrl"
-              value={coverUrl}
-              onChange={(e) => setCoverUrl(e.target.value)}
-              placeholder="https://example.com/cover.jpg"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="cover">Custom Cover File (Optional)</Label>
+            <Label htmlFor="cover">Custom Cover (Optional)</Label>
             <Input
               id="cover"
               type="file"
@@ -369,11 +236,7 @@ export const UploadDialog = ({ open, onOpenChange, onUploadComplete, userId }: U
             />
           </div>
 
-          <Button 
-            type="submit" 
-            className="w-full h-11 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-lg shadow-violet-500/25 border-0 transition-all hover:shadow-violet-500/40 hover:-translate-y-0.5 rounded-xl font-bold mt-2" 
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
