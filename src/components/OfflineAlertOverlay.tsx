@@ -24,11 +24,12 @@ export const OfflineAlertOverlay = () => {
   if (isOnline) return null;
 
   const path = location.pathname;
-  // Offline-friendly paths: Library, Reader, Auth, Settings
+  // Offline-friendly paths: Library, Reader, Auth, Settings, Manga (downloaded chapters load from IndexedDB)
   const isOfflineFriendly = 
     path === "/" || 
     path === "/settings" || 
     path === "/auth" || 
+    path === "/manga" || 
     path.startsWith("/reader/");
 
   if (isOfflineFriendly) return null;

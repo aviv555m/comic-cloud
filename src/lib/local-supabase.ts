@@ -40,7 +40,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-export const CURRENT_VERSION = "v1.0.126";
+export const CURRENT_VERSION = "v1.2.0";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -226,6 +226,14 @@ function mergeRemoteData(table: string, remoteRows: any[]) {
   
   let changed = false;
   const deletedIds = getDeletedIds();
+
+  // Rows still waiting to be pushed upstream must not be clobbered by a clone.
+  const pendingIds = new Set(
+    getSyncQueue()
+      .filter(i => i.table === table)
+      .flatMap(i => (Array.isArray(i.payload) ? i.payload : [i.payload]).map((p: any) => p?.id))
+  );
+
   for (const row of remoteRows) {
     if (deletedIds.has(row.id)) continue;
     if (!localMap.has(row.id)) {
@@ -240,8 +248,12 @@ function mergeRemoteData(table: string, remoteRows: any[]) {
         const localTime = localRow.updated_at ? new Date(localRow.updated_at).getTime() : (localRow.created_at ? new Date(localRow.created_at).getTime() : 0);
         const remoteTime = row.updated_at ? new Date(row.updated_at).getTime() : (row.created_at ? new Date(row.created_at).getTime() : 0);
         
-        // Only merge remote if it has a newer modification timestamp
-        if (remoteTime > localTime) {
+        // Only merge remote if it has a newer modification timestamp.
+        // Tables without an updated_at column (tags, reading_sessions, reading_reminders,
+        // scheduled_reading, book_tags, reading_list_books) fall back to created_at on both
+        // sides, making the timestamps identical — so a strict > never merged them at all.
+        // Ties are accepted unless this row has an unsynced local edit pending.
+        if (remoteTime > localTime || (remoteTime === localTime && !pendingIds.has(row.id))) {
           const localStr = JSON.stringify(localRow);
           const mergedRow = { ...localRow, ...row };
           const mergedStr = JSON.stringify(mergedRow);
@@ -481,7 +493,29 @@ async function _cloneRemoteData(userId: string) {
     "journal_entries",
     "vocabulary",
     "user_reading_preferences",
+    "achievements",
+    "user_achievements",
+    "book_recommendations",
+    "activity_feed",
+    "book_clubs",
+    "book_club_members",
+    "book_club_discussions",
+    "book_club_books",
   ];
+
+  // Tables that must NOT be filtered by user_id: either they have no user_id column
+  // (achievements is a global catalog, book_clubs uses owner_id), or they are shared
+  // multi-user tables where the server's RLS policies decide what is visible.
+  const UNFILTERED_TABLES = new Set([
+    "book_tags",
+    "reading_list_books",
+    "achievements",
+    "activity_feed",
+    "book_clubs",
+    "book_club_members",
+    "book_club_discussions",
+    "book_club_books",
+  ]);
 
   console.log("[Clone] Starting remote data clone for user:", userId);
 
@@ -490,7 +524,7 @@ async function _cloneRemoteData(userId: string) {
       let query = originalSupabase.from(table as any).select("*");
       if (table === "profiles") {
         query = query.eq("id", userId) as any;
-      } else if (table !== "book_tags" && table !== "reading_list_books") {
+      } else if (!UNFILTERED_TABLES.has(table)) {
         query = query.eq("user_id", userId) as any;
       }
       
@@ -502,13 +536,15 @@ async function _cloneRemoteData(userId: string) {
       
       // Self-healing: if online and fetching books, check for any unsynced local uploads
       if (table === "books" && data) {
-        const remoteIds = new Set(data.map(b => b.id));
+        const remoteIds = new Set((data as any[]).map(b => b.id));
         const localBooks = getTableData("books");
         const unsyncedBooks = localBooks.filter(b => b.user_id === userId && !remoteIds.has(b.id));
         
         if (unsyncedBooks.length > 0) {
           console.log(`[Sync] Self-healing: Found ${unsyncedBooks.length} unsynced local books. Syncing to remote...`);
-          originalSupabase.from("books").upsert(unsyncedBooks).then(() => {
+          // Wrapped in Promise.resolve: the postgrest builder is only a thenable,
+          // so calling .catch() directly on it is not valid.
+          Promise.resolve(originalSupabase.from("books").upsert(unsyncedBooks)).then(() => {
             console.log("[Sync] Self-healing: Successfully uploaded unsynced books to server.");
           }).catch(err => {
             console.warn("[Sync] Self-healing: Failed to sync books to remote server:", err);
@@ -525,13 +561,21 @@ async function _cloneRemoteData(userId: string) {
             getLocalFile(fullPath).then((fileBlob) => {
               if (fileBlob) {
                 const serverUrl = `${getServerUrl()}/uploads/book-files/${filePath}`;
-                fetch(serverUrl, { method: 'HEAD' }).then(async (testRes) => {
+                // Without a token the server answers 401 with an HTML body, which the
+                // check below read as "file is missing" — re-uploading every book on
+                // every sync, forever.
+                const authToken = getLocalSession()?.access_token;
+                const authHeaders: Record<string, string> = authToken
+                  ? { Authorization: `Bearer ${authToken}` }
+                  : {};
+                fetch(serverUrl, { method: 'HEAD', headers: authHeaders }).then(async (testRes) => {
                   const contentType = testRes.headers.get('content-type') || '';
                   if (testRes.status === 404 || contentType.includes('text/html')) {
                     console.log(`[Sync] Self-healing: Syncing missing file blob for ${book.title} to server...`);
                     fetch(`${getServerUrl()}/api/upload`, {
                       method: 'POST',
                       headers: {
+                        ...authHeaders,
                         'x-file-path': `book-files/${decodeURIComponent(filePath)}`,
                         'Content-Type': 'application/octet-stream'
                       },
@@ -641,7 +685,12 @@ async function _processSyncQueue() {
   for (const item of queue) {
     try {
       if (item.operation === 'insert' || item.operation === 'upsert' || item.operation === 'update') {
-        const payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        let payloadToSync = Array.isArray(item.payload) ? item.payload : [item.payload];
+        // Older builds seeded profiles rows with a non-existent `email` column, which
+        // PostgREST rejects forever. Strip it so a stuck queue can drain.
+        if (item.table === 'profiles') {
+          payloadToSync = payloadToSync.map(({ email, ...rest }: any) => rest);
+        }
         const { error } = await originalSupabase
           .from(item.table as any)
           .upsert(payloadToSync, { onConflict: item.upsertConflict });
@@ -668,7 +717,17 @@ async function _processSyncQueue() {
     }
   }
 
-  setSyncQueue(remainingQueue);
+  // Writes queued while this pass was in flight were appended after the snapshot we
+  // took above; without preserving them here, setSyncQueue would erase them.
+  const latest = getSyncQueue();
+  const appended = latest.length > queue.length ? latest.slice(queue.length) : [];
+  setSyncQueue([...remainingQueue, ...appended]);
+
+  if (appended.length > 0) {
+    // Their own processSyncQueue() call was swallowed by the isSyncing guard, so
+    // schedule a follow-up pass once that guard has been released.
+    setTimeout(() => processSyncQueue().catch(console.error), 0);
+  }
 }
 
 // Add window online listener to auto-sync when network reconnects
@@ -676,6 +735,98 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     console.log('[Sync] Device is back online! Processing queued offline changes...');
     processSyncQueue().catch(console.error);
+  });
+
+  // Flush anything left over from a previous offline session. Deferred past module
+  // evaluation so the auth client has finished initializing (_processSyncQueue
+  // returns early when it cannot see a session).
+  if (navigator.onLine) {
+    setTimeout(() => processSyncQueue().catch(console.error), 0);
+  }
+}
+
+// --- PostgREST-style embedded select support ------------------------------
+// Callers use selects like "*, books(*)", "tag_id, tags(*)" and "*, reading_list_books(*)".
+// The local tables are flat, so the related rows have to be joined in by hand.
+
+// Split on commas that are not inside parentheses.
+function splitTopLevel(input: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = '';
+  for (const ch of input) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) parts.push(current);
+  return parts.map(p => p.trim()).filter(Boolean);
+}
+
+function singularize(name: string): string {
+  if (name.endsWith('ies')) return `${name.slice(0, -3)}y`;
+  if (name.endsWith('s')) return name.slice(0, -1);
+  return name;
+}
+
+// Keep only the requested columns from an embedded row ("*" keeps everything).
+function projectRow(row: any, fields: string): any {
+  const trimmed = fields.trim();
+  if (!trimmed || trimmed === '*') return row;
+  const out: any = {};
+  for (const name of splitTopLevel(trimmed)) {
+    if (name === '*') return row;
+    if (name.includes('(')) continue; // nested embeds are not used by this app
+    out[name] = row[name];
+  }
+  return out;
+}
+
+// Find the column on the child table that points back at the parent's id.
+function findParentFk(childRows: any[], parentRows: any[]): string | null {
+  if (childRows.length === 0 || parentRows.length === 0) return null;
+  const parentIds = new Set(parentRows.map(r => r.id));
+  const candidates = Object.keys(childRows[0]).filter(k => k !== 'id' && k.endsWith('_id'));
+  for (const key of candidates) {
+    if (childRows.some(c => parentIds.has(c[key]))) return key;
+  }
+  return null;
+}
+
+function hydrateEmbeddedSelects(parentTable: string, selectFields: string, rows: any[]): any[] {
+  if (!selectFields || !selectFields.includes('(') || rows.length === 0) return rows;
+
+  const embeds: Array<{ table: string; fields: string }> = [];
+  for (const token of splitTopLevel(selectFields)) {
+    const match = token.match(/^([A-Za-z0-9_]+)\s*\(([\s\S]*)\)$/);
+    if (match) embeds.push({ table: match[1], fields: match[2] });
+  }
+  if (embeds.length === 0) return rows;
+
+  return rows.map(row => {
+    const out = { ...row };
+    for (const embed of embeds) {
+      const childRows = getTableData(embed.table);
+      const fkOnParent = `${singularize(embed.table)}_id`;
+
+      if (fkOnParent in row) {
+        // many-to-one: e.g. reading_list_books.book_id -> books(*)
+        const match = childRows.find(c => c.id === row[fkOnParent]);
+        out[embed.table] = match ? projectRow(match, embed.fields) : null;
+      } else {
+        // one-to-many: e.g. reading_lists -> reading_list_books(*) via list_id
+        const fk = findParentFk(childRows, rows);
+        out[embed.table] = fk
+          ? childRows.filter(c => c[fk] === row.id).map(c => projectRow(c, embed.fields))
+          : [];
+      }
+    }
+    return out;
   });
 }
 
@@ -686,7 +837,11 @@ class MockQueryBuilder {
   private orderField: string | null = null;
   private orderAscending = true;
   private limitCount: number | null = null;
+  private rangeFrom: number | null = null;
+  private rangeTo: number | null = null;
   private selectFields: string = '*';
+  private countMode: string | null = null;
+  private headOnly = false;
   private operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert' = 'select';
   private payload: any = null;
   private isSingle = false;
@@ -697,10 +852,14 @@ class MockQueryBuilder {
     this.tableName = tableName;
   }
 
-  select(fields: string = '*') {
+  select(fields: string = '*', options?: { count?: 'exact' | 'planned' | 'estimated'; head?: boolean }) {
     if (this.operation === 'select') {
       this.selectFields = fields;
     }
+    // supabase-js also accepts select(fields, {count, head}) after insert/update/delete,
+    // and .select("*", {count, head}) is how callers ask for a row count only.
+    if (options?.count) this.countMode = options.count;
+    if (options?.head) this.headOnly = true;
     return this;
   }
 
@@ -774,6 +933,97 @@ class MockQueryBuilder {
     return this;
   }
 
+  gt(field: string, value: any) {
+    this.filters.push(row => row[field] > value);
+    return this;
+  }
+
+  lt(field: string, value: any) {
+    this.filters.push(row => row[field] < value);
+    return this;
+  }
+
+  like(field: string, pattern: string) {
+    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cleanPattern = escaped.replace(/%/g, '.*');
+    const regex = new RegExp(`^${cleanPattern}$`);
+    this.filters.push(row => {
+      const val = row[field];
+      if (val === null || val === undefined) return false;
+      return regex.test(String(val));
+    });
+    return this;
+  }
+
+  is(field: string, value: any) {
+    this.filters.push(row => {
+      if (value === null) return row[field] === null || row[field] === undefined;
+      return row[field] === value;
+    });
+    return this;
+  }
+
+  contains(field: string, value: any) {
+    const needles = Array.isArray(value) ? value : [value];
+    this.filters.push(row => {
+      const val = row[field];
+      if (Array.isArray(val)) return needles.every(n => val.includes(n));
+      return false;
+    });
+    return this;
+  }
+
+  overlaps(field: string, value: any) {
+    const needles = Array.isArray(value) ? value : [value];
+    this.filters.push(row => {
+      const val = row[field];
+      if (Array.isArray(val)) return needles.some(n => val.includes(n));
+      return false;
+    });
+    return this;
+  }
+
+  // PostgREST-style disjunction, e.g. .or("title.ilike.%foo%,author.ilike.%foo%")
+  or(filterString: string) {
+    const clauses = String(filterString).split(',').map(c => c.trim()).filter(Boolean);
+    const predicates = clauses.map(clause => {
+      const firstDot = clause.indexOf('.');
+      const secondDot = clause.indexOf('.', firstDot + 1);
+      if (firstDot === -1 || secondDot === -1) return () => false;
+      const field = clause.slice(0, firstDot);
+      const op = clause.slice(firstDot + 1, secondDot);
+      const raw = clause.slice(secondDot + 1);
+      return (row: any) => {
+        const val = row[field];
+        switch (op) {
+          case 'eq': return String(val) === raw;
+          case 'neq': return String(val) !== raw;
+          case 'gt': return val > raw;
+          case 'gte': return val >= raw;
+          case 'lt': return val < raw;
+          case 'lte': return val <= raw;
+          case 'is': return raw === 'null' ? (val === null || val === undefined) : String(val) === raw;
+          case 'in': return raw.replace(/^\(|\)$/g, '').split(',').map(s => s.trim().replace(/^"|"$/g, '')).includes(String(val));
+          case 'like':
+          case 'ilike': {
+            if (val === null || val === undefined) return false;
+            const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*');
+            return new RegExp(`^${escaped}$`, op === 'ilike' ? 'i' : '').test(String(val));
+          }
+          default: return false;
+        }
+      };
+    });
+    this.filters.push(row => predicates.some(p => p(row)));
+    return this;
+  }
+
+  range(from: number, to: number) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
+    return this;
+  }
+
   match(obj: Record<string, any>) {
     this.filters.push(row => {
       for (const key in obj) {
@@ -830,13 +1080,34 @@ class MockQueryBuilder {
           });
         }
 
+        // Row count is taken before pagination, matching PostgREST's `count` semantics
+        const totalCount = data.length;
+
+        // .select("*", { count, head: true }) asks for the count only — no rows
+        if (this.headOnly) {
+          return { data: null, error: null, count: totalCount };
+        }
+
+        // Apply range (PostgREST .range(from, to) is inclusive on both ends)
+        if (this.rangeFrom !== null) {
+          const to = this.rangeTo === null ? data.length : this.rangeTo + 1;
+          data = data.slice(this.rangeFrom, to);
+        }
+
         // Apply limit
         if (this.limitCount !== null) {
           data = data.slice(0, this.limitCount);
         }
 
+        // Resolve PostgREST-style embedded selects, e.g. "*, books(*)" or "profiles(username, avatar_url)"
+        data = hydrateEmbeddedSelects(this.tableName, this.selectFields, data);
+
         // Convert any local image URLs to Base64 in selected rows
         data = await processLocalUrls(data);
+
+        if (this.countMode && !this.isSingle && !this.isMaybeSingle) {
+          return { data, error: null, count: totalCount };
+        }
 
         if (this.isSingle) {
           if (data.length === 0) {
@@ -996,6 +1267,14 @@ class MockQueryBuilder {
   then(onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) {
     return this.execute().then(onfulfilled, onrejected);
   }
+
+  catch(onrejected?: (reason: any) => any) {
+    return this.execute().catch(onrejected);
+  }
+
+  finally(onfinally?: () => void) {
+    return this.execute().finally(onfinally);
+  }
 }
 
 // Helpers for auth
@@ -1101,9 +1380,12 @@ const localAuthProxy = {
       saveLocalSession(mockSession);
       
       // Auto-create profile in database
+      // Only real columns: the profiles table has no `email`, and including it made
+      // every later profile upsert rejected by PostgREST.
       const defaultProfile = {
         id: userId,
-        email,
+        username: typeof email === 'string' ? email.split('@')[0] : null,
+        avatar_url: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -1214,6 +1496,40 @@ const localAuthProxy = {
     await originalSupabase.auth.signOut().catch(() => {});
     triggerAuthEvent('SIGNED_OUT', null);
     return { error: null };
+  },
+
+  // Credentials and email addresses live on the real auth server, so this one
+  // operation has to be delegated upstream rather than served from the local DB.
+  updateUser: async (attributes: any) => {
+    if (!navigator.onLine) {
+      return { data: { user: null }, error: { message: "You must be online to change your account details." } };
+    }
+
+    const localSession = getLocalSession();
+    if (localSession?.access_token && localSession?.refresh_token) {
+      // The remote client may not carry the session yet (local-first sign-in path).
+      await originalSupabase.auth.setSession({
+        access_token: localSession.access_token,
+        refresh_token: localSession.refresh_token,
+      }).catch(() => {});
+    }
+
+    const { data, error } = await originalSupabase.auth.updateUser(attributes);
+    if (error) return { data: { user: null }, error };
+
+    // Keep the cached local session's user in step with the change.
+    if (data?.user && localSession) {
+      saveLocalSession({ ...localSession, user: data.user });
+      triggerAuthEvent('USER_UPDATED', { ...localSession, user: data.user });
+    }
+    return { data, error: null };
+  },
+
+  resetPasswordForEmail: async (email: string, options?: any) => {
+    if (!navigator.onLine) {
+      return { data: null, error: { message: "You must be online to reset your password." } };
+    }
+    return originalSupabase.auth.resetPasswordForEmail(email, options);
   },
 
   getUser: async () => {
@@ -1416,21 +1732,31 @@ export const supabase = new Proxy({
   get: (target, prop) => {
     if (typeof window !== 'undefined' && safeLocalStorage.getItem("app_outdated") === "true") {
       if (prop === 'from') {
-        return (table: string) => ({
-          select: () => Promise.resolve({ data: [], error: { message: "Outdated version" } }),
-          insert: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-          update: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-          delete: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-          upsert: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-          eq: function() { return this; },
-          neq: function() { return this; },
-          ilike: function() { return this; },
-          gt: function() { return this; },
-          lt: function() { return this; },
-          order: function() { return this; },
-          single: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-          maybeSingle: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
-        });
+        // Every method has to stay chainable: callers write .select().eq().order(),
+        // so returning a bare Promise from select() made the whole app throw
+        // "TypeError: ....eq is not a function" instead of showing the update notice.
+        return (_table: string) => {
+          const outdatedError = { message: "Outdated version" };
+          const builder: any = {
+            then: (onfulfilled?: any, onrejected?: any) =>
+              Promise.resolve({ data: [], error: outdatedError, count: 0 }).then(onfulfilled, onrejected),
+            catch: (onrejected?: any) =>
+              Promise.resolve({ data: [], error: outdatedError, count: 0 }).catch(onrejected),
+            finally: (onfinally?: any) =>
+              Promise.resolve({ data: [], error: outdatedError, count: 0 }).finally(onfinally),
+            single: () => Promise.resolve({ data: null, error: outdatedError }),
+            maybeSingle: () => Promise.resolve({ data: null, error: outdatedError }),
+          };
+          for (const method of [
+            'select', 'insert', 'update', 'delete', 'upsert',
+            'eq', 'neq', 'ilike', 'like', 'is', 'gt', 'gte', 'lt', 'lte',
+            'in', 'not', 'match', 'or', 'filter', 'contains', 'overlaps',
+            'order', 'limit', 'range',
+          ]) {
+            builder[method] = () => builder;
+          }
+          return builder;
+        };
       }
       if (prop === 'functions') {
         return {
@@ -1443,6 +1769,9 @@ export const supabase = new Proxy({
           getUser: () => Promise.resolve({ data: { user: null }, error: null }),
           onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
           signInWithPassword: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
+          signUp: () => Promise.resolve({ data: { user: null, session: null }, error: { message: "Outdated version" } }),
+          updateUser: () => Promise.resolve({ data: { user: null }, error: { message: "Outdated version" } }),
+          resetPasswordForEmail: () => Promise.resolve({ data: null, error: { message: "Outdated version" } }),
           signOut: () => Promise.resolve({ error: null })
         };
       }
@@ -1484,7 +1813,9 @@ originalSupabase.auth.onAuthStateChange((event, session) => {
     triggerAuthEvent(event as any, localSession);
   } else {
     // Only clear session if we are online and truly signed out remotely
-    if (navigator.onLine && (event === 'SIGNED_OUT' || event === 'USER_DELETED')) {
+    // USER_DELETED is no longer in supabase-js's event union but can still arrive
+    // at runtime from older servers, so it is compared as a plain string.
+    if (navigator.onLine && (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED')) {
       saveLocalSession(null);
       triggerAuthEvent('SIGNED_OUT', null);
     }
@@ -1520,7 +1851,11 @@ let cloneTimeout: any;
 function debounceClone() {
   clearTimeout(cloneTimeout);
   cloneTimeout = setTimeout(() => {
-    if (navigator.onLine) cloneRemoteData();
+    if (!navigator.onLine) return;
+    // cloneRemoteData filters every table by this id, so calling it without one
+    // sent `user_id=eq.undefined` and silently fetched nothing.
+    const userId = getLocalSession()?.user?.id;
+    if (userId) cloneRemoteData(userId).catch(console.error);
   }, 2000);
 }
 

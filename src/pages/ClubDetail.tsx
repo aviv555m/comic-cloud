@@ -36,7 +36,7 @@ interface ClubMember {
   id: string;
   user_id: string;
   role: string | null;
-  joined_at: string;
+  joined_at: string | null;
   username?: string;
 }
 
@@ -100,10 +100,15 @@ const ClubDetail = () => {
           .select("id, username")
           .in("id", userIds);
 
-        const membersWithNames = membersData.map((m) => ({
-          ...m,
-          username: profiles?.find((p) => p.id === m.user_id)?.username || "Anonymous",
-        }));
+        const membersWithNames = membersData.map((m) => {
+          // joined_at is DB-defaulted, so rows written locally only carry created_at
+          const joined = new Date(m.joined_at || m.created_at || "");
+          return {
+            ...m,
+            joined_at: isNaN(joined.getTime()) ? null : joined.toISOString(),
+            username: profiles?.find((p) => p.id === m.user_id)?.username || "Anonymous",
+          };
+        });
         setMembers(membersWithNames);
       }
 
@@ -293,9 +298,11 @@ const ClubDetail = () => {
                           </Avatar>
                           <div>
                             <p className="font-medium">{member.username}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Joined {new Date(member.joined_at || "").toLocaleDateString()}
-                            </p>
+                            {member.joined_at && (
+                              <p className="text-xs text-muted-foreground">
+                                Joined {new Date(member.joined_at).toLocaleDateString()}
+                              </p>
+                            )}
                           </div>
                         </div>
                         {member.role === "owner" && (

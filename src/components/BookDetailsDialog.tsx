@@ -98,6 +98,7 @@ export const BookDetailsDialog = ({
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [resolvedCover, setResolvedCover] = useState<string | undefined>(undefined);
+  const [tagsDirty, setTagsDirty] = useState(false);
 
   useEffect(() => {
     if (!book?.cover_url) {
@@ -138,6 +139,14 @@ export const BookDetailsDialog = ({
       setResolvedCover(book.cover_url);
     }
   }, [book?.cover_url]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && tagsDirty) {
+      setTagsDirty(false);
+      onUpdate?.();
+    }
+    onOpenChange(nextOpen);
+  };
 
   const handleRead = () => {
     onOpenChange(false);
@@ -297,7 +306,7 @@ export const BookDetailsDialog = ({
         book={book}
       />
 
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md max-h-[90vh] glass-panel border border-white/10 rounded-3xl p-6 shadow-strong overflow-hidden animate-in fade-in zoom-in-95 duration-300">
           <ScrollArea className="max-h-[calc(90vh-3rem)] pr-2">
             <DialogHeader className="space-y-4">
@@ -379,7 +388,8 @@ export const BookDetailsDialog = ({
 
             {/* Tags Section */}
             {canEdit && (
-              <div className="py-3 mt-4 border-t border-neutral-900">
+              // Any click here can add/remove a tag; TagPicker reports no changes, so refresh the parent on close
+              <div className="py-3 mt-4 border-t border-neutral-900" onClick={() => setTagsDirty(true)}>
                 <div className="flex items-center gap-2 mb-2">
                   <Tag className="w-4 h-4 text-neutral-500" />
                   <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Tags</span>

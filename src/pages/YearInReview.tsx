@@ -45,12 +45,19 @@ const YearInReview = () => {
     const end = endOfYear(new Date(yr, 0, 1)).toISOString();
 
     const [booksRes, sessionsRes, reviewsRes] = await Promise.all([
-      supabase.from("books").select("*").eq("user_id", userId).eq("is_completed", true).gte("finished_reading_at", start).lte("finished_reading_at", end),
+      supabase.from("books").select("*").eq("user_id", userId).eq("is_completed", true),
       supabase.from("reading_sessions").select("*").eq("user_id", userId).gte("start_time", start).lte("start_time", end),
       supabase.from("book_reviews").select("*, books(title, author)").eq("user_id", userId),
     ]);
 
-    const books = booksRes.data || [];
+    // finished_reading_at is only written by the manual "mark as completed" action, so fall back
+    // to updated_at (same as Statistics) or books finished in the reader would never be counted.
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    const books = (booksRes.data || []).filter(b => {
+      const finished = new Date(b.finished_reading_at || b.updated_at).getTime();
+      return finished >= startMs && finished <= endMs;
+    });
     const sessions = sessionsRes.data || [];
     const reviews = reviewsRes.data || [];
 

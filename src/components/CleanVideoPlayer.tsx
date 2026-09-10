@@ -20,6 +20,9 @@ interface SubtitleTrack {
   url: string;
 }
 
+// Stable empty default so the subtitles effect below doesn't re-fire every render
+const NO_SUBS: SubtitleTrack[] = [];
+
 interface CleanVideoPlayerProps {
   src: string;
   title?: string;
@@ -48,7 +51,7 @@ const srtToVtt = (srt: string) =>
     .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
     .trim();
 
-export const CleanVideoPlayer = ({ src, title, poster, className, subtitles = [] }: CleanVideoPlayerProps) => {
+export const CleanVideoPlayer = ({ src, title, poster, className, subtitles = NO_SUBS }: CleanVideoPlayerProps) => {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hideTimer = useRef<number | null>(null);

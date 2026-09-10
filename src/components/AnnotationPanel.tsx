@@ -93,10 +93,16 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
   };
 
   return (
-    <div className="fixed right-0 top-0 h-full w-80 bg-card border-l shadow-lg z-50 flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b">
+    <div className="fixed right-0 top-0 h-full w-80 max-w-[calc(100vw-2rem)] bg-background/95 backdrop-blur-md border-l border-border/60 rounded-l-2xl shadow-xl z-50 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
         <h3 className="font-semibold">Annotations</h3>
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          title="Close annotations"
+          className="h-10 w-10 rounded-full"
+        >
           <X className="w-4 h-4" />
         </Button>
       </div>
@@ -112,17 +118,23 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
             {annotations.map((annotation) => (
               <div
                 key={annotation.id}
-                className={`p-3 rounded-lg border ${
-                  annotation.page_number === currentPage ? "border-primary" : ""
+                className={`p-3 rounded-2xl border transition-colors ${
+                  annotation.page_number === currentPage
+                    ? "border-primary bg-primary/5"
+                    : "border-border/60 bg-card/60"
                 }`}
               >
                 <div className="flex items-start justify-between mb-2">
-                  <span className="text-xs font-medium">Page {annotation.page_number}</span>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Page {annotation.page_number}
+                  </span>
                   <div className="flex gap-1">
                     {editingId === annotation.id ? (
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        title="Save note"
+                        className="h-9 w-9 rounded-full"
                         onClick={() => updateAnnotation(annotation.id, editNote)}
                       >
                         <Check className="w-3 h-3" />
@@ -130,7 +142,9 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
                     ) : (
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
+                        title="Edit note"
+                        className="h-9 w-9 rounded-full"
                         onClick={() => {
                           setEditingId(annotation.id);
                           setEditNote(annotation.note || "");
@@ -141,7 +155,9 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
                     )}
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon"
+                      title="Delete annotation"
+                      className="h-9 w-9 rounded-full text-muted-foreground hover:text-destructive"
                       onClick={() => deleteAnnotation(annotation.id)}
                     >
                       <Trash2 className="w-3 h-3" />
@@ -150,7 +166,7 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
                 </div>
 
                 <div 
-                  className="text-sm p-2 rounded mb-2"
+                  className="text-sm p-2 rounded-xl mb-2 leading-relaxed"
                   style={{ backgroundColor: annotation.highlight_color + "40" }}
                 >
                   "{annotation.selected_text}"
@@ -161,7 +177,7 @@ export const AnnotationPanel = ({ bookId, currentPage, onClose }: AnnotationPane
                     value={editNote}
                     onChange={(e) => setEditNote(e.target.value)}
                     placeholder="Add a note..."
-                    className="text-xs"
+                    className="text-xs rounded-xl border-border/60 resize-none"
                     rows={3}
                   />
                 ) : (

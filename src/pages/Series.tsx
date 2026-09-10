@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { originalSupabase } from "@/lib/local-supabase";
 import { Navigation } from "@/components/Navigation";
 import { BookCard } from "@/components/BookCard";
 import { Button } from "@/components/ui/button";
@@ -68,15 +69,34 @@ const Series = () => {
         if (error) throw error;
         setBooks(data || []);
       } else {
-        const { data, error } = await supabase
-          .from("books")
-          .select("*")
-          .ilike("series", decodedSeries)
-          .eq("is_public", true)
-          .order("title", { ascending: true });
+        // The local mirror is cloned per-user, so a signed-out visitor's copy is empty.
+        // Read public books from the backend and fall back to the mirror only when offline.
+        let publicBooks: Book[] | null = null;
 
-        if (error) throw error;
-        setBooks(data || []);
+        if (navigator.onLine) {
+          const remote = await originalSupabase
+            .from("books")
+            .select("*")
+            .ilike("series", decodedSeries)
+            .eq("is_public", true)
+            .order("title", { ascending: true });
+
+          if (!remote.error) publicBooks = remote.data as Book[];
+        }
+
+        if (!publicBooks) {
+          const { data, error } = await supabase
+            .from("books")
+            .select("*")
+            .ilike("series", decodedSeries)
+            .eq("is_public", true)
+            .order("title", { ascending: true });
+
+          if (error) throw error;
+          publicBooks = data || [];
+        }
+
+        setBooks(publicBooks);
       }
     } catch (error: any) {
       toast({

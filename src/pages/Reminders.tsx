@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications, type Weekday } from "@capacitor/local-notifications";
 import { 
   ArrowLeft, 
   Bell,
@@ -37,6 +39,67 @@ interface ScheduledReading {
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Capacitor notification ids must be 32-bit ints, so derive a stable one per reminder+day.
+// The band deliberately excludes 999999, which the download manager owns.
+const REMINDER_ID_BASE = 1000;
+const REMINDER_ID_RANGE = 900000;
+
+const notificationId = (reminderId: string, day: number) => {
+  const key = `${reminderId}:${day}`;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  return REMINDER_ID_BASE + (Math.abs(hash) % REMINDER_ID_RANGE);
+};
+
+// Only the OS can fire a reminder once the app is closed, so web is intentionally not scheduled.
+const syncSchedule = async (list: ReadingReminder[]) => {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") {
+      const requested = await LocalNotifications.requestPermissions();
+      if (requested.display !== "granted") return;
+    }
+
+    // Clear the whole reminder band rather than per-id: ids of just-deleted rows are no longer derivable.
+    const pending = await LocalNotifications.getPending();
+    const ours = pending.notifications.filter(
+      (n) => n.id >= REMINDER_ID_BASE && n.id < REMINDER_ID_BASE + REMINDER_ID_RANGE
+    );
+    if (ours.length > 0) {
+      await LocalNotifications.cancel({ notifications: ours.map((n) => ({ id: n.id })) });
+    }
+
+    const notifications = list
+      .filter((r) => r.is_enabled)
+      .flatMap((r) => {
+        const [hours, minutes] = r.time_of_day.split(":");
+        return (r.days_of_week ?? [0, 1, 2, 3, 4, 5, 6]).map((day) => ({
+          id: notificationId(r.id, day),
+          title: "Time to read",
+          body: "Your reading session is waiting",
+          schedule: {
+            on: {
+              weekday: (day + 1) as Weekday,
+              hour: parseInt(hours),
+              minute: parseInt(minutes),
+            },
+            repeats: true,
+          },
+        }));
+      });
+
+    if (notifications.length > 0) {
+      await LocalNotifications.schedule({ notifications });
+    }
+  } catch (e) {
+    console.warn("Failed to schedule reading reminders:", e);
+  }
+};
 
 const Reminders = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -72,7 +135,10 @@ const Reminders = () => {
         .order("scheduled_date"),
     ]);
 
-    if (remindersRes.data) setReminders(remindersRes.data);
+    if (remindersRes.data) {
+      setReminders(remindersRes.data);
+      syncSchedule(remindersRes.data);
+    }
     if (scheduledRes.data) setScheduled(scheduledRes.data);
 
     setLoading(false);
@@ -96,7 +162,9 @@ const Reminders = () => {
     if (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to add reminder" });
     } else if (data) {
-      setReminders([...reminders, data]);
+      const next = [...reminders, data];
+      setReminders(next);
+      syncSchedule(next);
       toast({ title: "Reminder added" });
     }
   };
@@ -107,12 +175,16 @@ const Reminders = () => {
       .update({ is_enabled: enabled })
       .eq("id", id);
 
-    setReminders(reminders.map((r) => (r.id === id ? { ...r, is_enabled: enabled } : r)));
+    const next = reminders.map((r) => (r.id === id ? { ...r, is_enabled: enabled } : r));
+    setReminders(next);
+    syncSchedule(next);
   };
 
   const deleteReminder = async (id: string) => {
     await supabase.from("reading_reminders").delete().eq("id", id);
-    setReminders(reminders.filter((r) => r.id !== id));
+    const next = reminders.filter((r) => r.id !== id);
+    setReminders(next);
+    syncSchedule(next);
     toast({ title: "Reminder deleted" });
   };
 
@@ -267,10 +339,7 @@ const Reminders = () => {
                 {scheduled.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No scheduled reading sessions</p>
-                    <p className="text-sm">
-                      Schedule reading time from the Library page
-                    </p>
+                    <p>Scheduled reading sessions aren't available yet</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -309,9 +378,9 @@ const Reminders = () => {
             <Card className="border-dashed">
               <CardContent className="py-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  💡 Reminders work best when you enable browser notifications.
-                  <br />
-                  Push notifications for mobile devices coming soon!
+                  {Capacitor.isNativePlatform()
+                    ? "💡 Reminders are scheduled as device notifications — keep notifications enabled for ComicCloud."
+                    : "💡 Reminders are saved here, but only the ComicCloud mobile app can deliver them as notifications."}
                 </p>
               </CardContent>
             </Card>

@@ -764,7 +764,7 @@ const MangaBrowser = () => {
         .from("books")
         .select("id")
         .eq("user_id", user.id)
-        .eq("series", currentSeries.title)
+        .eq("title", currentSeries.title)
         .eq("file_type", "manga")
         .maybeSingle();
 
@@ -858,7 +858,8 @@ const MangaBrowser = () => {
       currentSeries.title,
       source,
       shouldDownloadOffline ? 'download' : 'save',
-      currentSeries.cover
+      currentSeries.cover,
+      currentSeries.url
     );
 
     toast({
@@ -875,7 +876,8 @@ const MangaBrowser = () => {
       currentSeries.title,
       source,
       shouldDownloadOffline ? 'download' : 'save',
-      currentSeries.cover
+      currentSeries.cover,
+      currentSeries.url
     );
 
     setSelectedChapters([]); // clear selection
@@ -943,7 +945,8 @@ const MangaBrowser = () => {
       currentSeries.title,
       source,
       'download',
-      currentSeries.cover
+      currentSeries.cover,
+      currentSeries.url
     );
 
     toast({
@@ -963,7 +966,8 @@ const MangaBrowser = () => {
         currentSeries.title,
         source,
         'download',
-        currentSeries.cover
+        currentSeries.cover,
+        currentSeries.url
       );
 
       toast({
@@ -972,6 +976,13 @@ const MangaBrowser = () => {
       });
     }
   }, [currentSeries, source, offlineBooks]);
+
+  // runAutoDownload reads currentSeries from state, so it has to run after the series
+  // and its chapters have been committed - calling it inside openSeries sees the old value.
+  useEffect(() => {
+    if (!currentSeries || chapters.length === 0) return;
+    runAutoDownload(chapters);
+  }, [currentSeries, chapters]);
 
   const setAutoDownload = (val: boolean) => {
     if (!currentSeries) return;
@@ -1027,7 +1038,6 @@ const MangaBrowser = () => {
         return a.title.localeCompare(b.title, undefined, { numeric: true });
       });
       setChapters(sortedList);
-      runAutoDownload(sortedList);
 
       // Attempt to search and match on AniList
       if (aniListToken && series.title) {
@@ -1352,13 +1362,17 @@ const MangaBrowser = () => {
 
       // 5. If download is requested, download it offline to IndexedDB
       if (shouldDownloadOffline && insertedBook) {
-        // Since local-supabase automatically registers books offline on insertion,
-        // we just give a small delay for a smooth UI transition.
-        await new Promise(resolve => setTimeout(resolve, 800));
-        toast({
-          title: "Downloaded offline",
-          description: `"${currentSeries.title} - ${currentChapter.title}" is now available offline.`,
-        });
+        // local-supabase only registers a book offline by itself when the file_url is a
+        // /local-file-route/ one; the online signed URL is a plain http one, so pull the
+        // CBZ into IndexedDB here. saveBookOffline raises its own result toast.
+        if (String(insertedBook.file_url || "").includes("/local-file-route/")) {
+          toast({
+            title: "Downloaded offline",
+            description: `"${currentSeries.title} - ${currentChapter.title}" is now available offline.`,
+          });
+        } else {
+          await saveBookOffline(insertedBook);
+        }
       } else {
         toast({
           title: "Saved to Library",

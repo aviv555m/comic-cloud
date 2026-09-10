@@ -54,7 +54,12 @@ export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
 
       const exportPayload = {
         exportedAt: new Date().toISOString(),
-        books: booksRes.data || [],
+        books: (booksRes.data || []).map((book: any) => {
+          if (includeProgress) return book;
+          // Drop the progress columns entirely so they are absent from the file, not exported as nulls
+          const { reading_progress, last_page_read, is_completed, started_reading_at, finished_reading_at, ...rest } = book;
+          return rest;
+        }),
         annotations: annotationsRes.data || [],
         reviews: reviewsRes.data || [],
         sessions: sessionsRes.data || [],
@@ -117,8 +122,11 @@ export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
     data.books.forEach((book: any) => {
       md += `### ${book.title}\n`;
       md += `- Author: ${book.author || "Unknown"}\n`;
-      md += `- Progress: ${book.reading_progress || 0}%\n`;
-      md += `- Status: ${book.is_completed ? "Completed" : "In Progress"}\n\n`;
+      if (includeProgress) {
+        md += `- Progress: ${book.reading_progress || 0}%\n`;
+        md += `- Status: ${book.is_completed ? "Completed" : "In Progress"}\n`;
+      }
+      md += `\n`;
     });
 
     if (data.annotations.length > 0) {
@@ -143,14 +151,15 @@ export const ExportDialog = ({ open, onOpenChange }: ExportDialogProps) => {
   };
 
   const generateCSV = (data: any): string => {
-    const rows = [["Title", "Author", "Progress", "Completed", "Added"]];
+    const rows = [["Title", "Author", ...(includeProgress ? ["Progress", "Completed"] : []), "Added"]];
     
     data.books.forEach((book: any) => {
       rows.push([
         book.title,
         book.author || "",
-        `${book.reading_progress || 0}%`,
-        book.is_completed ? "Yes" : "No",
+        ...(includeProgress
+          ? [`${book.reading_progress || 0}%`, book.is_completed ? "Yes" : "No"]
+          : []),
         new Date(book.created_at).toLocaleDateString(),
       ]);
     });

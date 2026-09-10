@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { originalSupabase } from "@/lib/local-supabase";
 import { useToast } from "@/hooks/use-toast";
 
 export interface ChatMessage {
@@ -14,8 +15,10 @@ export const useChatMessages = (userId?: string) => {
   const { toast } = useToast();
 
   const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // <ScrollArea> forwards its ref to the Radix root; the element that scrolls is the viewport inside it
+    const viewport = scrollRef.current?.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, []);
 
@@ -61,12 +64,27 @@ export const useChatMessages = (userId?: string) => {
         recentAnnotations = annotationsData || [];
       }
 
+      // The edge function validates the bearer token with auth.getUser(), so it needs the remote
+      // session token — the mock's local-only token would be rejected by GoTrue.
+      const { data: { session } } = await originalSupabase.auth.getSession();
+      if (!session?.access_token) {
+        toast({
+          variant: "destructive",
+          title: "Sign in required",
+          description: "Please sign in online to use AI chat.",
+        });
+        setMessages(prev => prev.slice(0, -1));
+        setIsLoading(false);
+        return;
+      }
+
       const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/book-chat`;
       const response = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
         body: JSON.stringify({ 
           messages: [...messages, userMessage],

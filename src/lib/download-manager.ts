@@ -33,6 +33,7 @@ export interface DownloadJob {
   coverUrl?: string | null;
   downloadedPages?: number;
   totalPages?: number;
+  seriesUrl?: string | null;
 }
 
 type Listener = (jobs: DownloadJob[]) => void;
@@ -112,7 +113,11 @@ class DownloadManager {
 
   private totalSessionJobs = 0;
   private completedSessionJobs = 0;
+  private failedSessionJobs = 0;
   private isSessionActive = false;
+  private isSessionPaused = false;
+  private isSessionFinished = false;
+  private offlineRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private silentAudio: HTMLAudioElement | null = null;
 
   constructor() {
@@ -202,6 +207,59 @@ class DownloadManager {
     }
   }
 
+  private acquireKeepAlive() {
+    if (Capacitor.isNativePlatform()) {
+      UpdatePlugin.startBackgroundService().catch(e => console.warn("Failed to start background service:", e));
+    }
+    this.startSilentAudio();
+  }
+
+  private releaseKeepAlive() {
+    if (Capacitor.isNativePlatform()) {
+      UpdatePlugin.stopBackgroundService().catch(e => console.warn("Failed to stop background service:", e));
+    }
+    this.stopSilentAudio();
+  }
+
+  private clearOfflineRetry() {
+    if (this.offlineRetryTimer) {
+      clearTimeout(this.offlineRetryTimer);
+      this.offlineRetryTimer = null;
+    }
+  }
+
+  // The 'online' event is unreliable in the Android WebView, so poll for connectivity
+  // instead of leaving paused jobs parked in the queue forever.
+  private scheduleOfflineRetry() {
+    if (this.offlineRetryTimer) return;
+    this.offlineRetryTimer = setTimeout(() => {
+      this.offlineRetryTimer = null;
+      this.processQueue();
+    }, 15000);
+  }
+
+  private beginSession() {
+    this.clearOfflineRetry();
+    this.totalSessionJobs = 0;
+    this.completedSessionJobs = 0;
+    this.failedSessionJobs = 0;
+    this.isSessionPaused = false;
+    this.isSessionFinished = false;
+    this.isSessionActive = true;
+    this.acquireKeepAlive();
+  }
+
+  private endSession() {
+    this.clearOfflineRetry();
+    this.totalSessionJobs = 0;
+    this.completedSessionJobs = 0;
+    this.failedSessionJobs = 0;
+    this.isSessionPaused = false;
+    this.isSessionFinished = false;
+    this.isSessionActive = false;
+    this.releaseKeepAlive();
+  }
+
   private loadPersistedQueue() {
     try {
       const storedJobs = localStorage.getItem('download_queue_jobs');
@@ -220,15 +278,13 @@ class DownloadManager {
         const session = JSON.parse(storedSession);
         this.totalSessionJobs = session.total || 0;
         this.completedSessionJobs = session.completed || 0;
+        this.failedSessionJobs = session.failed || 0;
         this.isSessionActive = session.isSessionActive || false;
       }
       
       // If there are pending/restored jobs, start the background service and process queue loop!
       if (this.jobs.some(j => j.status === 'pending')) {
-        if (Capacitor.isNativePlatform()) {
-          UpdatePlugin.startBackgroundService().catch(e => console.warn("Failed to start background service:", e));
-        }
-        this.startSilentAudio();
+        this.acquireKeepAlive();
         setTimeout(() => this.processQueue(), 1000);
       }
     } catch (e) {
@@ -242,6 +298,7 @@ class DownloadManager {
       localStorage.setItem('download_queue_session', JSON.stringify({
         total: this.totalSessionJobs,
         completed: this.completedSessionJobs,
+        failed: this.failedSessionJobs,
         isSessionActive: this.isSessionActive
       }));
     } catch (e) {
@@ -271,7 +328,10 @@ class DownloadManager {
     return {
       total: this.totalSessionJobs,
       completed: this.completedSessionJobs,
-      active: this.isSessionActive
+      failed: this.failedSessionJobs,
+      active: this.isSessionActive,
+      paused: this.isSessionPaused,
+      finished: this.isSessionFinished
     };
   }
 
@@ -320,10 +380,12 @@ class DownloadManager {
       ((this.completedSessionJobs * 100) + currentJobProgress) / this.totalSessionJobs
     )));
 
-    const title = "Downloading Chapters";
+    const title = this.isSessionPaused ? "Downloads Paused" : "Downloading Chapters";
     const progressBarText = this.getTextProgressBar(overallProgress);
     const activeCountText = `${this.completedSessionJobs + (downloadingJob ? 1 : 0)}/${this.totalSessionJobs}`;
-    const body = `${progressBarText} ${overallProgress}% (Chapter ${activeCountText})`;
+    const body = this.isSessionPaused
+      ? `Waiting for connection — ${this.completedSessionJobs}/${this.totalSessionJobs} chapters done`
+      : `${progressBarText} ${overallProgress}% (Chapter ${activeCountText})`;
 
     const NOTIFICATION_ID = 999999;
 
@@ -350,9 +412,14 @@ class DownloadManager {
 
   private async finishSessionNotification() {
     this.isSessionActive = false;
+    this.isSessionPaused = false;
+    this.isSessionFinished = true;
     const NOTIFICATION_ID = 999999;
-    const title = "Downloads Complete";
-    const body = `[██████████] 100% (Successfully processed ${this.totalSessionJobs} chapters)`;
+    const failed = this.failedSessionJobs;
+    const title = failed > 0 ? "Downloads Finished With Errors" : "Downloads Complete";
+    const body = failed > 0
+      ? `${Math.max(0, this.totalSessionJobs - failed)}/${this.totalSessionJobs} chapters saved — ${failed} failed`
+      : `[██████████] 100% (Successfully processed ${this.totalSessionJobs} chapters)`;
 
     try {
       if (Capacitor.isNativePlatform()) {
@@ -375,7 +442,7 @@ class DownloadManager {
     }
   }
 
-  addJob(chapter: { title: string; url: string }, seriesTitle: string, source: string, mode: 'save' | 'download', coverUrl: string | null) {
+  addJob(chapter: { title: string; url: string }, seriesTitle: string, source: string, mode: 'save' | 'download', coverUrl: string | null, seriesUrl: string | null = null) {
     this.requestPermission();
 
     // Check if already in queue
@@ -398,18 +465,13 @@ class DownloadManager {
       mode: mode,
       notificationId,
       coverUrl,
+      seriesUrl,
     };
 
     // Start a new session if no pending/downloading jobs are currently active
     const activeOrPending = this.jobs.some(j => j.status === 'pending' || j.status === 'downloading');
     if (!activeOrPending) {
-      this.totalSessionJobs = 0;
-      this.completedSessionJobs = 0;
-      this.isSessionActive = true;
-      if (Capacitor.isNativePlatform()) {
-        UpdatePlugin.startBackgroundService().catch(e => console.warn("Failed to start background service:", e));
-      }
-      this.startSilentAudio();
+      this.beginSession();
     }
 
     this.totalSessionJobs++;
@@ -420,7 +482,7 @@ class DownloadManager {
     this.processQueue();
   }
 
-  addJobs(chapters: { title: string; url: string }[], seriesTitle: string, source: string, mode: 'save' | 'download', coverUrl: string | null) {
+  addJobs(chapters: { title: string; url: string }[], seriesTitle: string, source: string, mode: 'save' | 'download', coverUrl: string | null, seriesUrl: string | null = null) {
     this.requestPermission();
 
     let addedCount = 0;
@@ -444,6 +506,7 @@ class DownloadManager {
         mode: mode,
         notificationId,
         coverUrl,
+        seriesUrl,
       };
 
       this.jobs.push(job);
@@ -453,13 +516,7 @@ class DownloadManager {
     if (addedCount > 0) {
       const activeOrPending = this.jobs.some(j => j.status === 'pending' || j.status === 'downloading');
       if (!activeOrPending || !this.isSessionActive) {
-        this.totalSessionJobs = 0;
-        this.completedSessionJobs = 0;
-        this.isSessionActive = true;
-        if (Capacitor.isNativePlatform()) {
-          UpdatePlugin.startBackgroundService().catch(e => console.warn("Failed to start background service:", e));
-        }
-        this.startSilentAudio();
+        this.beginSession();
       }
 
       this.totalSessionJobs += addedCount;
@@ -479,11 +536,29 @@ class DownloadManager {
           changed = true;
         }
       });
+      // Paused jobs stay queued, so nothing can drain the queue while offline: park the
+      // session (dropping the foreground service + keep-alive audio) and poll to resume.
+      // Never park while a job is still in flight - its finally block re-enters here.
+      if (this.activeCount === 0 && this.jobs.some(j => j.status === 'pending')) {
+        if (!this.isSessionPaused) {
+          this.isSessionPaused = true;
+          changed = true;
+          this.releaseKeepAlive();
+        }
+        this.scheduleOfflineRetry();
+      }
       if (changed) {
         this.notify();
         this.updateQueueNotification(true);
       }
       return;
+    }
+
+    this.clearOfflineRetry();
+    if (this.isSessionPaused) {
+      this.isSessionPaused = false;
+      if (this.isSessionActive) this.acquireKeepAlive();
+      this.notify();
     }
 
     if (this.activeCount >= this.maxConcurrent) return;
@@ -495,10 +570,7 @@ class DownloadManager {
       if (!activeOrPending && this.isSessionActive) {
         this.finishSessionNotification();
         this.notify();
-        if (Capacitor.isNativePlatform()) {
-          UpdatePlugin.stopBackgroundService().catch(e => console.warn("Failed to stop background service:", e));
-        }
-        this.stopSilentAudio();
+        this.releaseKeepAlive();
       }
       return;
     }
@@ -526,6 +598,7 @@ class DownloadManager {
         nextJob.status = 'failed';
         nextJob.statusText = err.message || 'Failed';
         this.completedSessionJobs++;
+        this.failedSessionJobs++;
         this.updateQueueNotification(true);
       }
     } finally {
@@ -534,20 +607,18 @@ class DownloadManager {
       
       // Auto-remove completed/failed jobs after 10 seconds from visible queue
       setTimeout(() => {
+        // The job may have been re-queued in the meantime (paused offline, or resumed) - only drop terminal ones
+        const current = this.jobs.find(j => j.id === nextJob.id);
+        if (current && current.status !== 'completed' && current.status !== 'failed') return;
         this.jobs = this.jobs.filter(j => j.id !== nextJob.id);
         delete this.lastNotificationTimes[nextJob.id];
         this.notify();
 
-        // Once the queue is completely empty of visible items, clean up the session
-        if (this.jobs.length === 0) {
-          this.isSessionActive = false;
-          this.totalSessionJobs = 0;
-          this.completedSessionJobs = 0;
+        // A job parked by the offline pause path stays queued, so an empty-array check
+        // would never fire - the session is over once nothing is live anymore.
+        if (!this.jobs.some(j => j.status === 'pending' || j.status === 'downloading')) {
+          this.endSession();
           this.notify();
-          if (Capacitor.isNativePlatform()) {
-            UpdatePlugin.stopBackgroundService().catch(e => console.warn("Failed to stop background service:", e));
-          }
-          this.stopSilentAudio();
         }
       }, 10000);
 
@@ -693,7 +764,7 @@ class DownloadManager {
         title: job.series,
         author: job.source.toUpperCase(),
         cover_url: job.coverUrl ? `/api-image-proxy?url=${encodeURIComponent(job.coverUrl)}` : null,
-        file_url: job.id,
+        file_url: job.seriesUrl || job.id,
         file_type: "manga",
         is_completed: false,
         reading_progress: 0,

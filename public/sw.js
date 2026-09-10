@@ -2,10 +2,11 @@
 // Strategy:
 //   - HTML navigations: network-first, fall back to cached index.html
 //   - Same-origin /assets/* (hashed Vite output): cache-first (immutable)
+//   - /db/ + /uploads/ (secure file server): network-first, cached image fallback
 //   - Other same-origin GETs: stale-while-revalidate
 //   - Cross-origin (Supabase, fonts, etc.): pass through
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL_CACHE = `shell-${VERSION}`;
 const ASSETS_CACHE = `assets-${VERSION}`;
 const RUNTIME_CACHE = `runtime-${VERSION}`;
@@ -43,6 +44,10 @@ const isAssetPath = (url) =>
   url.pathname.startsWith('/assets/') ||
   /\.(?:js|css|woff2?|ttf|otf|png|jpg|jpeg|svg|webp|ico)$/.test(url.pathname);
 
+// /db/ and /uploads/ are the secure file server (covers, avatars, book files).
+const isFileServerPath = (url) =>
+  url.pathname.startsWith('/db/') || url.pathname.startsWith('/uploads/');
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -67,6 +72,28 @@ self.addEventListener('fetch', (event) => {
             (await cache.match('/index.html')) ||
             (await cache.match('/')) ||
             new Response('Offline', { status: 503 })
+          );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // File-server files are mutable (a replaced cover is re-uploaded to the same path),
+  // so network-first: the server sends ETag + must-revalidate, making the refetch a
+  // cheap 304. Only image responses are kept as an offline fallback - book files are
+  // huge and their URLs carry a rotating ?token=, so a cached copy never matches again.
+  if (isFileServerPath(url)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(RUNTIME_CACHE);
+        try {
+          const res = await fetch(request);
+          if (res.ok && isAssetPath(url)) cache.put(request, res.clone()).catch(() => undefined);
+          return res;
+        } catch {
+          return (
+            (await cache.match(request)) || new Response('Offline', { status: 503 })
           );
         }
       })(),
@@ -103,8 +130,14 @@ self.addEventListener('fetch', (event) => {
           if (res.ok) cache.put(request, res.clone()).catch(() => undefined);
           return res;
         })
-        .catch(() => cached);
-      return cached || fetchPromise;
+        .catch(() => undefined);
+      // Keep the worker alive for the revalidation, or it can be killed once the
+      // cached response is returned and the entry never refreshes.
+      if (cached) {
+        event.waitUntil(fetchPromise);
+        return cached;
+      }
+      return (await fetchPromise) || new Response('Offline', { status: 503 });
     })(),
   );
 });

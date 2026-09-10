@@ -82,13 +82,13 @@ export const ChapterNavigation = ({
   return (
     <div className="flex flex-col items-center gap-2 w-full">
       {/* Chapter info bar */}
-      <div className="flex items-center justify-center gap-3 text-xs sm:text-sm text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 w-full max-w-md">
+      <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground w-full max-w-md rounded-full border border-border/60 bg-background/90 px-1.5 py-1 shadow-sm backdrop-blur-md">
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 px-2 gap-1.5"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-3 gap-1.5 rounded-full"
             >
               <List className="w-3.5 h-3.5" />
               <span className="truncate max-w-[150px] sm:max-w-[200px]">
@@ -96,20 +96,23 @@ export const ChapterNavigation = ({
               </span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[300px] sm:w-[350px]">
+          <SheetContent
+            side="left"
+            className="w-[300px] sm:w-[350px] border-border/60 bg-background/95 backdrop-blur-md rounded-r-2xl pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+          >
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
                 <BookOpenText className="w-5 h-5" />
                 Chapters
               </SheetTitle>
             </SheetHeader>
-            <ScrollArea className="h-[calc(100vh-100px)] mt-4 pr-4">
+            <ScrollArea className="h-[calc(100vh-8rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] mt-4 pr-4">
               <div className="space-y-1">
                 {chapters.map((chapter, index) => (
                   <Button
                     key={chapter.id}
                     variant={index === currentChapterIndex ? "secondary" : "ghost"}
-                    className="w-full justify-start text-left h-auto py-2 px-3"
+                    className="w-full justify-start text-left h-auto min-h-11 py-2.5 px-3 rounded-xl"
                     onClick={() => {
                       onChapterSelect(chapter);
                       setIsOpen(false);
@@ -131,7 +134,7 @@ export const ChapterNavigation = ({
         </Sheet>
 
         {pagesUntilNext !== null && pagesUntilNext > 0 && (
-          <span className="text-xs border-l pl-3 text-muted-foreground whitespace-nowrap">
+          <span className="text-xs border-l border-border/60 pl-3 pr-2 text-muted-foreground whitespace-nowrap">
             {pagesUntilNext} {pagesUntilNext === 1 ? "page" : "pages"} to next chapter
           </span>
         )}

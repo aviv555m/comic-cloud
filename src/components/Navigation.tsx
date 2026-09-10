@@ -198,6 +198,7 @@ export const Navigation = ({ userEmail }: NavigationProps) => {
                       <DropdownMenuItem onClick={() => navigate("/journal")}>Journal</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => navigate("/quotes")}>Quotes</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => navigate("/vocabulary")}>Vocabulary</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/reminders")}>Reminders</DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => navigate("/clubs")}>Book Clubs</DropdownMenuItem>
                       <DropdownMenuItem onClick={() => navigate("/feed")}>Activity Feed</DropdownMenuItem>

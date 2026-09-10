@@ -41,7 +41,7 @@ export default function PaymentSuccess() {
             </p>
             
             <div className="flex flex-col gap-2">
-              <Button onClick={() => navigate('/library')}>
+              <Button onClick={() => navigate('/')}>
                 Go to Library
               </Button>
               <Button variant="outline" onClick={() => navigate('/settings')}>

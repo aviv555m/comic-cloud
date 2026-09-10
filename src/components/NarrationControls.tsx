@@ -38,6 +38,7 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
   const [voice, setVoice] = useState("nova");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const requestIdRef = useRef(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -45,6 +46,18 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
       audioRef.current.playbackRate = speed;
     }
   }, [speed]);
+
+  // Discard already-generated audio when the source text (page turn) or voice changes,
+  // otherwise togglePlayback would replay the stale clip instead of regenerating it.
+  useEffect(() => {
+    requestIdRef.current += 1; // also invalidates a generation still in flight
+    const el = audioRef.current;
+    if (!el || !el.src) return;
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
+    setIsPlaying(false);
+  }, [text, voice]);
 
   useEffect(() => {
     onPlayingChange?.(isPlaying);
@@ -61,6 +74,7 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
     }
 
     setIsLoading(true);
+    const requestId = requestIdRef.current;
 
     try {
       // Limit text to avoid API limits (OpenAI TTS has 4096 char limit)
@@ -77,6 +91,9 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
       // Use data URI for proper decoding
       const audioUrl = `data:audio/mpeg;base64,${audioContent}`;
       
+      // The text or voice changed while this request was in flight - the clip is stale
+      if (requestId !== requestIdRef.current) return;
+      
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
         audioRef.current.playbackRate = speed;
@@ -84,6 +101,8 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
         setIsPlaying(true);
       }
     } catch (error) {
+      // play() rejected because the reset effect aborted it, not a real failure
+      if (requestId !== requestIdRef.current) return;
       console.error("TTS error:", error);
       toast({
         variant: "destructive",
@@ -100,8 +119,20 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
       audioRef.current?.pause();
       setIsPlaying(false);
     } else if (audioRef.current?.src) {
-      await audioRef.current.play();
-      setIsPlaying(true);
+      const requestId = requestIdRef.current;
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (error) {
+        // play() rejected because a page turn reset the element, not a real failure
+        if (requestId !== requestIdRef.current) return;
+        console.error("TTS error:", error);
+        toast({
+          variant: "destructive",
+          title: "Playback error",
+          description: "Failed to play audio",
+        });
+      }
     } else {
       await generateAndPlay();
     }
@@ -119,10 +150,11 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
     <div className="flex items-center gap-2">
       <Button
         variant="outline"
-        size="sm"
+        size="icon"
         onClick={togglePlayback}
         disabled={isLoading}
-        className="h-9 px-3"
+        title={isPlaying ? "Pause narration" : "Play narration"}
+        className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
       >
         {isLoading ? (
           <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -136,9 +168,10 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
       {isPlaying && (
         <Button
           variant="ghost"
-          size="sm"
+          size="icon"
           onClick={stop}
-          className="h-9 px-3"
+          title="Stop narration"
+          className="h-10 w-10 rounded-full"
         >
           <VolumeX className="w-4 h-4" />
         </Button>
@@ -146,18 +179,26 @@ export const NarrationControls = ({ text, onPlayingChange }: NarrationControlsPr
 
       <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="h-9 px-3">
+          <Button
+            variant="outline"
+            size="icon"
+            title="Narration settings"
+            className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
+          >
             <Settings className="w-4 h-4" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-72" align="end">
+        <PopoverContent
+          className="w-72 rounded-2xl border-border/60 bg-background/95 backdrop-blur-md"
+          align="end"
+        >
           <div className="space-y-4">
-            <h4 className="font-medium">Narration Settings</h4>
+            <h4 className="text-sm font-semibold">Narration Settings</h4>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Voice</label>
               <Select value={voice} onValueChange={setVoice}>
-                <SelectTrigger>
+                <SelectTrigger className="h-10 rounded-lg border-border/60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

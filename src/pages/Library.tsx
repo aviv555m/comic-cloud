@@ -44,6 +44,7 @@ interface Book {
   total_pages: number | null;
   file_size: number | null;
   created_at: string;
+  updated_at?: string | null;
   user_id: string;
 }
 
@@ -188,7 +189,10 @@ const Library = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setBooks(data || []);
+      const rows = (data || []) as Book[];
+      setBooks(rows);
+      // Keep an open details dialog on the fresh row so its toggles read current values
+      setSelectedBook(prev => prev ? rows.find(b => b.id === prev.id) ?? null : null);
       
       // Fetch reading stats for goals widget
       fetchReadingStats(userId);
@@ -303,8 +307,32 @@ const Library = () => {
 
   const handleImport = async (importedBooks: { title: string; author: string; rating?: number }[]) => {
     if (!user) return;
-    
-    // For now, just show a message - actual book files need to be uploaded separately
+
+    // Metadata-only rows: the actual book files still need to be uploaded separately
+    const rows = importedBooks.map((b) => ({
+      user_id: user.id,
+      title: b.title,
+      author: b.author || null,
+      file_url: "",
+      file_type: "metadata",
+      reading_progress: 0,
+      is_completed: false,
+      is_public: false,
+    }));
+
+    const { error } = await supabase.from("books").insert(rows);
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to import books",
+      });
+      return;
+    }
+
+    await fetchBooks(user.id);
+
     toast({
       title: "Books imported",
       description: `${importedBooks.length} books added to your reading history. Upload the book files to start reading.`,
@@ -314,7 +342,7 @@ const Library = () => {
   // Filter and sort books
   const filteredBooks = books
     .filter((book) => {
-      if (book.file_type === "cbz") return false;
+      if (book.file_type === "cbz" && book.series) return false;
       const query = filters.search.toLowerCase();
       const matchesSearch = 
         book.title.toLowerCase().includes(query) ||
@@ -361,9 +389,12 @@ const Library = () => {
           comparison = a.reading_progress - b.reading_progress;
           break;
         case "updated_at":
+          // Locally inserted rows have no updated_at yet, fall back to created_at
+          comparison = new Date(a.updated_at || a.created_at).getTime() - new Date(b.updated_at || b.created_at).getTime();
+          break;
         case "created_at":
         default:
-          comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
           break;
       }
       return filters.sortOrder === "asc" ? comparison : -comparison;
@@ -423,8 +454,7 @@ const Library = () => {
         uniqueKeys.add(`series:${book.title.trim().toLowerCase()}`);
       } else if (book.series) {
         uniqueKeys.add(`series:${book.series.trim().toLowerCase()}`);
-      } else if (book.file_type !== 'cbz' && book.file_type !== 'cbr') {
-        // Standalone ebook (exclude individual manga chapters that aren't mapped to a series)
+      } else {
         standaloneCount++;
       }
     });
@@ -713,7 +743,16 @@ const Library = () => {
                       readingProgress={book.reading_progress}
                       lastPageRead={book.last_page_read || 0}
                       canEdit={true}
-                      onClick={() => navigate(`/reader/${book.id}`)}
+                      onClick={() => {
+                        if (!book.file_url) {
+                          toast({
+                            title: "No file attached",
+                            description: "Upload the book file to start reading.",
+                          });
+                          return;
+                        }
+                        navigate(`/reader/${book.id}`);
+                      }}
                       onLongPress={() => setSelectedBook(book)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
                       onDelete={() => user && fetchBooks(user.id)}

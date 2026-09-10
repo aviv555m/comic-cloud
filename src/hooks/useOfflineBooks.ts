@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { openLocalDB, originalSupabase, saveLocalFile } from '@/lib/local-supabase';
+import { openLocalDB, originalSupabase, saveLocalFile, getServerUrl } from '@/lib/local-supabase';
 import { downloadQueue } from '@/lib/download-manager';
 
 const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
@@ -65,9 +65,12 @@ export function useOfflineBooks() {
   const loadOfflineBooks = useCallback(async () => {
     try {
       const db = await openLocalDB();
-      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+      // LOCAL_FILES_STORE is in scope so a prune can drop the mirrored blob in the
+      // same transaction instead of aborting or leaving an orphan behind
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE, LOCAL_FILES_STORE], 'readwrite');
       const booksStore = transaction.objectStore(BOOKS_STORE);
       const filesStore = transaction.objectStore(FILES_STORE);
+      const localFilesStore = transaction.objectStore(LOCAL_FILES_STORE);
       
       const booksList: any[] = await new Promise((resolve, reject) => {
         const req = booksStore.getAll();
@@ -132,7 +135,11 @@ export function useOfflineBooks() {
       
       for (const book of booksList) {
         if (!existingKeysSet.has(book.id)) {
+          // Blob is gone: drop the metadata and the mirrored 'local-files' copy together
           booksStore.delete(book.id);
+          if (book.file_type) {
+            localFilesStore.delete(`book-files/${book.id}.${book.file_type}`);
+          }
           continue;
         }
 
@@ -240,8 +247,18 @@ export function useOfflineBooks() {
     try {
       // Try the stored file_url first; if it 4xx's (expired signed URL), ask the
       // backend to mint a fresh signed URL from the storage path embedded in the URL.
+      // The file server marks every bucket except book-covers private, so a bare
+      // fetch of a /uploads/ URL 401s. Carry the session token like Reader does.
+      const withAuth = (url: string): string => {
+        // /local-file-route/ URLs are served straight from IndexedDB by the patched
+        // fetch, which decodes everything after the marker as the key, so a token
+        // query string would turn them into a miss.
+        if (!url || !url.startsWith(getServerUrl()) || url.includes('/local-file-route/') || url.includes('token=')) return url;
+        return url + (url.includes('?') ? '&' : '?') + `token=${encodeURIComponent(session.access_token)}`;
+      };
+
       const fetchWithRetry = async (url: string): Promise<Response> => {
-        const first = await fetch(url).catch(() => null);
+        const first = await fetch(withAuth(url)).catch(() => null);
         if (first && first.ok) return first;
 
         try {
@@ -371,10 +388,21 @@ export function useOfflineBooks() {
   const removeBookOffline = useCallback(async (bookId: string) => {
     try {
       const db = await openLocalDB();
-      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
-      
-      transaction.objectStore(BOOKS_STORE).delete(bookId);
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE, LOCAL_FILES_STORE], 'readwrite');
+      const booksStore = transaction.objectStore(BOOKS_STORE);
+
+      // Needed to rebuild the mirrored 'local-files' key written by saveBookOffline
+      const record = await new Promise<OfflineBook | undefined>((resolve) => {
+        const req = booksStore.get(bookId);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(undefined);
+      });
+
+      booksStore.delete(bookId);
       transaction.objectStore(FILES_STORE).delete(bookId);
+      if (record?.file_type) {
+        transaction.objectStore(LOCAL_FILES_STORE).delete(`book-files/${bookId}.${record.file_type}`);
+      }
       
       await new Promise<void>((resolve, reject) => {
         transaction.oncomplete = () => resolve();
@@ -439,9 +467,22 @@ export function useOfflineBooks() {
   const clearAllOfflineData = useCallback(async () => {
     try {
       const db = await openLocalDB();
-      const transaction = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
-      
-      transaction.objectStore(BOOKS_STORE).clear();
+      const transaction = db.transaction([BOOKS_STORE, FILES_STORE, LOCAL_FILES_STORE], 'readwrite');
+      const booksStore = transaction.objectStore(BOOKS_STORE);
+      const localFilesStore = transaction.objectStore(LOCAL_FILES_STORE);
+
+      // 'local-files' also holds locally uploaded originals, so only drop the
+      // mirrored book blobs rather than clearing the whole store
+      const cachedBooks = await new Promise<OfflineBook[]>((resolve, reject) => {
+        const req = booksStore.getAll();
+        req.onsuccess = () => resolve((req.result || []) as OfflineBook[]);
+        req.onerror = () => reject(req.error);
+      });
+      for (const book of cachedBooks) {
+        localFilesStore.delete(`book-files/${book.id}.${book.file_type}`);
+      }
+
+      booksStore.clear();
       transaction.objectStore(FILES_STORE).clear();
       
       await new Promise<void>((resolve, reject) => {

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import ePub, { Book, Rendition, NavItem } from "epubjs";
+import ePub, { Book, Rendition, NavItem, Location as EpubLocation } from "epubjs";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Loader2, Settings, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Settings } from "lucide-react";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
+import { ReaderPagePill } from "./reader/ReaderPagePill";
+import { ReaderProgressBar } from "./reader/ReaderProgressBar";
+import { ReaderSettingsSheet } from "./reader/ReaderSettingsSheet";
 import { Separator } from "@/components/ui/separator";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
@@ -15,6 +18,25 @@ interface EpubReaderProps {
   initialLocation?: string;
   showControls?: boolean;
 }
+
+// epub.js ships an incorrect signature here: locationFromCfi() returns the index of
+// the location (-1 until locations are generated), not the DOM `Location`.
+const locationIndexFromCfi = (locations: Book["locations"], cfi: string): number =>
+  locations.locationFromCfi(cfi) as unknown as number;
+
+const THEME_OPTIONS = [
+  { id: "light", label: "Light", swatchClass: "bg-white" },
+  { id: "sepia", label: "Sepia", swatchClass: "bg-[#f7f1e3]" },
+  { id: "dark", label: "Dark", swatchClass: "bg-[#0b0f19]" },
+  { id: "black", label: "Black", swatchClass: "bg-black" },
+];
+
+const FONT_OPTIONS = [
+  { id: "Merriweather", label: "Merriweather" },
+  { id: "Lora", label: "Lora" },
+  { id: "Inter", label: "Inter" },
+  { id: "System", label: "System" },
+];
 
 export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleControls, initialLocation, showControls = true }: EpubReaderProps) => {
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -313,12 +335,14 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
           if (!active) return;
           book.locations.generate(1024).then(() => {
             if (!active || !rendition) return;
-            const currentLocation = rendition.currentLocation();
+            // currentLocation() resolves to a { start, end, atStart, atEnd } Location at
+            // runtime; the bundled types declare the narrower DisplayedLocation.
+            const currentLocation = rendition.currentLocation() as unknown as EpubLocation;
             if (currentLocation && currentLocation.start) {
               const progressPercent = Math.max(0, Math.min(100, Math.round(book.locations.percentageFromCfi(currentLocation.start.cfi) * 100)));
               setProgress(progressPercent);
               
-              const locIndex = book.locations.locationFromCfi(currentLocation.start.cfi);
+              const locIndex = locationIndexFromCfi(book.locations, currentLocation.start.cfi);
               if (locIndex !== -1) {
                 setCurrentPageNum(locIndex + 1);
                 setTotalPagesCount(book.locations.length());
@@ -367,7 +391,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
             
             // Update page numbers if locations are generated
             if (bookRef.current && bookRef.current.locations && bookRef.current.locations.length() > 0) {
-              const locIndex = bookRef.current.locations.locationFromCfi(location.start.cfi);
+              const locIndex = locationIndexFromCfi(bookRef.current.locations, location.start.cfi);
               if (locIndex !== -1) {
                 setCurrentPageNum(locIndex + 1);
                 setTotalPagesCount(bookRef.current.locations.length());
@@ -466,9 +490,12 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
     }
   };
 
-  // Dynamic font sizing
-  const changeFontSize = (delta: number) => {
-    setFontSize(prev => Math.max(12, Math.min(32, prev + delta)));
+  // Scrub the shared progress bar: map a percentage back to a cfi.
+  const handleSeek = (percent: number) => {
+    const locations = bookRef.current?.locations;
+    if (!locations || locations.length() === 0 || !renditionRef.current) return;
+    const cfi = locations.cfiFromPercentage(Math.max(0, Math.min(100, percent)) / 100);
+    if (cfi) renditionRef.current.display(cfi);
   };
 
   const goToPreviousPage = () => {
@@ -499,7 +526,7 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
       {loading && (
         <div className="absolute inset-0 bg-background/95 backdrop-blur-sm flex flex-col items-center justify-center z-50 animate-in fade-in duration-300">
           <div className="text-center space-y-4">
-            <Loader2 className="w-10 h-10 animate-spin text-violet-500 mx-auto" />
+            <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
             <p className="text-sm font-medium text-muted-foreground animate-pulse">Preparing publication container...</p>
           </div>
         </div>
@@ -508,149 +535,44 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
       {/* Error Overlay */}
       {error && (
         <div className="absolute inset-0 bg-background/95 flex flex-col items-center justify-center z-45 text-center px-6">
-          <p className="text-red-500 font-semibold mb-2">Failed to render book</p>
+          <p className="text-destructive font-semibold mb-2">Failed to render book</p>
           <p className="text-sm text-muted-foreground max-w-md">{error}</p>
         </div>
       )}
 
-      {/* Appearance Customization Popover Panel */}
-      {settingsOpen && showUi && (
-        <div className="absolute right-4 top-14 w-80 bg-popover/90 backdrop-blur-lg text-popover-foreground border border-border/80 rounded-2xl shadow-2xl p-5 z-50 animate-in fade-in slide-in-from-top-3 duration-250 flex flex-col gap-4">
-          <div className="flex items-center justify-between pb-1 border-b border-border/40">
-            <span className="text-sm font-extrabold tracking-tight text-foreground">Appearance Settings</span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 w-7 p-0 rounded-full hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors" 
-              onClick={() => setSettingsOpen(false)}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-          
-          {/* Font Family Selector */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Typography</span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { name: "Merriweather", label: "Classic Serif" },
-                { name: "Lora", label: "Modern Serif" },
-                { name: "Inter", label: "Sleek Sans" },
-                { name: "System", label: "System Sans" }
-              ].map((f) => (
-                <button
-                  key={f.name}
-                  onClick={() => setFontFamily(f.name)}
-                  className={`px-2 py-2 text-xs rounded-xl border transition-all text-center ${
-                    fontFamily === f.name
-                      ? "bg-violet-600 border-violet-600 text-white font-bold shadow-md shadow-violet-500/10"
-                      : "border-border hover:bg-muted/40 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <div className="font-semibold">{f.label}</div>
-                  <div className="text-[10px] opacity-70 font-mono mt-0.5" style={{ fontFamily: f.name === "System" ? "inherit" : f.name }}>Abc</div>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Appearance settings, shared with the other readers */}
+      <ReaderSettingsSheet
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        title="Appearance"
+        theme={{ value: theme, onChange: handleThemeChange, options: THEME_OPTIONS }}
+        fontFamily={{ value: fontFamily, onChange: setFontFamily, options: FONT_OPTIONS }}
+        fontSize={{
+          value: fontSize,
+          onChange: setFontSize,
+          min: 12,
+          max: 32,
+          format: (v) => `${v}px`,
+        }}
+        lineHeight={{
+          // Persisted as a string so the stored epub_line_height value keeps its shape.
+          value: parseFloat(lineHeight) || 1.6,
+          onChange: (v) => setLineHeight(v.toFixed(1)),
+          min: 1.2,
+          max: 2.2,
+          step: 0.1,
+          format: (v) => v.toFixed(1),
+        }}
+        margin={{
+          value: parseInt(marginSize, 10) || 32,
+          onChange: (v) => setMarginSize(`${v}px`),
+          min: 8,
+          max: 64,
+          step: 4,
+          format: (v) => `${v}px`,
+        }}
+      />
 
-          {/* Font Size Selector */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Font Size</span>
-              <span className="text-xs font-extrabold font-mono text-violet-500 bg-violet-500/10 px-1.5 py-0.5 rounded">{fontSize}px</span>
-            </div>
-            <div className="flex items-center border border-border/80 rounded-xl overflow-hidden bg-card text-card-foreground">
-              <button
-                className="flex-1 py-2 hover:bg-muted font-bold text-xs transition-colors border-r border-border/40"
-                onClick={() => changeFontSize(-1)}
-              >
-                A -
-              </button>
-              <button
-                className="flex-1 py-2 hover:bg-muted font-bold text-xs transition-colors"
-                onClick={() => changeFontSize(1)}
-              >
-                A +
-              </button>
-            </div>
-          </div>
-
-          {/* Line Height Selector */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Line Height</span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { label: "Compact", value: "1.4" },
-                { label: "Normal", value: "1.6" },
-                { label: "Loose", value: "1.8" }
-              ].map((lh) => (
-                <button
-                  key={lh.value}
-                  onClick={() => setLineHeight(lh.value)}
-                  className={`py-1.5 text-xs rounded-xl border transition-all ${
-                    lineHeight === lh.value
-                      ? "bg-violet-600 border-violet-600 text-white font-bold shadow-md shadow-violet-500/10"
-                      : "border-border hover:bg-muted/40 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {lh.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Margins Selector */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Margins</span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { label: "Narrow", value: "48px" },
-                { label: "Medium", value: "32px" },
-                { label: "Wide", value: "16px" }
-              ].map((margin) => (
-                <button
-                  key={margin.value}
-                  onClick={() => setMarginSize(margin.value)}
-                  className={`py-1.5 text-xs rounded-xl border transition-all ${
-                    marginSize === margin.value
-                      ? "bg-violet-600 border-violet-600 text-white font-bold shadow-md shadow-violet-500/10"
-                      : "border-border hover:bg-muted/40 text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {margin.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Themes Selector */}
-          <div className="space-y-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Theme</span>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { name: "light", bg: "bg-white text-gray-900 border-gray-200" },
-                { name: "sepia", bg: "bg-[#f7f1e3] text-[#5d4037] border-[#dcd6cd]" },
-                { name: "dark", bg: "bg-[#0b0f19] text-[#e5e7eb] border-gray-800" },
-                { name: "black", bg: "bg-black text-gray-100 border-zinc-800" }
-              ].map((t) => (
-                <button
-                  key={t.name}
-                  onClick={() => handleThemeChange(t.name)}
-                  className={`py-2 text-[10px] sm:text-xs font-bold rounded-xl border transition-all transform active:scale-95 ${t.bg} ${
-                    theme === t.name
-                      ? "ring-2 ring-violet-600 scale-105 shadow-md shadow-violet-500/20"
-                      : "opacity-80 hover:opacity-100 hover:scale-102"
-                  }`}
-                >
-                  {t.name.charAt(0).toUpperCase() + t.name.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Reader Top Toolbar */}
       <div className={`flex items-center justify-between px-3 sm:px-4 py-2 border-b bg-muted/20 absolute top-0 left-0 right-0 z-30 transition-all duration-300 transform ${
         showUi ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
@@ -719,28 +641,31 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
         />
       </div>
 
-      {/* Floating Temporary Page Number Overlay */}
-      {showOverlayPage && currentPageNum && totalPagesCount && (
-        <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-40 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
-          Page {currentPageNum} of {totalPagesCount}
-        </div>
+      {/* Transient location indicator */}
+      {currentPageNum !== null && (
+        <ReaderPagePill
+          current={currentPageNum}
+          total={totalPagesCount}
+          visible={showOverlayPage}
+        />
       )}
 
-      {/* Reader Footer progress info */}
-      <div className={`px-4 py-2 border-t bg-muted/20 absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 transform flex items-center justify-between text-[10px] sm:text-xs font-semibold opacity-90 tracking-wide ${
-        showUi ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
-      }`}>
-        <span className="opacity-70 hidden sm:inline">SWIPE OR CLICK MARGINS TO TURN PAGES</span>
-        <span className="opacity-70 sm:hidden">TAP MARGINS TO NAVIGATE</span>
-        <div className="flex items-center gap-3 ml-auto">
-          <div className="w-24 sm:w-36 bg-border/40 rounded-full h-1.5 overflow-hidden">
-            <div className="bg-violet-500 h-full rounded-full transition-all duration-200" style={{ width: `${progress}%` }} />
-          </div>
-          <span className="font-mono text-xs opacity-80">
-            {currentPageNum && totalPagesCount ? `Page ${currentPageNum} of ${totalPagesCount} (${progress}%)` : `${progress}% Read`}
+      {/* Reader progress, shared with the other readers */}
+      <ReaderProgressBar
+        percent={progress}
+        visible={showUi}
+        onSeek={handleSeek}
+        caption={
+          currentPageNum && totalPagesCount
+            ? `${currentPageNum} / ${totalPagesCount} · ${progress}%`
+            : `${progress}%`
+        }
+        leading={
+          <span className="hidden shrink-0 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:inline">
+            Tap margins to turn pages
           </span>
-        </div>
-      </div>
+        }
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { cloneRemoteData } from "@/lib/local-supabase";
 import { Navigation } from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,14 +9,46 @@ import { ArrowLeft, Activity, BookOpen, Star, Trophy, Milestone, Loader2 } from 
 import { format } from "date-fns";
 import type { User } from "@supabase/supabase-js";
 
-interface FeedItem {
+interface ActivityRow {
   id: string;
   user_id: string;
   activity_type: string;
-  activity_data: Record<string, any>;
+  activity_data: Record<string, any> | null;
   created_at: string;
+}
+
+interface FeedItem extends ActivityRow {
+  activity_data: Record<string, any>;
   username?: string;
   avatar_url?: string;
+}
+
+interface ProfileRow {
+  id: string;
+  username: string | null;
+  avatar_url: string | null;
+}
+
+interface FinishedBookRow {
+  id: string;
+  title: string;
+  author: string | null;
+  finished_reading_at: string | null;
+}
+
+interface ReviewRow {
+  book_id: string;
+  rating: number | null;
+  created_at: string | null;
+  books: { title: string } | null;
+}
+
+interface ActivityInsert {
+  user_id: string;
+  activity_type: string;
+  activity_data: Record<string, any>;
+  is_public: boolean;
+  created_at: string;
 }
 
 const ACTIVITY_ICONS: Record<string, typeof BookOpen> = {
@@ -36,43 +69,149 @@ const Feed = () => {
   const [user, setUser] = useState<User | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const publishedFor = useRef<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        currentUserId = session.user.id;
         setUser(session.user);
         fetchFeed(session.user.id);
+        publishOwnActivityOnce(session.user.id);
       } else {
         navigate("/auth");
       }
     });
+
+    // activity_feed is cloned from the remote in the background, so the first fetch
+    // usually runs before any rows have landed in the local table.
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const table = customEvent.detail?.table;
+      if ((table === "activity_feed" || table === "profiles") && currentUserId) {
+        fetchFeed(currentUserId);
+      }
+    };
+    window.addEventListener("local-db-synced", handleSync);
+
+    return () => {
+      window.removeEventListener("local-db-synced", handleSync);
+    };
   }, [navigate]);
+
+  // Nothing in the app writes activity rows as things happen, so the user's own feed is
+  // derived from what the local DB already knows: finished books and posted reviews. These
+  // go through the normal local-first insert, so they sync upstream like any other table.
+  const publishOwnActivity = async (userId: string) => {
+    const [ownRes, booksRes, reviewsRes] = await Promise.all([
+      supabase.from("activity_feed").select("activity_type, activity_data").eq("user_id", userId),
+      // Capped: a large back catalogue shouldn't turn the first visit into a bulk upload.
+      supabase
+        .from("books")
+        .select("id, title, author, finished_reading_at")
+        .eq("user_id", userId)
+        .eq("is_completed", true)
+        .order("finished_reading_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("book_reviews")
+        .select("*, books(title)")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(25),
+    ]);
+
+    const own: Pick<ActivityRow, "activity_type" | "activity_data">[] = ownRes.data || [];
+    const finished: FinishedBookRow[] = booksRes.data || [];
+    const reviews: ReviewRow[] = reviewsRes.data || [];
+
+    const published = new Set(
+      own.map(a => `${a.activity_type}:${a.activity_data?.book_id || ""}`)
+    );
+    const pending: ActivityInsert[] = [];
+
+    for (const book of finished) {
+      if (published.has(`finished_book:${book.id}`)) continue;
+      published.add(`finished_book:${book.id}`);
+      pending.push({
+        user_id: userId,
+        activity_type: "finished_book",
+        activity_data: { book_id: book.id, title: book.title, author: book.author },
+        is_public: true,
+        created_at: book.finished_reading_at || new Date().toISOString(),
+      });
+    }
+
+    for (const review of reviews) {
+      if (!review.rating || published.has(`review:${review.book_id}`)) continue;
+      published.add(`review:${review.book_id}`);
+      pending.push({
+        user_id: userId,
+        activity_type: "review",
+        activity_data: {
+          book_id: review.book_id,
+          title: review.books?.title,
+          rating: review.rating,
+        },
+        is_public: true,
+        created_at: review.created_at || new Date().toISOString(),
+      });
+    }
+
+    if (pending.length > 0) {
+      await supabase.from("activity_feed").insert(pending);
+    }
+  };
+
+  // The dedupe above reads the local activity_feed mirror, and the clone merges that table
+  // late in its pass — backfilling against a half-cloned table would re-post rows that
+  // already exist upstream. Refresh the mirror first, the way Discover does.
+  const publishOwnActivityOnce = async (userId: string) => {
+    if (publishedFor.current === userId) return;
+    publishedFor.current = userId;
+    if (navigator.onLine) {
+      try {
+        await cloneRemoteData(userId);
+      } catch (error) {
+        console.error("Error syncing activity feed:", error);
+      }
+    }
+    await publishOwnActivity(userId);
+    await fetchFeed(userId);
+  };
 
   const fetchFeed = async (userId: string) => {
     setLoading(true);
+
     const { data } = await supabase
       .from("activity_feed")
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50);
 
-    if (data && data.length > 0) {
+    const rows: ActivityRow[] = data || [];
+    if (rows.length > 0) {
       // Fetch usernames for all unique user_ids
-      const userIds = [...new Set(data.map(d => d.user_id))];
+      const userIds = [...new Set(rows.map(r => r.user_id))];
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, username, avatar_url")
         .in("id", userIds);
 
-      const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
-      const enriched = data.map(d => ({
-        ...d,
-        activity_data: (d.activity_data || {}) as Record<string, any>,
-        username: profileMap.get(d.user_id)?.username || "Reader",
-        avatar_url: profileMap.get(d.user_id)?.avatar_url || null,
+      const profileRows: ProfileRow[] = profiles || [];
+      const profileMap = new Map<string, ProfileRow>(profileRows.map(p => [p.id, p]));
+      const enriched = rows.map(r => ({
+        ...r,
+        activity_data: (r.activity_data || {}) as Record<string, any>,
+        username: profileMap.get(r.user_id)?.username || "Reader",
+        avatar_url: profileMap.get(r.user_id)?.avatar_url || undefined,
       }));
       setFeed(enriched);
+    } else {
+      setFeed([]);
     }
     setLoading(false);
   };

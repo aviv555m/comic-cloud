@@ -80,13 +80,14 @@ export const TagPicker = ({ bookId, userId }: TagPickerProps) => {
 
     setAllTags([...allTags, data]);
     setNewTagName("");
-    addTagToBook(data.id);
+    // pass the tag itself: allTags is still the pre-setAllTags array in this render
+    addTagToBook(data);
   };
 
-  const addTagToBook = async (tagId: string) => {
+  const addTagToBook = async (tag: TagType) => {
     const { error } = await supabase
       .from("book_tags")
-      .insert({ book_id: bookId, tag_id: tagId });
+      .insert({ book_id: bookId, tag_id: tag.id });
 
     if (error) {
       if (!error.message.includes("duplicate")) {
@@ -99,10 +100,7 @@ export const TagPicker = ({ bookId, userId }: TagPickerProps) => {
       return;
     }
 
-    const tag = allTags.find((t) => t.id === tagId);
-    if (tag) {
-      setBookTags([...bookTags, tag]);
-    }
+    setBookTags([...bookTags, tag]);
   };
 
   const removeTagFromBook = async (tagId: string) => {
@@ -168,7 +166,7 @@ export const TagPicker = ({ bookId, userId }: TagPickerProps) => {
                         style={{ backgroundColor: tag.color }}
                         className="text-white cursor-pointer hover:opacity-80"
                         onClick={() => {
-                          addTagToBook(tag.id);
+                          addTagToBook(tag);
                           setOpen(false);
                         }}
                       >

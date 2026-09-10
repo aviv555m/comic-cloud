@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import JSZip from "jszip";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ChapterNavigation, Chapter } from "./ChapterNavigation";
+import { ReaderPagePill } from "./reader/ReaderPagePill";
+import { ReaderProgressBar } from "./reader/ReaderProgressBar";
 
 interface ComicReaderProps {
   url: string | ArrayBuffer;
   onPageChange?: (page: number) => void;
+  onTotalPages?: (n: number) => void;
   initialPage?: number;
   showControls?: boolean;
   onToggleControls?: () => void;
@@ -22,9 +25,16 @@ interface ImageFile {
   folder: string;
 }
 
+// One archive load; flipped inactive when the [url] effect is torn down or re-run
+interface LoadRun {
+  active: boolean;
+  controller: AbortController;
+}
+
 export const ComicReader = ({ 
   url, 
   onPageChange, 
+  onTotalPages,
   initialPage = 0,
   showControls = true,
   onToggleControls,
@@ -39,6 +49,7 @@ export const ComicReader = ({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showOverlayPage, setShowOverlayPage] = useState(false);
   const pageNumTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const blobUrlsRef = useRef<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -57,10 +68,31 @@ export const ComicReader = ({
   }, [currentPage]);
 
   useEffect(() => {
-    loadComicArchive();
+    const run: LoadRun = { active: true, controller: new AbortController() };
+    loadComicArchive(run);
+    return () => {
+      run.active = false;
+      run.controller.abort();
+    };
   }, [url]);
 
-  const loadComicArchive = async () => {
+  // Revoke object URLs to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+      blobUrlsRef.current = [];
+    };
+  }, []);
+
+  const loadComicArchive = async (run: LoadRun) => {
+    // Object URLs this run created; revoked wholesale if the run is superseded mid-flight
+    const createdUrls: string[] = [];
+    let handedOff = false;
+    const abandon = () => {
+      if (handedOff) return;
+      createdUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
+    };
+
     try {
       setLoading(true);
       
@@ -79,34 +111,56 @@ export const ComicReader = ({
       if (url instanceof ArrayBuffer) {
         arrayBuffer = url;
       } else if (typeof url === 'string') {
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: run.controller.signal });
         arrayBuffer = await response.arrayBuffer();
       } else {
         throw new Error('Invalid URL format');
       }
-      
+
+      if (!run.active) return;
+
       const zip = await JSZip.loadAsync(arrayBuffer);
+
+      if (!run.active) return;
+
+      // Natural sort ("page2" before "page10") on the entry names, before any decoding
+      const entryNames = Object.keys(zip.files)
+        .filter((filename) => !zip.files[filename].dir && /\.(jpg|jpeg|png|gif|webp)$/i.test(filename))
+        .filter((filename) => !filename.startsWith('__MACOSX/') && !(filename.split('/').pop() || '').startsWith('.'))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
       // Extract all image files with folder info
       const imageFiles: ImageFile[] = [];
-      
-      for (const filename of Object.keys(zip.files)) {
-        const file = zip.files[filename];
-        if (!file.dir && /\.(jpg|jpeg|png|gif|webp)$/i.test(filename)) {
-          const blob = await file.async("blob");
-          const url = URL.createObjectURL(blob);
-          
-          // Get folder path
-          const parts = filename.split('/');
-          const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-          
-          imageFiles.push({ name: filename, data: url, folder });
+
+      for (const filename of entryNames) {
+        const blob = await zip.files[filename].async("blob");
+        if (!run.active) {
+          abandon();
+          return;
         }
+
+        const objectUrl = URL.createObjectURL(blob);
+        createdUrls.push(objectUrl);
+
+        // Get folder path
+        const parts = filename.split('/');
+        const folder = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+
+        imageFiles.push({ name: filename, data: objectUrl, folder });
       }
 
-      // Sort by filename
-      imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+      if (!run.active) {
+        abandon();
+        return;
+      }
+
+      // Swap the registry before revoking so the outgoing chapter is only freed once the new one is in
+      const previousBlobUrls = blobUrlsRef.current;
+      blobUrlsRef.current = createdUrls;
+      handedOff = true;
+      previousBlobUrls.forEach((objectUrl) => URL.revokeObjectURL(objectUrl));
       setImages(imageFiles);
+      onTotalPages?.(imageFiles.length);
 
       // Extract chapters from folder structure
       const folderMap = new Map<string, number>();
@@ -145,6 +199,9 @@ export const ComicReader = ({
       setChapters(extractedChapters);
       setLoading(false);
     } catch (error) {
+      abandon();
+      if (!run.active) return;
+
       toast({
         variant: "destructive",
         title: "Error",
@@ -233,35 +290,88 @@ export const ComicReader = ({
     );
   }
 
+  const progressPercent = ((currentPage + 1) / images.length) * 100;
+  const pageCaption = `${currentPage + 1} / ${images.length}`;
+
+  const seekToPercent = (percent: number) => {
+    const target = Math.min(images.length - 1, Math.max(0, Math.round((percent / 100) * images.length) - 1));
+    if (readingMode === "scroll") {
+      // Instant, like the restore-scroll effect: a smooth jump drags the observer through every
+      // page in between, firing one onPageChange (and one progress write) per page crossed
+      document.getElementById(`comic-page-${target}`)?.scrollIntoView({ behavior: "auto" });
+    }
+    goToPage(target);
+  };
+
+  const prevChapterButton = onPrevChapter ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={onPrevChapter}
+      title="Previous chapter"
+      aria-label="Previous chapter"
+      className="h-11 w-11 shrink-0 rounded-full"
+    >
+      <ChevronLeft className="w-4 h-4" />
+    </Button>
+  ) : undefined;
+
+  const trailingControls = (
+    <div className="flex shrink-0 items-center gap-1">
+      {onNextChapter && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNextChapter}
+          title="Next chapter"
+          aria-label="Next chapter"
+          className="h-11 w-11 rounded-full"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </Button>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => handleToggleReadingMode(readingMode === "scroll" ? "page" : "scroll")}
+        title={readingMode === "scroll" ? "Switch to page mode" : "Switch to scroll mode"}
+        aria-label={readingMode === "scroll" ? "Switch to page mode" : "Switch to scroll mode"}
+        className="h-11 w-11 rounded-full"
+      >
+        {readingMode === "scroll" ? <BookOpen className="w-4 h-4" /> : <ScrollText className="w-4 h-4" />}
+      </Button>
+    </div>
+  );
+
+  const progressBar = (
+    // The reader shell toggles the chrome on any content click; scrubbing must not also hide the bar
+    <div className="contents" onClick={(e) => e.stopPropagation()}>
+      <ReaderProgressBar
+        percent={progressPercent}
+        caption={pageCaption}
+        leading={prevChapterButton}
+        trailing={trailingControls}
+        visible={showControls}
+        onSeek={seekToPercent}
+      />
+    </div>
+  );
+
   if (readingMode === "scroll") {
     return (
       <div className="flex flex-col items-center w-full">
-        {/* Sticky Toolbar */}
-        <div 
-          className={`sticky z-40 bg-background/95 backdrop-blur-sm border rounded-full px-4 py-1.5 shadow-md flex items-center gap-3 pointer-events-auto transition-all duration-300 ${
-            showControls ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
-          }`} 
-          style={{ top: "80px" }}
-        >
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Scroll Mode
-          </span>
-          <span className="text-sm font-medium">
-            Page {currentPage + 1} of {images.length}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-xs"
-            onClick={() => handleToggleReadingMode("page")}
-          >
-            Switch to Page Mode
-          </Button>
-        </div>
+        <ReaderPagePill
+          variant="sticky"
+          current={currentPage + 1}
+          total={images.length}
+          label={chapterTitle}
+          visible={showControls}
+          className="top-[80px]"
+        />
 
         {/* Seamless Webtoon Continuous list */}
         <div 
-          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 cursor-pointer mx-auto animate-fade-in"
+          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 pb-28 cursor-pointer mx-auto animate-fade-in"
           onClick={(e) => {
             e.stopPropagation();
             onToggleControls?.();
@@ -293,7 +403,7 @@ export const ComicReader = ({
                     e.stopPropagation();
                     onPrevChapter();
                   }}
-                  className="flex items-center gap-1 border-violet-500/20 text-violet-400 hover:bg-violet-500/10"
+                  className="flex min-h-11 items-center gap-1"
                 >
                   <ChevronLeft className="w-4 h-4" /> Previous Chapter
                 </Button>
@@ -304,7 +414,7 @@ export const ComicReader = ({
                     e.stopPropagation();
                     onNextChapter();
                   }}
-                  className="flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white"
+                  className="flex min-h-11 items-center gap-1"
                 >
                   Next Chapter <ChevronRight className="w-4 h-4" />
                 </Button>
@@ -313,38 +423,19 @@ export const ComicReader = ({
           )}
         </div>
 
-        {/* Floating progress overlay for Comic Reader */}
-        <div className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-300 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
-          <div className="bg-background/90 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5">
-            <div className="flex justify-between items-center text-xs font-semibold">
-              <span className="truncate text-violet-300 max-w-[70%]">
-                {chapterTitle || "Reading"}
-              </span>
-              <span className="text-muted-foreground shrink-0">
-                Page {currentPage + 1} of {images.length}
-              </span>
-            </div>
-            {/* Visual progress bar */}
-            <div className="w-full bg-violet-950/40 rounded-full h-1.5 overflow-hidden">
-              <div 
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-200"
-                style={{ width: `${((currentPage + 1) / images.length) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
+        {progressBar}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full">
-      {/* Floating Temporary Page Number Overlay */}
-      {showOverlayPage && images.length > 0 && (
-        <div className="fixed bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-50 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
-          Page {currentPage + 1} of {images.length}
-        </div>
-      )}
+    <div className="flex flex-col items-center gap-4 w-full pb-40">
+      {/* Transient page number, only while the chrome is hidden */}
+      <ReaderPagePill
+        current={currentPage + 1}
+        total={images.length}
+        visible={showOverlayPage && !showControls}
+      />
       {/* Immersive Image Container with Navigation Overlays */}
       <div className="relative max-w-4xl w-[90%] sm:w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40 mx-auto">
         <img
@@ -354,87 +445,80 @@ export const ComicReader = ({
         />
         
         {/* Navigation Tap Zones */}
-        <div className="absolute inset-0 flex z-10">
-          {/* Left 30%: Previous page */}
+        <div className="absolute inset-0 flex z-10 touch-manipulation">
+          {/* Left 35%: Previous page */}
           <div 
             onClick={(e) => {
               e.stopPropagation();
               if (currentPage > 0) goToPage(currentPage - 1);
             }}
-            className="w-[30%] h-full cursor-w-resize active:bg-white/5 transition-colors"
+            className="w-[35%] h-full cursor-w-resize active:bg-foreground/5 transition-colors"
             title="Previous Page"
           />
-          {/* Center 40%: Toggle Controls */}
+          {/* Center 30%: Toggle Controls */}
           <div 
             onClick={(e) => {
               e.stopPropagation();
               onToggleControls?.();
             }}
-            className="w-[40%] h-full cursor-pointer"
+            className="w-[30%] h-full cursor-pointer"
             title="Toggle Menu"
           />
-          {/* Right 30%: Next page */}
+          {/* Right 35%: Next page */}
           <div 
             onClick={(e) => {
               e.stopPropagation();
               if (currentPage < images.length - 1) goToPage(currentPage + 1);
             }}
-            className="w-[30%] h-full cursor-e-resize active:bg-white/5 transition-colors"
+            className="w-[35%] h-full cursor-e-resize active:bg-foreground/5 transition-colors"
             title="Next Page"
           />
         </div>
       </div>
 
       {currentPage === images.length - 1 && onNextChapter && (
-        <div className="w-[90%] sm:w-full max-w-4xl bg-violet-950/20 border border-violet-500/20 backdrop-blur-sm rounded-xl p-6 text-center flex flex-col items-center gap-3 animate-in fade-in zoom-in-95 duration-300 mt-2 mx-auto">
-          <p className="text-sm text-violet-300 font-medium">You have completed this chapter!</p>
+        <div className="w-[90%] sm:w-full max-w-4xl bg-primary/10 border border-primary/20 backdrop-blur-sm rounded-xl p-6 text-center flex flex-col items-center gap-3 animate-in fade-in zoom-in-95 duration-300 mt-2 mx-auto">
+          <p className="text-sm text-primary font-medium">You have completed this chapter!</p>
           <Button 
             onClick={onNextChapter}
-            className="bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5 shadow-lg shadow-violet-500/20"
+            className="flex min-h-11 items-center gap-1.5 shadow-lg shadow-primary/20"
           >
             Read Next Chapter <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
       )}
 
-      {/* Floating progress overlay at the bottom in Page Mode */}
-      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 transition-all duration-400 z-50 ${
+      {/* Page controls, parked just above the shared progress bar */}
+      <div className={`fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 transition-all duration-300 z-50 ${
         showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8 pointer-events-none"
       }`}>
-        <div className="flex items-center gap-2 sm:gap-4 glass-panel px-4 py-2 rounded-full shadow-strong border border-white/10">
+        <div className="flex items-center gap-1 glass-panel px-2 py-1.5 rounded-full shadow-strong border border-border/60">
           <Button
             onClick={() => goToPage(currentPage - 1)}
             disabled={currentPage === 0}
             variant="ghost"
-            size="sm"
-            className="rounded-full hover:bg-white/10"
+            size="icon"
+            title="Previous page"
+            aria-label="Previous page"
+            className="h-11 w-11 rounded-full"
           >
-            <ChevronLeft className="w-4 h-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Previous</span>
+            <ChevronLeft className="w-4 h-4" />
           </Button>
-          
-          <div className="text-sm font-medium px-2">
-            {currentPage + 1} / {images.length}
+
+          <div className="px-2 text-sm font-medium tabular-nums">
+            {pageCaption}
           </div>
 
           <Button
             onClick={() => goToPage(currentPage + 1)}
             disabled={currentPage >= images.length - 1}
             variant="ghost"
-            size="sm"
-            className="rounded-full hover:bg-white/10"
+            size="icon"
+            title="Next page"
+            aria-label="Next page"
+            className="h-11 w-11 rounded-full"
           >
-            <span className="hidden sm:inline">Next</span>
-            <ChevronRight className="w-4 h-4 ml-1 sm:ml-2" />
-          </Button>
-
-          <Button
-            onClick={() => handleToggleReadingMode("scroll")}
-            variant="ghost"
-            size="sm"
-            className="ml-1 sm:ml-2 text-xs rounded-full bg-violet-500/20 text-violet-300 hover:bg-violet-500/30"
-          >
-            Scroll Mode
+            <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
 
@@ -452,54 +536,9 @@ export const ComicReader = ({
             fileType="cbz"
           />
         )}
-
-        {/* Sibling Chapter Buttons in Page Mode */}
-        {(onPrevChapter || onNextChapter) && (
-          <div className="flex items-center gap-4 mt-2">
-            {onPrevChapter && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onPrevChapter}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" /> Previous Chapter
-              </Button>
-            )}
-            {onNextChapter && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onNextChapter}
-                className="text-xs text-violet-400 hover:text-violet-300 flex items-center gap-1"
-              >
-                Next Chapter <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Floating progress overlay for Comic Reader (Page Mode) */}
-      <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto transition-all duration-400 ${showControls && currentPage < images.length - 1 ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0 pointer-events-none"}`}>
-        <div className="glass-panel border border-white/10 px-4 py-2.5 rounded-2xl shadow-strong flex flex-col gap-1.5">
-          <div className="flex justify-between items-center text-xs font-semibold">
-            <span className="truncate text-violet-300 max-w-[70%]">
-              {chapterTitle || "Reading"}
-            </span>
-            <span className="text-muted-foreground shrink-0">
-              Page {currentPage + 1} of {images.length}
-            </span>
-          </div>
-          {/* Visual progress bar */}
-          <div className="w-full bg-violet-950/40 rounded-full h-1.5 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 h-full transition-all duration-200"
-              style={{ width: `${((currentPage + 1) / images.length) * 100}%` }}
-            />
-          </div>
-        </div>
-      </div>
+      {progressBar}
     </div>
   );
 };

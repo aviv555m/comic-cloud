@@ -336,7 +336,7 @@ const Statistics = () => {
   const getBestReadingTime = (): { period: string; icon: any; description: string } => {
     const morningHours = hourlyStats.slice(5, 12);
     const afternoonHours = hourlyStats.slice(12, 18);
-    const eveningHours = hourlyStats.slice(18, 24);
+    const eveningHours = hourlyStats.slice(18, 23);
     const nightHours = [...hourlyStats.slice(0, 5), ...hourlyStats.slice(23)];
 
     const totals = [
@@ -351,7 +351,7 @@ const Statistics = () => {
       period: best.period,
       icon: best.icon,
       description: best.minutes > 0 
-        ? `You read ${Math.round(best.minutes / 60)}h ${best.minutes % 60}m during ${best.period.toLowerCase()}`
+        ? `You read ${Math.floor(best.minutes / 60)}h ${best.minutes % 60}m during ${best.period.toLowerCase()}`
         : "Start reading to see your patterns",
     };
   };

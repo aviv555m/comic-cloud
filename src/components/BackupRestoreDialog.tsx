@@ -36,6 +36,10 @@ const BACKUP_TABLES = [
   "user_reading_preferences",
 ] as const;
 
+// Join tables with no user_id column — ownership is implied by the parent row.
+// Mirrors UNFILTERED_TABLES in src/lib/local-supabase.ts.
+const OWNERLESS_TABLES = new Set<string>(["book_tags", "reading_list_books"]);
+
 export const BackupRestoreDialog = ({ open, onOpenChange }: Props) => {
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -57,11 +61,13 @@ export const BackupRestoreDialog = ({ open, onOpenChange }: Props) => {
 
       for (const table of BACKUP_TABLES) {
         const query = supabase.from(table as any).select("*");
-        // profiles uses id = user.id; everything else uses user_id
+        // profiles uses id = user.id; ownerless join tables take no filter at all
         const { data, error } =
           table === "profiles"
             ? await query.eq("id", user.id)
-            : await query.eq("user_id", user.id);
+            : OWNERLESS_TABLES.has(table)
+              ? await query
+              : await query.eq("user_id", user.id);
         if (error) {
           console.warn(`Skipping ${table}:`, error.message);
           (payload.tables as Record<string, unknown[]>)[table] = [];
@@ -120,11 +126,13 @@ export const BackupRestoreDialog = ({ open, onOpenChange }: Props) => {
       for (const table of BACKUP_TABLES) {
         const rows: any[] = parsed.tables[table] ?? [];
         if (rows.length === 0) continue;
-        // Re-assign ownership to current user
-        const remapped = rows.map((r) => ({
-          ...r,
-          ...(table === "profiles" ? { id: user.id } : { user_id: user.id }),
-        }));
+        // Re-assign ownership to current user (ownerless join tables have no owner column)
+        const remapped = OWNERLESS_TABLES.has(table)
+          ? rows
+          : rows.map((r) => ({
+              ...r,
+              ...(table === "profiles" ? { id: user.id } : { user_id: user.id }),
+            }));
 
         const { error } = await supabase
           .from(table as any)

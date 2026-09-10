@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { originalSupabase } from "@/lib/local-supabase";
 import { Navigation } from "@/components/Navigation";
 import { Capacitor } from "@capacitor/core";
 import { BookCard } from "@/components/BookCard";
@@ -16,6 +17,7 @@ interface Book {
   author: string | null;
   series: string | null;
   cover_url: string | null;
+  file_url: string;
   file_type: string;
   is_public: boolean;
 }
@@ -55,14 +57,34 @@ const PublicLibrary = () => {
   const fetchPublicBooks = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("books")
-        .select("id, title, author, series, cover_url, file_url, file_type, total_pages, is_public, created_at")
-        .eq("is_public", true)
-        .order("created_at", { ascending: false });
+      // Community books only exist remotely: the local mirror is cloned per-user, so it can
+      // never hold another member's rows (and is empty for signed-out guests). Read the
+      // backend when we can and fall back to the mirror offline, so cached public books
+      // and the user's own shared books still render.
+      let data: Book[] | null = null;
 
-      if (error) throw error;
-      setBooks(data || []);
+      if (navigator.onLine) {
+        const remote = await originalSupabase
+          .from("books")
+          .select("id, title, author, series, cover_url, file_url, file_type, total_pages, is_public, created_at")
+          .eq("is_public", true)
+          .order("created_at", { ascending: false });
+
+        if (!remote.error) data = remote.data;
+      }
+
+      if (!data) {
+        const { data: localData, error } = await supabase
+          .from("books")
+          .select("id, title, author, series, cover_url, file_url, file_type, total_pages, is_public, created_at")
+          .eq("is_public", true)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        data = localData || [];
+      }
+
+      setBooks(data);
 
       // Group books by series
       const grouped: { [key: string]: Book[] } = {};

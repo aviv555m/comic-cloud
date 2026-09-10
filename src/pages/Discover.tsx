@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { cloneRemoteData } from "@/lib/local-supabase";
 import { Navigation } from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,15 +38,41 @@ const Discover = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        currentUserId = session.user.id;
         setUser(session.user);
-        fetchRecommendations(session.user.id);
+        pullRecommendations(session.user.id);
       } else {
         navigate("/auth");
       }
     });
+
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.table === "book_recommendations" && currentUserId) {
+        fetchRecommendations(currentUserId);
+      }
+    };
+    window.addEventListener("local-db-synced", handleSync);
+
+    return () => window.removeEventListener("local-db-synced", handleSync);
   }, [navigate]);
+
+  // book_recommendations is only ever written remotely by the generate-recommendations
+  // edge function, so refresh the local mirror before reading it.
+  const pullRecommendations = async (userId: string) => {
+    if (navigator.onLine) {
+      try {
+        await cloneRemoteData(userId);
+      } catch (error) {
+        console.error("Error syncing recommendations:", error);
+      }
+    }
+    await fetchRecommendations(userId);
+  };
 
   const fetchRecommendations = async (userId: string) => {
     setLoading(true);
@@ -80,7 +107,7 @@ const Discover = () => {
       if (error) throw error;
       
       if (data?.success) {
-        await fetchRecommendations(user.id);
+        await pullRecommendations(user.id);
         toast({ title: "New recommendations generated!", description: `${data.count} books recommended for you` });
       }
     } catch (error: any) {

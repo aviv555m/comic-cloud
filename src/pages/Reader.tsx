@@ -4,12 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { 
   ChevronLeft, 
   ChevronRight, 
-  ZoomIn, 
-  ZoomOut, 
+  Settings2, 
   Maximize, 
   Minimize,
   ArrowLeft,
@@ -33,6 +34,9 @@ import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
 import { ScrollModePDF, ScrollModePDFHandle } from "@/components/ScrollModePDF";
 import { ReadingTimer } from "@/components/ReadingTimer";
+import { ReaderPagePill } from "@/components/reader/ReaderPagePill";
+import { ReaderProgressBar } from "@/components/reader/ReaderProgressBar";
+import { ReaderSettingsSheet } from "@/components/reader/ReaderSettingsSheet";
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -47,6 +51,7 @@ interface Book {
   total_pages: number | null;
   user_id: string;
   series?: string | null;
+  tts_position?: Record<string, any> | null;
 }
 
 const Reader = () => {
@@ -63,7 +68,7 @@ const Reader = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
-  const [signedUrl, setSignedUrl] = useState<string | ArrayBuffer | Blob>("");
+  const [signedUrl, setSignedUrl] = useState<string | ArrayBuffer>("");
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
   const [initialEpubCfi, setInitialEpubCfi] = useState<string | undefined>(undefined);
@@ -73,6 +78,9 @@ const Reader = () => {
   const [pageInput, setPageInput] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [comicTotalPages, setComicTotalPages] = useState<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [txtProgress, setTxtProgress] = useState(0);
 
   useEffect(() => {
     return () => {
@@ -214,6 +222,13 @@ const Reader = () => {
   const startPageRef = useRef<number>(1);
   const lastUpdateRef = useRef<Date>(new Date());
   const scrollModePDFRef = useRef<ScrollModePDFHandle>(null);
+  // The session handlers below are registered once and outlive their closures, so they read refs
+  const sessionIdRef = useRef<string | null>(null);
+  const currentPageRef = useRef(currentPage);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -267,10 +282,11 @@ const Reader = () => {
       }
     };
 
+    // The header only mounts once the book resolves, so measure again then
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, []);
+  }, [book?.id]);
 
 
   // Start reading session
@@ -291,21 +307,22 @@ const Reader = () => {
 
     if (data) {
       setSessionId(data.id);
+      sessionIdRef.current = data.id;
       sessionStartTime.current = new Date();
-      startPageRef.current = currentPage;
+      startPageRef.current = currentPageRef.current;
       lastUpdateRef.current = new Date();
     }
-  }, [bookId, currentPage]);
+  }, [bookId]);
 
   // Update session periodically
   const updateSessionProgress = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionIdRef.current) return;
 
     const now = new Date();
     const durationMinutes = Math.max(1, Math.round(
       (now.getTime() - sessionStartTime.current.getTime()) / 60000
     ));
-    const pagesRead = Math.max(1, Math.abs(currentPage - startPageRef.current));
+    const pagesRead = Math.max(1, Math.abs(currentPageRef.current - startPageRef.current));
 
     await supabase
       .from("reading_sessions")
@@ -314,20 +331,20 @@ const Reader = () => {
         duration_minutes: durationMinutes,
         pages_read: pagesRead,
       })
-      .eq("id", sessionId);
+      .eq("id", sessionIdRef.current);
     
     lastUpdateRef.current = now;
-  }, [sessionId, currentPage]);
+  }, []);
 
   // End reading session
   const endReadingSession = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionIdRef.current) return;
 
     const endTime = new Date();
     const durationMinutes = Math.max(1, Math.round(
       (endTime.getTime() - sessionStartTime.current.getTime()) / 60000
     ));
-    const pagesRead = Math.max(1, Math.abs(currentPage - startPageRef.current));
+    const pagesRead = Math.max(1, Math.abs(currentPageRef.current - startPageRef.current));
 
     await supabase
       .from("reading_sessions")
@@ -336,8 +353,8 @@ const Reader = () => {
         duration_minutes: durationMinutes,
         pages_read: pagesRead,
       })
-      .eq("id", sessionId);
-  }, [sessionId, currentPage]);
+      .eq("id", sessionIdRef.current);
+  }, []);
 
   useEffect(() => {
     if (!bookId) return;
@@ -372,7 +389,10 @@ const Reader = () => {
   }, [bookId]);
 
   useEffect(() => {
-    const handleSelection = () => {
+    const handleSelection = (e: MouseEvent) => {
+      // Interacting with the popup collapses the selection - don't let that unmount it mid-click
+      if ((e.target as HTMLElement)?.closest?.("[data-highlight-menu]")) return;
+
       const selection = window.getSelection();
       const text = selection?.toString().trim();
       
@@ -447,6 +467,8 @@ const Reader = () => {
       return;
     }
     setCheckingOffline(true);
+    setComicTotalPages(null);
+    setPdfChapters([]);
     
     try {
       // Check if we're offline first
@@ -475,20 +497,24 @@ const Reader = () => {
                 .maybeSingle();
                 
               if (data) {
-                if (data.file_type === 'manga' || data.file_type === 'cbz') {
+                if (data.file_type === 'manga') {
                   navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}&offline=true&id=${bookId}`);
                   return;
                 }
                 setBook(data);
                 setCurrentPage(data.last_page_read || 1);
                 setReadingMode(data.reading_mode as "page" | "scroll" || "scroll");
+                if (data.file_type === 'txt') {
+                  const decoder = new TextDecoder('utf-8');
+                  setTextContent(decoder.decode(arrayBuffer));
+                }
                 if (data.series) {
                   fetchSiblingBooks(data.series, data.user_id);
                 }
               } else {
                 const offlineMeta = await getOfflineBookAsync(bookId);
                 if (offlineMeta) {
-                  if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
+                  if (offlineMeta.file_type === 'manga') {
                     navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
                     return;
                   }
@@ -511,6 +537,10 @@ const Reader = () => {
                     user_id: "",
                   } as any);
                   setCurrentPage(offlineMeta.last_page_read || 1);
+                  if (offlineMeta.file_type === 'txt') {
+                    const decoder = new TextDecoder('utf-8');
+                    setTextContent(decoder.decode(arrayBuffer));
+                  }
                   if (offlineMeta.series) {
                     fetchSiblingBooks(offlineMeta.series, "");
                   }
@@ -520,7 +550,7 @@ const Reader = () => {
               // Try reading from offline books store
               const offlineMeta = await getOfflineBookAsync(bookId);
               if (offlineMeta) {
-                if (offlineMeta.file_type === 'manga' || offlineMeta.file_type === 'cbz') {
+                if (offlineMeta.file_type === 'manga') {
                   navigate(`/manga?url=${encodeURIComponent(offlineMeta.file_url || '')}&source=${(offlineMeta.author || '').toLowerCase()}&title=${encodeURIComponent(offlineMeta.title)}&offline=true&id=${bookId}`);
                   return;
                 }
@@ -573,14 +603,32 @@ const Reader = () => {
         return;
       }
       
-      // Online - fetch from database
-      const { data, error } = await supabase
+      // Online - local mirror first, then the hosted library for another member's public book
+      const { data: localBook, error: localError } = await supabase
         .from("books")
         .select("*")
         .eq("id", bookId)
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      let data: any = localBook;
+      let isPublicBook = false;
+
+      if (!data) {
+        const { data: publicBook } = await originalSupabase
+          .from("books")
+          .select("*")
+          .eq("id", bookId)
+          .eq("is_public", true)
+          .maybeSingle();
+
+        if (publicBook) {
+          // Someone else's shared book - read-only here, so don't inherit the owner's page
+          data = { ...publicBook, last_page_read: 0 };
+          isPublicBook = true;
+        }
+      }
+
+      if (!data) throw localError || new Error("Book not found");
       
       if (data.file_type === "manga") {
         navigate(`/manga?url=${encodeURIComponent(data.file_url)}&source=${(data.author || '').toLowerCase()}&title=${encodeURIComponent(data.title)}`);
@@ -593,6 +641,36 @@ const Reader = () => {
       setIsReadingOffline(false); // Explicitly set to false for online reads
       if (data.series) {
         fetchSiblingBooks(data.series, data.user_id);
+      }
+
+      if (isPublicBook) {
+        // The row came from hosted Supabase, so sign its file there rather than on the local server
+        let publicUrl: string = data.file_url;
+        const publicParts = String(publicUrl || "").split('/book-files/');
+        const publicPath = publicParts[1] ? publicParts[1].split('?')[0] : data.file_url;
+
+        if (publicPath) {
+          try {
+            const { data: remoteSigned, error: remoteSignedError } = await originalSupabase.storage
+              .from('book-files')
+              .createSignedUrl(decodeURIComponent(publicPath), 60 * 60 * 4);
+            if (!remoteSignedError && remoteSigned?.signedUrl) {
+              publicUrl = remoteSigned.signedUrl;
+            }
+          } catch (err) {
+            console.warn("Failed to sign public book URL:", err);
+          }
+        }
+
+        setSignedUrl(publicUrl);
+
+        if (data.file_type === 'txt') {
+          const response = await fetch(publicUrl);
+          setTextContent(await response.text());
+        }
+
+        setLoading(false);
+        return;
       }
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
@@ -691,20 +769,24 @@ const Reader = () => {
     }
   };
 
-  const updateProgress = async (page: number, total?: number) => {
+  // progressPage lets 0-based readers (comics) keep a 0-based last_page_read while the
+  // percentage still counts the page the reader is on as read
+  const updateProgress = async (page: number, total?: number, progressPage?: number) => {
     if (!book) return;
     
-    const totalPages = total || numPages || book.total_pages || 1;
-    const progress = Math.round((page / totalPages) * 100);
-    const isCompleted = progress >= 98;
+    // Comics never report a page count, so a missing total must not be treated as a 1-page book
+    const totalPages = total || numPages || book.total_pages;
+    const payload: Record<string, any> = { last_page_read: page };
+    
+    if (totalPages) {
+      const progress = Math.min(100, Math.round(((progressPage ?? page) / totalPages) * 100));
+      payload.reading_progress = progress;
+      payload.is_completed = progress >= 98;
+    }
     
     await supabase
       .from("books")
-      .update({ 
-        last_page_read: page,
-        reading_progress: progress,
-        is_completed: isCompleted
-      })
+      .update(payload)
       .eq("id", book.id);
   };
 
@@ -729,7 +811,19 @@ const Reader = () => {
       }
       updateProgress(page, numPages);
       setPageInput("");
+      setSettingsOpen(false);
     }
+  };
+
+  const seekToPercent = (percent: number) => {
+    if (!numPages) return;
+    const page = Math.min(numPages, Math.max(1, Math.round((percent / 100) * numPages)));
+    if (readingMode === "scroll" && scrollModePDFRef.current) {
+      scrollModePDFRef.current.scrollToPage(page);
+    } else {
+      setCurrentPage(page);
+    }
+    updateProgress(page, numPages);
   };
 
   const onDocumentLoadSuccess = async (pdf: any) => {
@@ -742,6 +836,7 @@ const Reader = () => {
         .from("books")
         .update({ total_pages: numPages })
         .eq("id", book.id);
+      setBook(prev => (prev ? { ...prev, total_pages: numPages } : prev));
     }
 
     // Extract text from current page for narration
@@ -830,19 +925,34 @@ const Reader = () => {
     }
   };
 
-  const changeScale = (delta: number) => {
-    const newScale = Math.max(0.5, Math.min(5.0, scale + delta));
-    setScale(newScale);
-  };
+  // TXT has no pages, so reading progress is how far the document itself is scrolled
+  useEffect(() => {
+    if (book?.file_type !== 'txt') return;
+
+    const handleScroll = () => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      setTxtProgress(max > 0 ? Math.min(100, (window.scrollY / max) * 100) : 0);
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [book?.file_type, textContent]);
 
   const toggleFullscreen = () => {
-    if (!isFullscreen) {
+    if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen?.();
     } else {
       document.exitFullscreen?.();
     }
-    setIsFullscreen(!isFullscreen);
   };
+
+  // Esc leaves fullscreen without going through toggleFullscreen, so track the browser instead
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   const generateAudio = async (text: string) => {
     try {
@@ -933,6 +1043,9 @@ const Reader = () => {
   const isCBR = book.file_type === 'cbr';
   const isTXT = book.file_type === 'txt';
   const isUnsupported = !isPDF && !isEPUB && !isCBZ && !isCBR && !isTXT;
+  // EPUB, comics and PDF scroll mode each ship their own bottom chrome
+  const pdfPageMode = isPDF && readingMode === "page";
+  const showBottomBar = pdfPageMode || isTXT;
   const currentBookIndex = siblingBooks.findIndex(b => b.id === book.id);
   const prevBook = currentBookIndex > 0 ? siblingBooks[currentBookIndex - 1] : null;
   const nextBook = currentBookIndex >= 0 && currentBookIndex < siblingBooks.length - 1 ? siblingBooks[currentBookIndex + 1] : null;
@@ -960,131 +1073,167 @@ const Reader = () => {
         ref={headerRef} 
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-400 ease-in-out ${getHeaderBgClass()} ${
           showControls ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"
-        } shadow-lg`}
+        } shadow-lg pt-[env(safe-area-inset-top)]`}
       >
-        <div className="container mx-auto px-3 sm:px-4 py-3">
-          <div className="flex flex-col gap-2">
-            {/* Top row: back button and title */}
-            <div className="flex items-center gap-2 w-full">
-              <Button
-                variant="ghost"
-                onClick={() => navigate("/")}
-                className="shrink-0 h-10 px-3 sm:px-4 text-sm sm:text-base translate-y-[2px] flex items-center justify-center gap-2"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span className="hidden sm:inline">Back</span>
-              </Button>
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <div className="min-w-0">
-                  <h1 className="font-semibold truncate text-sm">{book.title}</h1>
-                  {book.author && (
-                    <p className="text-xs text-muted-foreground truncate">{book.author}</p>
-                  )}
-                </div>
-                {isReadingOffline && (
-                  <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0 text-xs">
-                    <CloudOff className="w-3 h-3" />
-                  </Badge>
-                )}
-              </div>
+        <div className="container mx-auto px-3 sm:px-4 py-2.5">
+          {/* Top row: back, title, offline badge */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/")}
+              className="h-10 w-10 shrink-0 rounded-full"
+              title="Back to library"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div className="min-w-0 flex-1">
+              <h1 className="font-semibold truncate text-sm">{book.title}</h1>
+              {book.author && (
+                <p className="text-xs text-muted-foreground truncate">{book.author}</p>
+              )}
             </div>
-            
-            {/* Bottom row: controls */}
+            {isReadingOffline && (
+              <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0 text-xs">
+                <CloudOff className="w-3 h-3" />
+              </Badge>
+            )}
+          </div>
 
-            <div className="flex flex-wrap items-center gap-1 sm:gap-2 w-full sm:w-auto justify-end">
-              {/* Narration Controls */}
+          {/* Action row: chapters on the left, one icon per tool on the right */}
+          <div className="mt-2 flex items-center gap-2">
+            {isPDF && pdfChapters.length > 0 && (
+              <div className="min-w-0 flex-1">
+                <ChapterNavigation
+                  chapters={pdfChapters}
+                  currentPage={currentPage}
+                  totalPages={numPages || undefined}
+                  onChapterSelect={(chapter) => {
+                    if (!chapter.page) return;
+                    if (readingMode === "scroll" && scrollModePDFRef.current) {
+                      scrollModePDFRef.current.scrollToPage(chapter.page);
+                    } else {
+                      setCurrentPage(chapter.page);
+                    }
+                    updateProgress(chapter.page, numPages || undefined);
+                  }}
+                  fileType="pdf"
+                />
+              </div>
+            )}
+
+            <div className="ml-auto flex items-center gap-1.5">
               {(isTXT || isPDF) && (
                 <NarrationControls 
                   text={isTXT ? textContent : pdfTextContent}
                   onPlayingChange={setIsPlaying}
                 />
               )}
-              
+
               <Button
                 variant="outline"
-                size="sm"
+                size="icon"
                 onClick={() => setShowAnnotations(!showAnnotations)}
-                className="h-9 px-3"
+                className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
                 title="View annotations"
               >
                 <StickyNote className="w-4 h-4" />
               </Button>
 
               {isPDF && (
-                <>
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      placeholder="Pg"
-                      value={pageInput}
-                      onChange={(e) => setPageInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
-                      className="w-12 sm:w-16 h-8 text-xs sm:text-sm"
-                      min={1}
-                      max={numPages || 1}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={jumpToPage}
-                      className="h-8 px-2 text-xs"
-                    >
-                      Go
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleReadingMode}
-                    className="text-xs h-8 px-2"
-                  >
-                    {readingMode === "page" ? "Scroll" : "Page"}
-                  </Button>
-                  <div className="flex items-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => changeScale(-0.2)}
-                      className="h-8 px-2 rounded-r-none"
-                    >
-                      <ZoomOut className="w-3 h-3" />
-                    </Button>
-                    <span className="text-xs font-medium px-2 bg-muted h-8 flex items-center border-y">
-                      {Math.round(scale * 100)}%
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => changeScale(0.2)}
-                      className="h-8 px-2 rounded-l-none"
-                    >
-                      <ZoomIn className="w-3 h-3" />
-                    </Button>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleFullscreen}
-                    className="h-8 px-2 hidden sm:flex"
-                  >
-                    {isFullscreen ? (
-                      <Minimize className="w-3 h-3" />
-                    ) : (
-                      <Maximize className="w-3 h-3" />
-                    )}
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSettingsOpen(true)}
+                  className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
+                  title="Reading settings"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </Button>
               )}
             </div>
           </div>
         </div>
       </div>
 
+      {/* Per-format reading options */}
+      {isPDF && (
+        <ReaderSettingsSheet
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          zoom={{
+            value: scale,
+            onChange: setScale,
+            min: 0.5,
+            max: 5,
+            step: 0.1,
+            format: (value) => `${Math.round(value * 100)}%`,
+          }}
+        >
+          <div className="space-y-2">
+            <Label className="text-sm">Layout</Label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: "page", label: "Page turn" },
+                { id: "scroll", label: "Continuous scroll" },
+              ] as const).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    if (readingMode !== option.id) toggleReadingMode();
+                  }}
+                  className={cn(
+                    "flex min-h-9 items-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                    readingMode === option.id
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm">Jump to page</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                placeholder={numPages ? `1 - ${numPages}` : "Page"}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && jumpToPage()}
+                className="h-10 flex-1"
+                min={1}
+                max={numPages || 1}
+              />
+              <Button variant="outline" onClick={jumpToPage} className="h-10 px-4">
+                Go
+              </Button>
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            onClick={toggleFullscreen}
+            className="h-10 w-full justify-center gap-2"
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+            {isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </Button>
+        </ReaderSettingsSheet>
+      )}
+
       {/* Reader Content */}
       <div 
         onClick={handleContentClick}
         className="container mx-auto px-1 sm:px-4 pb-2 sm:py-8 overflow-x-hidden"
-        style={{ paddingTop: `${headerHeight || 80}px` }}
+        style={{
+          paddingTop: `${headerHeight || 80}px`,
+          paddingBottom: showBottomBar ? "calc(5rem + env(safe-area-inset-bottom))" : undefined,
+        }}
       >
         {isPDF && signedUrl && (
           <div className="flex flex-col items-center gap-4 sm:gap-6">
@@ -1116,29 +1265,21 @@ const Reader = () => {
                   </div>
                   
                   {/* Invisible Tap Zones for page turning */}
-                  <div className="absolute inset-0 flex z-10">
+                  <div className="absolute inset-0 flex justify-between z-10 pointer-events-none">
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
                         if (currentPage > 1) changePage(-1);
                       }}
-                      className="w-[30%] h-full cursor-w-resize"
+                      className="w-[15%] h-full cursor-w-resize pointer-events-auto"
                       title="Previous Page"
-                    />
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowControls(prev => !prev);
-                      }}
-                      className="w-[40%] h-full cursor-pointer"
-                      title="Toggle Controls"
                     />
                     <div 
                       onClick={(e) => {
                         e.stopPropagation();
                         if (numPages && currentPage < numPages) changePage(1);
                       }}
-                      className="w-[30%] h-full cursor-e-resize"
+                      className="w-[15%] h-full cursor-e-resize pointer-events-auto"
                       title="Next Page"
                     />
                   </div>
@@ -1155,57 +1296,11 @@ const Reader = () => {
                     setCurrentPage(page);
                     updateProgress(page, numPages || undefined);
                   }}
+                  onScaleChange={setScale}
                   showControls={showControls}
                 />
               )}
             </Document>
-
-            {/* Page Navigation - only show in page mode */}
-            {readingMode === "page" && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2 sm:gap-4">
-                  <Button
-                    onClick={() => changePage(-1)}
-                    disabled={currentPage <= 1}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Previous</span>
-                  </Button>
-                  
-                  <div className="text-xs sm:text-sm font-medium whitespace-nowrap">
-                    Page {currentPage} of {numPages || "..."}
-                  </div>
-
-                  <Button
-                    onClick={() => changePage(1)}
-                    disabled={!numPages || currentPage >= numPages}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <span className="hidden sm:inline">Next</span>
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 sm:ml-2" />
-                  </Button>
-                </div>
-                
-                {/* Chapter Navigation for PDF */}
-                {pdfChapters.length > 0 && (
-                  <ChapterNavigation
-                    chapters={pdfChapters}
-                    currentPage={currentPage}
-                    totalPages={numPages || undefined}
-                    onChapterSelect={(chapter) => {
-                      if (chapter.page) {
-                        setCurrentPage(chapter.page);
-                        updateProgress(chapter.page, numPages || undefined);
-                      }
-                    }}
-                    fileType="pdf"
-                  />
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -1252,10 +1347,13 @@ const Reader = () => {
 
         {(isCBZ || isCBR) && signedUrl && (
           <ComicReader
+            key={book.id}
             url={signedUrl}
+            onTotalPages={setComicTotalPages}
             onPageChange={(page) => {
+              // ComicReader is 0-based and last_page_read stays 0-based; only the percentage counts page+1
               setCurrentPage(page);
-              updateProgress(page);
+              updateProgress(page, comicTotalPages || undefined, page + 1);
             }}
             initialPage={book.last_page_read || 0}
             showControls={showControls}
@@ -1325,31 +1423,87 @@ const Reader = () => {
 
       {/* Highlight Menu */}
       {highlightMenuPos && book && (
-        <HighlightMenu
-          selectedText={selectedText}
-          bookId={book.id}
-          pageNumber={currentPage}
-          position={highlightMenuPos}
-          onClose={() => {
-            setHighlightMenuPos(null);
-            window.getSelection()?.removeAllRanges();
+        <div
+          data-highlight-menu
+          onMouseDown={(e) => {
+            // Keep the underlying selection alive, but still let the note field take focus
+            if (!(e.target as HTMLElement).closest("textarea, input")) e.preventDefault();
           }}
-          onSaved={() => {
-            window.getSelection()?.removeAllRanges();
+        >
+          <HighlightMenu
+            selectedText={selectedText}
+            bookId={book.id}
+            pageNumber={currentPage}
+            position={highlightMenuPos}
+            onClose={() => {
+              setHighlightMenuPos(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            onSaved={() => {
+              window.getSelection()?.removeAllRanges();
+            }}
+          />
+        </div>
+      )}
+
+      {/* Transient page indicator for PDF page mode */}
+      {pdfPageMode && !!numPages && (
+        <ReaderPagePill
+          current={currentPage}
+          total={numPages}
+          visible={showOverlayPage}
+        />
+      )}
+
+      {/* Reading progress */}
+      {pdfPageMode && (
+        <ReaderProgressBar
+          percent={numPages ? (currentPage / numPages) * 100 : 0}
+          caption={numPages ? `${currentPage} / ${numPages}` : `${currentPage}`}
+          visible={showControls}
+          onSeek={numPages ? seekToPercent : undefined}
+          leading={
+            <Button
+              onClick={() => changePage(-1)}
+              disabled={currentPage <= 1}
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              title="Previous page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+          }
+          trailing={
+            <Button
+              onClick={() => changePage(1)}
+              disabled={!numPages || currentPage >= numPages}
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              title="Next page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          }
+        />
+      )}
+
+      {isTXT && (
+        <ReaderProgressBar
+          percent={txtProgress}
+          caption={`${Math.round(txtProgress)}%`}
+          visible={showControls}
+          onSeek={(percent) => {
+            const max = document.documentElement.scrollHeight - window.innerHeight;
+            if (max > 0) window.scrollTo({ top: (percent / 100) * max, behavior: "smooth" });
           }}
         />
       )}
 
-      {/* Floating Temporary Page Number Overlay for PDF */}
-      {showOverlayPage && book?.file_type === 'pdf' && numPages && (
-        <div className="fixed bottom-16 left-1/2 transform -translate-x-1/2 bg-black/50 text-white text-xs font-semibold px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-sm z-50 transition-all duration-300 border border-white/10 animate-in fade-in slide-in-from-bottom-2">
-          Page {currentPage} of {numPages}
-        </div>
-      )}
-
       {/* Reading Timer / Pomodoro */}
       <div 
-        className={`fixed bottom-4 right-4 z-40 transition-all duration-300 ${
+        className={`fixed right-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 transition-all duration-300 ${
           showControls ? "translate-y-0 opacity-100 scale-100" : "translate-y-12 opacity-0 scale-95 pointer-events-none"
         }`}
       >

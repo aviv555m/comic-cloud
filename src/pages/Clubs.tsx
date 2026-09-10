@@ -43,6 +43,13 @@ interface BookClub {
   member_count?: number;
 }
 
+// The local mock applies no column defaults on insert, so the invite code is generated
+// here and travels with the row to both the local table and the synced remote row.
+const generateInviteCode = () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+};
+
 const Clubs = () => {
   const [user, setUser] = useState<User | null>(null);
   const [myClubs, setMyClubs] = useState<BookClub[]>([]);
@@ -56,14 +63,32 @@ const Clubs = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        currentUserId = session.user.id;
         setUser(session.user);
         fetchClubs(session.user.id);
       } else {
         navigate("/auth");
       }
     });
+
+    // Clubs are cloned from the remote in the background, so this first fetch usually
+    // runs before other people's public clubs have landed in the local tables.
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const table = customEvent.detail?.table;
+      if ((table === "book_clubs" || table === "book_club_members") && currentUserId) {
+        fetchClubs(currentUserId);
+      }
+    };
+    window.addEventListener("local-db-synced", handleSync);
+
+    return () => {
+      window.removeEventListener("local-db-synced", handleSync);
+    };
   }, [navigate]);
 
   const fetchClubs = async (userId: string) => {
@@ -114,6 +139,7 @@ const Clubs = () => {
         description: newClub.description || null,
         owner_id: user.id,
         is_public: newClub.isPublic,
+        invite_code: generateInviteCode(),
       })
       .select()
       .single();
@@ -142,7 +168,8 @@ const Clubs = () => {
     const { data: club, error } = await supabase
       .from("book_clubs")
       .select("*")
-      .eq("invite_code", joinCode.trim())
+      // ilike: a pasted code should match whatever case the club's code was stored in
+      .ilike("invite_code", joinCode.trim())
       .single();
 
     if (error || !club) {

@@ -28,6 +28,16 @@ interface UserAchievement {
   earned_at: string;
 }
 
+interface BookRow {
+  is_completed: boolean | null;
+}
+
+interface ReadingSessionRow {
+  start_time: string;
+  pages_read: number | null;
+  duration_minutes: number | null;
+}
+
 const Achievements = () => {
   const [user, setUser] = useState<User | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
@@ -42,14 +52,39 @@ const Achievements = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let currentUserId: string | null = null;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
+        currentUserId = session.user.id;
         setUser(session.user);
         fetchData(session.user.id);
       } else {
         navigate("/auth");
       }
     });
+
+    // getSession only kicks the remote clone off in the background, so the badge
+    // catalogue usually lands after this first fetch — re-read it when it arrives.
+    // A clone pass merges `achievements` before `user_achievements`, so the events are
+    // coalesced: refetching on the first one would award badges whose earned rows are
+    // still in flight, duplicating them here and on the remote.
+    let syncRefresh: NodeJS.Timeout | undefined;
+    const handleSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const table = customEvent.detail?.table;
+      if ((table === "achievements" || table === "user_achievements") && currentUserId) {
+        const userId = currentUserId;
+        clearTimeout(syncRefresh);
+        syncRefresh = setTimeout(() => fetchData(userId), 1000);
+      }
+    };
+    window.addEventListener("local-db-synced", handleSync);
+
+    return () => {
+      clearTimeout(syncRefresh);
+      window.removeEventListener("local-db-synced", handleSync);
+    };
   }, [navigate]);
 
   const fetchData = async (userId: string) => {
@@ -67,8 +102,8 @@ const Achievements = () => {
     if (userAchievementsRes.data) setUserAchievements(userAchievementsRes.data);
 
     // Calculate stats
-    const books = booksRes.data || [];
-    const sessions = sessionsRes.data || [];
+    const books: BookRow[] = booksRes.data || [];
+    const sessions: ReadingSessionRow[] = sessionsRes.data || [];
 
     const booksRead = books.filter((b) => b.is_completed).length;
     const pagesRead = sessions.reduce((sum, s) => sum + (s.pages_read || 0), 0);
@@ -81,16 +116,22 @@ const Achievements = () => {
       sessions.map((s) => new Date(s.start_time).toDateString())
     )].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
 
-    for (let i = 0; i < sessionDates.length; i++) {
-      const expectedDate = new Date(today);
-      expectedDate.setDate(today.getDate() - i);
-      if (sessionDates[i] === expectedDate.toDateString()) {
-        streak++;
-      } else if (i === 0 && sessionDates[0] === new Date(today.getTime() - 86400000).toDateString()) {
-        // Yesterday counts for streak if today hasn't started yet
-        streak++;
-      } else {
-        break;
+    // Anchor on today (or yesterday, if today hasn't started yet) and then walk back
+    // one day at a time. Offsetting from today instead capped the streak at 1.
+    const todayStr = today.toDateString();
+    const yesterdayStr = new Date(today.getTime() - 86400000).toDateString();
+    if (sessionDates[0] === todayStr || sessionDates[0] === yesterdayStr) {
+      streak = 1;
+      for (let i = 1; i < sessionDates.length; i++) {
+        const prevDate = new Date(sessionDates[i - 1]);
+        const currDate = new Date(sessionDates[i]);
+        const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / 86400000);
+
+        if (diffDays === 1) {
+          streak++;
+        } else {
+          break;
+        }
       }
     }
 
@@ -114,7 +155,7 @@ const Achievements = () => {
     currentStats: typeof stats
   ) => {
     const earnedIds = new Set(earnedAchievements.map((ua) => ua.achievement_id));
-    const newlyEarned: string[] = [];
+    const newlyEarned: Achievement[] = [];
 
     for (const achievement of allAchievements) {
       if (earnedIds.has(achievement.id)) continue;
@@ -136,17 +177,36 @@ const Achievements = () => {
       }
 
       if (earned) {
-        newlyEarned.push(achievement.id);
+        newlyEarned.push(achievement);
       }
     }
 
     if (newlyEarned.length > 0) {
-      const inserts = newlyEarned.map((achievementId) => ({
+      // The insert path only backfills id/created_at, so earned_at has to be explicit —
+      // the badge tooltip and the remote row both read it.
+      const earnedAt = new Date().toISOString();
+      const inserts = newlyEarned.map((achievement) => ({
         user_id: userId,
-        achievement_id: achievementId,
+        achievement_id: achievement.id,
+        earned_at: earnedAt,
       }));
 
       await supabase.from("user_achievements").insert(inserts);
+
+      // An unlock is one of the few activities the app can publish the moment it happens.
+      await supabase.from("activity_feed").insert(
+        newlyEarned.map((achievement) => ({
+          user_id: userId,
+          activity_type: "achievement",
+          activity_data: {
+            achievement_id: achievement.id,
+            name: achievement.name,
+            points: achievement.points || 0,
+          },
+          is_public: true,
+          created_at: earnedAt,
+        }))
+      );
 
       // Refresh user achievements
       const { data } = await supabase

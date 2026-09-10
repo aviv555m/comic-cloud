@@ -6,11 +6,31 @@ import https from "https";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  preview: {
+    host: "::",
+    port: 8081,
+    allowedHosts: ["cc.displayname.top"]
+  },
   server: {
     host: "::",
     port: 8081,
     allowedHosts: ["cc.displayname.top"],
     proxy: {
+      // server/secure-files.cjs (127.0.0.1:8084) serves uploads and encrypted files.
+      // nginx maps these three prefixes for cc.displayname.top; dev/preview need the
+      // same mapping so getServerUrl()'s localhost/192.168.* origin resolves too.
+      // Keys keep the trailing slash so they match the nginx locations exactly and
+      // cannot swallow an app route that merely starts with "db"/"uploads".
+      "/api/upload": {
+        target: "http://127.0.0.1:8084"
+      },
+      "/db/": {
+        target: "http://127.0.0.1:8084"
+      },
+      "/uploads/": {
+        target: "http://127.0.0.1:8084",
+        rewrite: (path) => path.replace(/^\/uploads/, "/db/file")
+      },
       "/api-comix": {
         target: "https://comix.to",
         changeOrigin: true,

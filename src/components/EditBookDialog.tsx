@@ -108,7 +108,8 @@ export const EditBookDialog = ({ open, onOpenChange, book, onSuccess }: EditBook
       // Upload new cover if provided
       if (coverFile) {
         const fileExt = coverFile.name.split('.').pop();
-        const filePath = `${book.id}/cover.${fileExt}`;
+        // Timestamp the path so a replacement cover gets a fresh URL (public covers are cached for a year)
+        const filePath = `${book.id}/${Date.now()}-cover.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage
           .from('book-covers')

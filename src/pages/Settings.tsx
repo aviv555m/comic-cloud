@@ -154,7 +154,7 @@ const Settings = () => {
       // Load preferences from localStorage
       const savedTheme = localStorage.getItem("theme") as "light" | "dark" | "system" || "system";
       const savedFontSize = parseInt(localStorage.getItem("fontSize") || "16");
-      const savedGoal = parseInt(localStorage.getItem("readingGoal") || "30");
+      const savedGoal = parseInt(localStorage.getItem("dailyReadingGoal") || "30");
       
       setTheme(savedTheme);
       setFontSize(savedFontSize);
@@ -263,11 +263,13 @@ const Settings = () => {
   };
 
   const saveReadingGoal = (goal: number) => {
-    setReadingGoal(goal);
-    localStorage.setItem("readingGoal", goal.toString());
+    // the input's min/max are only HTML hints; clamp so a typed 0 can't divide the goal widget by zero
+    const safeGoal = Number.isFinite(goal) ? Math.min(480, Math.max(5, goal)) : 30;
+    setReadingGoal(safeGoal);
+    localStorage.setItem("dailyReadingGoal", safeGoal.toString());
     toast({
       title: "Reading goal updated",
-      description: `Your daily reading goal is now ${goal} minutes.`,
+      description: `Your daily reading goal is now ${safeGoal} minutes.`,
     });
   };
 

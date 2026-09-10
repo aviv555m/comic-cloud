@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Plus, PenLine, BookOpen, Trash2, Loader2, Calendar } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import type { User } from "@supabase/supabase-js";
 
 const MOODS = [
@@ -85,7 +85,9 @@ const Journal = () => {
       title: title.trim() || null,
       content: content.trim(),
       mood: mood || null,
-      book_id: bookId || null,
+      book_id: bookId && bookId !== "none" ? bookId : null,
+      // the local mock applies no column defaults, so entry_date must be set here
+      entry_date: format(new Date(), "yyyy-MM-dd"),
     });
     if (error) {
       toast({ variant: "destructive", title: "Error", description: "Failed to save entry" });
@@ -196,7 +198,8 @@ const Journal = () => {
                             </CardTitle>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
                               <Calendar className="w-3 h-3" />
-                              {format(new Date(entry.entry_date), "MMMM d, yyyy")}
+                              {/* entry_date is date-only, so parse it as local — new Date("2026-01-02") is UTC midnight and renders a day early west of UTC */}
+                              {format(entry.entry_date ? parseISO(entry.entry_date) : new Date(entry.created_at || Date.now()), "MMMM d, yyyy")}
                             </div>
                           </div>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(entry.id)}>

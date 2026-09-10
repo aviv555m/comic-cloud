@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Share2, Twitter, Facebook, Link2, Check, BookOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { getServerUrl } from "@/lib/local-supabase";
 
 interface ShareProgressCardProps {
   open: boolean;
@@ -35,7 +36,8 @@ export const ShareProgressCard = ({
     ? `I just finished reading "${book.title}"${book.author ? ` by ${book.author}` : ""}! 📚`
     : `I'm ${book.reading_progress}% through "${book.title}"${book.author ? ` by ${book.author}` : ""} 📖`;
 
-  const shareUrl = window.location.origin;
+  // On native the WebView origin is localhost, so use the public server URL.
+  const shareUrl = getServerUrl();
 
   const shareToTwitter = () => {
     window.open(

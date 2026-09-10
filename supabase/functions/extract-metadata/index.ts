@@ -73,7 +73,9 @@ serve(async (req) => {
     if (metadata.author && !book.author) {
       updateData.author = metadata.author;
     }
-    if (metadata.series && !book.series) {
+    // Uploads are stored as `<userId>/<timestamp>.<ext>`, so never file a book
+    // under an all-numeric "series" derived from that basename
+    if (metadata.series && !/^\d+$/.test(metadata.series.trim()) && !book.series) {
       updateData.series = metadata.series;
     }
     
@@ -124,9 +126,6 @@ function extractFromFilename(filename: string): any {
   if (volumeMatch) {
     series = volumeMatch[1].trim();
     title = filename; // Keep full title with volume number
-  } else {
-    // If no volume pattern, treat as series name
-    series = filename.trim();
   }
 
   return { title, author, series };

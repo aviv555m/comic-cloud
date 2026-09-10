@@ -58,6 +58,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
       let successCount = 0;
       let failCount = 0;
       const failed: string[] = [];
+      const remainingUrls: string[] = [];
 
       // Process each URL
       for (let i = 0; i < urlList.length; i++) {
@@ -105,6 +106,7 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
         } catch (error: any) {
           console.error(`Error adding book from ${url}:`, error);
           failCount++;
+          remainingUrls.push(url);
         }
       }
 
@@ -115,6 +117,9 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
           description: `Added ${successCount} book${successCount > 1 ? 's' : ''} successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
         });
         
+        // Refresh the library even on a partial batch, so the added books show up
+        onSuccess();
+
         if (failed.length > 0) {
           setFailedUrls(failed);
           setShowManualHelp(true);
@@ -127,15 +132,17 @@ export const AddFromUrlDialog = ({ open, onOpenChange, onSuccess }: AddFromUrlDi
         throw new Error("Failed to add any books");
       }
 
-      // Reset form only if no failed URLs
-      if (failed.length === 0) {
+      if (remainingUrls.length > 0) {
+        // Keep only the URLs that failed so a re-submit cannot add the same books twice
+        setUrls(remainingUrls.join("\n"));
+        setProgress({ current: 0, total: 0 });
+      } else {
         setUrls("");
         setTitle("");
         setAuthor("");
         setSeries("");
         setProgress({ current: 0, total: 0 });
         onOpenChange(false);
-        onSuccess();
       }
     } catch (error: any) {
       console.error("Error adding books:", error);

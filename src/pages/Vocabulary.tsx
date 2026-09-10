@@ -107,12 +107,15 @@ const Vocabulary = () => {
         : w
     ));
 
-    // Move to next card
-    if (currentCardIndex < reviewWords.length - 1) {
-      setCurrentCardIndex(currentCardIndex + 1);
+    // The answered word drops out of reviewWords (next_review_at moves into the
+    // future), so the remaining cards shift down — reset to the top, don't advance.
+    if (reviewWords.length > 1) {
+      setCurrentCardIndex(0);
       setShowDefinition(false);
     } else {
       setFlashcardMode(false);
+      setCurrentCardIndex(0);
+      setShowDefinition(false);
       toast({ title: "Review complete!", description: "Great job studying your vocabulary!" });
     }
   };

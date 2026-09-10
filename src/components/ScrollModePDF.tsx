@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle, CSSProperties } from "react";
 import { Page } from "react-pdf";
-import { Progress } from "@/components/ui/progress";
+import { Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ReaderPagePill } from "@/components/reader/ReaderPagePill";
+import { ReaderProgressBar } from "@/components/reader/ReaderProgressBar";
+import { ReaderSettingsSheet } from "@/components/reader/ReaderSettingsSheet";
 
 interface ScrollModePDFProps {
   numPages: number;
@@ -10,6 +14,8 @@ interface ScrollModePDFProps {
   /** Pixels to offset for sticky headers (mobile/desktop) */
   topOffset?: number;
   onPageChange: (page: number) => void;
+  /** When provided, a zoom slider is offered in the reader settings sheet. */
+  onScaleChange?: (scale: number) => void;
   showControls?: boolean;
 }
 
@@ -29,20 +35,25 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
   initialPage = 1,
   topOffset = 96,
   onPageChange,
+  onScaleChange,
   showControls = true,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
-  // IMPORTANT: capture the initial page only once per mount.
-  const initialPageRef = useRef<number>(initialPage);
+  // Where we still owe the reader a jump to. Seeded from the prop, but allowed to
+  // move forward while the parent is still resolving the saved page (see below).
+  const [resumeTarget, setResumeTarget] = useState(initialPage);
   const hasScrolledToInitial = useRef(false);
-  const isInitializingRef = useRef<boolean>(initialPageRef.current > 1);
+  const isInitializingRef = useRef<boolean>(initialPage > 1);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
   const intersectionStateRef = useRef<Map<number, IntersectionState>>(new Map());
 
-  const [visiblePage, setVisiblePage] = useState(initialPageRef.current);
+  const [visiblePage, setVisiblePage] = useState(initialPage);
+  const lastNotifiedRef = useRef<number>(initialPage);
+  const hasReportedRef = useRef(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const scrollToPageWithOffset = useCallback((page: number, behavior: ScrollBehavior = "auto") => {
     const el = pageRefs.current.get(page);
@@ -75,18 +86,36 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
     }
   }), [numPages, scrollToPageWithOffset]);
 
+  // The parent loads last_page_read asynchronously, so it can still be 1 when this
+  // child mounts. Adopt a later, larger initialPage - but never yank a reader who
+  // has already scrolled away from the target on their own.
+  useEffect(() => {
+    if (hasScrolledToInitial.current) return;
+    // Once we have reported a page, initialPage is only an echo of our own position,
+    // so adopting it would yank a reader who scrolled back to the top.
+    if (hasReportedRef.current) return;
+    if (initialPage <= resumeTarget || visiblePage !== resumeTarget) return;
+    // Set synchronously so the notify effect below cannot report page 1 back to
+    // the parent in this same commit and overwrite the saved position.
+    isInitializingRef.current = true;
+    setResumeTarget(initialPage);
+  }, [initialPage, resumeTarget, visiblePage]);
+
   // Scroll to initial page on mount / after pages appear
   useEffect(() => {
     if (hasScrolledToInitial.current) return;
+    // The page count arrives after this child mounts, so wait for it before
+    // clamping - otherwise the target collapses to page 1 and latches.
+    if (!numPages) return;
 
     const targetPage = Math.min(
-      Math.max(1, initialPageRef.current),
-      Math.max(1, numPages || 1)
+      Math.max(1, resumeTarget),
+      Math.max(1, numPages)
     );
 
-    // Page 1 doesn't need a jump; still allow observer immediately.
+    // Page 1 doesn't need a jump; still allow observer immediately. Deliberately
+    // not latched: a real saved page may still be on its way from the parent.
     if (targetPage <= 1) {
-      hasScrolledToInitial.current = true;
       isInitializingRef.current = false;
       return;
     }
@@ -127,7 +156,7 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
     return () => {
       cancelled = true;
     };
-  }, [numPages, scrollToPageWithOffset]);
+  }, [numPages, resumeTarget, scrollToPageWithOffset]);
 
   // Set up intersection observer to detect which page is currently "active"
   useEffect(() => {
@@ -191,9 +220,13 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
     };
   }, [numPages, topOffset]);
 
-  // Notify parent of page change (but not during initialization)
+  // Notify parent of page change (but not during initialization). The parent passes
+  // an inline callback, so guard against re-reporting the same page every render.
   useEffect(() => {
     if (isInitializingRef.current) return;
+    if (lastNotifiedRef.current === visiblePage) return;
+    lastNotifiedRef.current = visiblePage;
+    hasReportedRef.current = true;
     onPageChange(visiblePage);
   }, [visiblePage, onPageChange]);
 
@@ -213,36 +246,64 @@ export const ScrollModePDF = forwardRef<ScrollModePDFHandle, ScrollModePDFProps>
 
   const progressPercent = numPages > 0 ? (visiblePage / numPages) * 100 : 0;
 
+  // Scrubbing the progress bar: every page keeps a real-height placeholder, so the
+  // target element exists even when it hasn't rendered yet.
+  const seekToPercent = useCallback((percent: number) => {
+    if (!numPages) return;
+    const target = Math.min(Math.max(1, Math.round((percent / 100) * numPages)), numPages);
+    setVisiblePage(target);
+    scrollToPageWithOffset(target);
+  }, [numPages, scrollToPageWithOffset]);
+
   return (
     <div
       ref={containerRef}
-      className="space-y-4 w-full max-w-4xl mx-auto pb-20 px-2 sm:px-0"
+      className="space-y-4 w-full max-w-4xl mx-auto pb-[calc(6rem+env(safe-area-inset-bottom))] px-2 sm:px-0"
+      style={{ "--reader-pill-top": `${Math.max(0, topOffset)}px` } as CSSProperties}
     >
-      {/* Fixed progress bar at bottom */}
-      <div className={`fixed bottom-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-sm border-t px-4 py-2 transition-transform duration-300 ${
-        showControls ? "translate-y-0" : "translate-y-full"
-      }`}>
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Progress value={progressPercent} className="flex-1 h-2" />
-          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-            {visiblePage} / {numPages}
-          </span>
-        </div>
-      </div>
+      <ReaderProgressBar
+        percent={progressPercent}
+        caption={numPages > 0 ? `${visiblePage} / ${numPages}` : undefined}
+        visible={showControls}
+        onSeek={numPages > 0 ? seekToPercent : undefined}
+        trailing={
+          onScaleChange ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Reading settings"
+            >
+              <Settings2 className="w-4 h-4" />
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {/* Current page indicator - sticky */}
-      <div 
-        className={`sticky z-40 flex justify-center pointer-events-none transition-all duration-300 ${
-          showControls ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
-        }`} 
-        style={{ top: topOffset }}
-      >
-        <div className="bg-background/95 backdrop-blur-sm border rounded-full px-4 py-1.5 shadow-sm pointer-events-auto">
-          <span className="text-sm font-medium">
-            Page {visiblePage} of {numPages}
-          </span>
-        </div>
-      </div>
+      {/* Rides under the sticky reader header via --reader-pill-top */}
+      <ReaderPagePill
+        current={visiblePage}
+        total={numPages || null}
+        variant="sticky"
+        visible={showControls}
+        className="top-[var(--reader-pill-top)]"
+      />
+
+      {onScaleChange && (
+        <ReaderSettingsSheet
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          zoom={{
+            value: scale,
+            onChange: onScaleChange,
+            min: 0.5,
+            max: 5,
+            step: 0.1,
+            format: (v) => `${Math.round(v * 100)}%`,
+          }}
+        />
+      )}
 
       {/* Render all pages */}
       {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {

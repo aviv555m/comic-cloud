@@ -66,8 +66,10 @@ const Challenges = () => {
 
       const updatedChallenges = challengesData.map((challenge) => {
         let currentValue = 0;
-        const startDate = new Date(challenge.start_date);
-        const endDate = new Date(challenge.end_date);
+        // Dates are stored as bare "yyyy-MM-dd"; parse them as local time so the
+        // final day still counts instead of ending at UTC midnight
+        const startDate = new Date(`${challenge.start_date}T00:00:00`);
+        const endDate = new Date(`${challenge.end_date}T23:59:59`);
 
         switch (challenge.goal_type) {
           case "books":
@@ -96,18 +98,31 @@ const Challenges = () => {
               )
               .reduce((sum, s) => sum + (s.duration_minutes || 0), 0) || 0;
             break;
-          case "streak":
-            // Calculate streak within date range
-            const datesInRange = sessions
-              ?.filter(
-                (s) =>
-                  new Date(s.start_time) >= startDate &&
-                  new Date(s.start_time) <= endDate
-              )
-              .map((s) => new Date(s.start_time).toDateString())
-              .filter((d, i, self) => self.indexOf(d) === i);
-            currentValue = datesInRange?.length || 0;
+          case "streak": {
+            // Longest run of consecutive days with a session inside the range
+            const dayStarts =
+              sessions
+                ?.filter(
+                  (s) =>
+                    new Date(s.start_time) >= startDate &&
+                    new Date(s.start_time) <= endDate
+                )
+                .map((s) => new Date(s.start_time).setHours(0, 0, 0, 0)) || [];
+            const daysInRange = [...new Set<number>(dayStarts)].sort(
+              (a, b) => a - b
+            );
+            let longestRun = 0;
+            let run = 0;
+            daysInRange.forEach((day, i) => {
+              const isNextDay =
+                i > 0 &&
+                Math.round((day - daysInRange[i - 1]) / 86400000) === 1;
+              run = isNextDay ? run + 1 : 1;
+              longestRun = Math.max(longestRun, run);
+            });
+            currentValue = longestRun;
             break;
+          }
         }
 
         return {
@@ -138,12 +153,16 @@ const Challenges = () => {
     setChallenges(challenges.filter((c) => c.id !== id));
   };
 
+  // Same local end-of-day boundary the progress window uses, so a challenge does
+  // not expire a day early
+  const endOfDay = (date: string) => new Date(`${date}T23:59:59`);
+
   const activeChallenges = challenges.filter(
-    (c) => !c.is_completed && new Date(c.end_date) >= new Date()
+    (c) => !c.is_completed && endOfDay(c.end_date) >= new Date()
   );
   const completedChallenges = challenges.filter((c) => c.is_completed);
   const expiredChallenges = challenges.filter(
-    (c) => !c.is_completed && new Date(c.end_date) < new Date()
+    (c) => !c.is_completed && endOfDay(c.end_date) < new Date()
   );
 
   if (!user) return null;

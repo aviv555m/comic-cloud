@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { Download, Sparkles } from "lucide-react";
+import { Download, Sparkles, Loader2 } from "lucide-react";
 
 interface UpdatePluginType {
   downloadAndInstall(options: { url: string }): Promise<{ success: boolean }>;
@@ -52,6 +52,7 @@ import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { useServiceWorker } from "./hooks/useServiceWorker";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { OfflineAlertOverlay } from "./components/OfflineAlertOverlay";
+import { CURRENT_VERSION } from "@/lib/local-supabase";
 const queryClient = new QueryClient();
 
 // Apply saved theme on load
@@ -98,8 +99,8 @@ const AppContent = () => {
           if (!res.ok) return;
           const data = await res.json();
           const latestTag = data.tag_name;
-          // IMPORTANT: Update this whenever a new GitHub release is created
-          const currentTag = "v1.0.126"; // Hardcoded current native app version
+          // Bump CURRENT_VERSION in local-supabase.ts whenever a new GitHub release is created
+          const currentTag = CURRENT_VERSION;
           
           if (latestTag) {
             const cleanLatest = latestTag.toLowerCase().replace(/^v/, "").trim();
@@ -145,7 +146,7 @@ const AppContent = () => {
             </div>
             <h2 className="text-xl font-extrabold text-white tracking-tight">Mandatory Update Required</h2>
             <p className="text-sm text-muted-foreground">
-              You are running version <span className="text-muted-foreground/80 font-mono font-bold">v1.0.125</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
+              You are running version <span className="text-muted-foreground/80 font-mono font-bold">{CURRENT_VERSION}</span>. A mandatory update to <span className="text-violet-400 font-bold font-mono">{latestReleaseInfo.tag}</span> is required to continue.
             </p>
           </div>
           
@@ -211,6 +212,22 @@ const AppContent = () => {
           <Route path="*" element={<NotFound />} />
         </Routes>
         <DownloadProgressOverlay />
+        {!Capacitor.isNativePlatform() && <PWAInstallPrompt />}
+
+        {/* Web Service Worker Update Banner */}
+        {isUpdateAvailable && (
+          <div className="fixed top-4 left-4 right-4 z-50 sm:left-auto sm:right-4 sm:w-80">
+            <div className="bg-primary text-primary-foreground p-3 rounded-lg shadow-lg text-sm">
+              <p className="font-medium">Update available</p>
+              <button 
+                onClick={updateServiceWorker}
+                className="mt-2 underline text-xs"
+              >
+                Click to update
+              </button>
+            </div>
+          </div>
+        )}
         
         {/* Optional Update Banner */}
         {optionalUpdateInfo && (
@@ -267,6 +284,8 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <Toaster />
+        <Sonner />
         <SubscriptionProvider>
           <AppContent />
         </SubscriptionProvider>

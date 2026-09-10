@@ -171,19 +171,46 @@ app.get(/^\/db\/file\/(.+)$/, authenticate, (req, res) => {
   if (filePath.endsWith('.cbz')) res.setHeader('Content-Type', 'application/x-cbz');
   
   if (fileInfo.is_public === 1) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    // Avatars/covers are re-uploaded to a fixed path, so revalidate instead of caching forever.
+    // The IV is regenerated on every upload, which makes it a sound ETag.
+    const etag = `"${fileInfo.encryption_iv}"`;
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    // Caches may weaken the validator or send a list, so compare tag by tag.
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch && (ifNoneMatch.trim() === '*' ||
+        ifNoneMatch.split(',').some((tag) => tag.trim().replace(/^W\//, '') === etag))) {
+      return res.status(304).end();
+    }
   }
 
   const iv = Buffer.from(fileInfo.encryption_iv, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-cbc', KEY_BUFFER, iv);
   const readStream = fs.createReadStream(encryptedPath);
-  
-  readStream.pipe(decipher).pipe(res);
-  
-  readStream.on('error', (err) => {
+
+  // pipe() does not forward errors, so a truncated/mis-IV'd file would otherwise
+  // emit an unhandled 'error' on the decipher and take the whole server down.
+  const onStreamError = (err) => {
     console.error('Decryption stream error:', err);
-    if (!res.headersSent) res.status(500).send('Error decrypting file');
+    readStream.destroy();
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/plain'); // never hand back an error body typed as the file
+      res.status(500).send('Error decrypting file');
+    } else {
+      res.destroy();
+    }
+  };
+  readStream.on('error', onStreamError);
+  decipher.on('error', onStreamError);
+
+  // An aborted client (cover scrolled away, cancelled download) closes res without
+  // erroring the source, which otherwise leaks the .enc file handle for good.
+  res.on('close', () => {
+    readStream.destroy();
+    decipher.destroy();
   });
+
+  readStream.pipe(decipher).pipe(res);
 });
 
 app.listen(8084, '127.0.0.1', () => {
