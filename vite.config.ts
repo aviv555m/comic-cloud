@@ -5,6 +5,90 @@ import http from "http";
 import https from "https";
 
 // https://vitejs.dev/config/
+// Serves /api-image-proxy. Registered for both dev and preview: `vite preview`
+// never calls configureServer, so in production this route fell through to the
+// SPA and returned index.html instead of the image.
+const imageProxyMiddleware = (req: any, res: any, next: any) => {
+          // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
+          if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
+            res.statusCode = 403;
+            res.setHeader("Content-Type", "text/plain");
+            res.end("Forbidden");
+            return;
+          }
+
+          const allowedOrigins = ["https://cc.displayname.top", "http://localhost:8081", "capacitor://localhost", "http://localhost"];
+          const reqOrigin = req.headers.origin as string;
+          const allowedOrigin = reqOrigin && allowedOrigins.includes(reqOrigin) ? reqOrigin : "https://cc.displayname.top";
+
+
+
+          if (req.url && req.url.startsWith("/api-image-proxy")) {
+            const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+            const targetUrl = urlObj.searchParams.get("url");
+            if (!targetUrl) {
+              res.statusCode = 400;
+              res.end("Missing url parameter");
+              return;
+            }
+            try {
+              const targetObj = new URL(targetUrl);
+              const isHttps = targetObj.protocol === "https:";
+              const requester = isHttps ? https : http;
+              
+              const headers: Record<string, string> = {
+                "Host": targetObj.host,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+              };
+              
+              const host = targetObj.hostname.toLowerCase();
+              if (host.includes("comix.to")) {
+                headers["referer"] = "https://comix.to/";
+              } else if (host.includes("manganato.com") || host.includes("chapmanganato.to") || host.includes("googleusercontent.com") || host.includes("blogspot.com")) {
+                headers["referer"] = "https://chapmanganato.to/";
+              } else if (host.includes("mangafire.to") || host.includes("mstcdn.xyz") || host.includes("mfcdn")) {
+                headers["referer"] = "https://mangafire.to/";
+              } else if (host.includes("mangafreak.me")) {
+                headers["referer"] = "https://ww2.mangafreak.me/";
+              } else if (host.includes("mangapark.io") || host.includes("mpcdn.net")) {
+                headers["referer"] = "https://mangapark.io/";
+              }
+              
+              const options = {
+                method: req.method || "GET",
+                headers,
+                timeout: 15000,
+              };
+              
+              const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
+                res.writeHead(proxyRes.statusCode || 200, {
+                  "content-type": proxyRes.headers["content-type"] || "image/jpeg",
+                  "cache-control": proxyRes.headers["cache-control"] || "public, max-age=14400",
+                  "access-control-allow-origin": "*",
+                });
+                proxyRes.pipe(res);
+              });
+              
+              proxyReq.on("error", (err) => {
+                console.error("[Proxy Middleware Error]:", err);
+                if (!res.headersSent) {
+                  res.statusCode = 500;
+                  res.end("Proxy request failed");
+                }
+              });
+              
+              req.pipe(proxyReq);
+            } catch (err) {
+              console.error("[Proxy Middleware URL Error]:", err);
+              res.statusCode = 400;
+              res.end("Invalid target URL");
+            }
+          } else {
+            next();
+          }
+};
+
 export default defineConfig(({ mode }) => ({
   preview: {
     host: "::",
@@ -104,86 +188,10 @@ export default defineConfig(({ mode }) => ({
     {
       name: "image-proxy-middleware",
       configureServer(server) {
-        server.middlewares.use((req, res, next) => {
-          // Block malicious/scanner requests to sensitive paths (e.g. .git, .env) before Vite parses them
-          if (req.url && (req.url.includes("/.git") || req.url.includes("/.env") || req.url.includes("/..") || req.url.includes("/.github"))) {
-            res.statusCode = 403;
-            res.setHeader("Content-Type", "text/plain");
-            res.end("Forbidden");
-            return;
-          }
-
-          const allowedOrigins = ["https://cc.displayname.top", "http://localhost:8081", "capacitor://localhost", "http://localhost"];
-          const reqOrigin = req.headers.origin as string;
-          const allowedOrigin = reqOrigin && allowedOrigins.includes(reqOrigin) ? reqOrigin : "https://cc.displayname.top";
-
-
-
-          if (req.url && req.url.startsWith("/api-image-proxy")) {
-            const urlObj = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-            const targetUrl = urlObj.searchParams.get("url");
-            if (!targetUrl) {
-              res.statusCode = 400;
-              res.end("Missing url parameter");
-              return;
-            }
-            try {
-              const targetObj = new URL(targetUrl);
-              const isHttps = targetObj.protocol === "https:";
-              const requester = isHttps ? https : http;
-              
-              const headers = {
-                "Host": targetObj.host,
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-              };
-              
-              const host = targetObj.hostname.toLowerCase();
-              if (host.includes("comix.to")) {
-                headers["referer"] = "https://comix.to/";
-              } else if (host.includes("manganato.com") || host.includes("chapmanganato.to") || host.includes("googleusercontent.com") || host.includes("blogspot.com")) {
-                headers["referer"] = "https://chapmanganato.to/";
-              } else if (host.includes("mangafire.to") || host.includes("mstcdn.xyz") || host.includes("mfcdn")) {
-                headers["referer"] = "https://mangafire.to/";
-              } else if (host.includes("mangafreak.me")) {
-                headers["referer"] = "https://ww2.mangafreak.me/";
-              } else if (host.includes("mangapark.io") || host.includes("mpcdn.net")) {
-                headers["referer"] = "https://mangapark.io/";
-              }
-              
-              const options = {
-                method: req.method || "GET",
-                headers,
-                timeout: 15000,
-              };
-              
-              const proxyReq = requester.request(targetUrl, options, (proxyRes) => {
-                res.writeHead(proxyRes.statusCode || 200, {
-                  "content-type": proxyRes.headers["content-type"] || "image/jpeg",
-                  "cache-control": proxyRes.headers["cache-control"] || "public, max-age=14400",
-                  "access-control-allow-origin": "*",
-                });
-                proxyRes.pipe(res);
-              });
-              
-              proxyReq.on("error", (err) => {
-                console.error("[Proxy Middleware Error]:", err);
-                if (!res.headersSent) {
-                  res.statusCode = 500;
-                  res.end("Proxy request failed");
-                }
-              });
-              
-              req.pipe(proxyReq);
-            } catch (err) {
-              console.error("[Proxy Middleware URL Error]:", err);
-              res.statusCode = 400;
-              res.end("Invalid target URL");
-            }
-          } else {
-            next();
-          }
-        });
+        server.middlewares.use(imageProxyMiddleware);
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use(imageProxyMiddleware);
       }
     }
   ],

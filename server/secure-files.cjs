@@ -11,6 +11,18 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const app = express();
 app.use(cors({ origin: '*' }));
 
+// Request log. File-serving problems are otherwise invisible: the client only
+// ever sees a generic failure, with no way to tell a 404 from a 401.
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - startedAt}ms)`
+    );
+  });
+  next();
+});
+
 const parseCookies = (cookieHeader) => {
   if (!cookieHeader) return {};
   return cookieHeader.split(';').reduce((res, c) => {

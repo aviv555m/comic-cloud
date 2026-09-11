@@ -40,7 +40,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-export const CURRENT_VERSION = "v1.2.1";
+export const CURRENT_VERSION = "v1.2.2";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
@@ -156,6 +156,15 @@ if (typeof window !== 'undefined') {
   const originalFetch = window.fetch;
   window.fetch = async function (input, init) {
     const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+
+    // The /api-* proxy routes (manga sources and the image proxy) are served by the
+    // web origin. In the Capacitor app the WebView origin is localhost, so a
+    // root-relative path resolves to the app bundle and returns nothing — which is
+    // why manga listings and chapters came up empty natively. Point them at the server.
+    if (url.startsWith('/api-') && Capacitor.isNativePlatform()) {
+      return originalFetch(`${getServerUrl()}${url}`, init);
+    }
+
     if (url.includes('/local-file-route/')) {
       const filePath = decodeURIComponent(url.split('/local-file-route/')[1]);
       const blob = await getLocalFile(filePath);

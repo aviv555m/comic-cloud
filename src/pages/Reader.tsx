@@ -69,6 +69,8 @@ const Reader = () => {
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");
   const [signedUrl, setSignedUrl] = useState<string | ArrayBuffer>("");
+  // Surfaced to the user: "Failed to load PDF" on its own gives nothing to act on.
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [pdfTextContent, setPdfTextContent] = useState<string>("");
   const [readingMode, setReadingMode] = useState<"page" | "scroll">("scroll");
   const [initialEpubCfi, setInitialEpubCfi] = useState<string | undefined>(undefined);
@@ -1240,14 +1242,26 @@ const Reader = () => {
             <Document
               file={signedUrl instanceof ArrayBuffer ? { data: signedUrl } : signedUrl}
               onLoadSuccess={onDocumentLoadSuccessWrapper}
+              onLoadError={(err: Error) => {
+                console.error(
+                  "[Reader] PDF failed to load:",
+                  err,
+                  "source:",
+                  typeof signedUrl === "string" ? signedUrl : "(in-memory buffer)"
+                );
+                setPdfError(err?.message || String(err));
+              }}
               loading={
                 <div className="flex items-center justify-center py-20">
                   <p className="text-muted-foreground text-sm">Loading PDF...</p>
                 </div>
               }
               error={
-                <div className="flex items-center justify-center py-20">
+                <div className="flex flex-col items-center justify-center gap-2 px-6 py-20 text-center">
                   <p className="text-destructive text-sm">Failed to load PDF</p>
+                  {pdfError && (
+                    <p className="max-w-md break-all text-xs text-muted-foreground">{pdfError}</p>
+                  )}
                 </div>
               }
             >
