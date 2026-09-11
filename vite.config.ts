@@ -202,8 +202,12 @@ export default defineConfig(({ mode }) => ({
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
       "react/jsx-runtime": path.resolve(__dirname, "./node_modules/react/jsx-runtime.js"),
       "react/jsx-dev-runtime": path.resolve(__dirname, "./node_modules/react/jsx-dev-runtime.js"),
+      // react-pdf pins pdfjs-dist exactly (5.4.296) and installs it nested, while the
+      // root copy is newer. The worker refuses to run against a different API version,
+      // so both must resolve to react-pdf's copy.
+      "pdfjs-dist": path.resolve(__dirname, "./node_modules/react-pdf/node_modules/pdfjs-dist"),
     },
-    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "three", "@react-three/fiber", "@react-three/drei"],
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "three", "@react-three/fiber", "@react-three/drei", "pdfjs-dist"],
   },
   optimizeDeps: {
     include: ["react", "react-dom", "@tanstack/react-query", "three", "@react-three/fiber", "@react-three/drei"],

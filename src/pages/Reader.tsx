@@ -20,6 +20,7 @@ import {
   Loader2
 } from "lucide-react";
 import { Document, Page, pdfjs } from 'react-pdf';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { EpubReader } from "@/components/EpubReader";
@@ -38,8 +39,11 @@ import { ReaderPagePill } from "@/components/reader/ReaderPagePill";
 import { ReaderProgressBar } from "@/components/reader/ReaderProgressBar";
 import { ReaderSettingsSheet } from "@/components/reader/ReaderSettingsSheet";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Configure PDF.js worker. It is bundled rather than pulled from unpkg: the CDN is
+// not in the site's script-src, so the CDN worker was blocked outright ("Failed to
+// fetch dynamically imported module"), and a remote worker could never work offline
+// or inside the Android app.
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface Book {
   id: string;

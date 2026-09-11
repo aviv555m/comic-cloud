@@ -998,6 +998,34 @@ const MangaBrowser = () => {
     }
   };
 
+  // Looks a series up on its source by title, used to repair saved cards whose stored
+  // link is missing or points at a chapter instead of the series.
+  const recoverSeriesUrl = async (src: Source, title: string): Promise<string | null> => {
+    if (!title || !navigator.onLine) return null;
+    try {
+      let found: SearchResult[] = [];
+      if (src === "comix") found = await comixSearch(title);
+      else if (src === "mangadex") found = await mangadexSearch(title);
+      else if (src === "mangafire") found = await mangafireSearch(title);
+      else if (src === "mangafreak") found = await mangafreakSearch(title);
+      else if (src === "mangapark") found = await mangaparkSearch(title);
+      else if (src === "manganato") found = await manganatoSearch(title);
+
+      const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const target = normalize(title);
+      const exact = found.find(r => normalize(r.title) === target);
+      const candidate = exact || found[0];
+      const url = candidate?.url;
+      if (!url || url.startsWith("offline:") || url.startsWith("online:http") || url.includes("/read/")) {
+        return null;
+      }
+      return url;
+    } catch (e) {
+      console.warn("[Manga] Failed to recover series URL by title:", e);
+      return null;
+    }
+  };
+
   const openSeries = async (series: SearchResult, overrideSource?: Source) => {
     const activeSource = overrideSource || source;
     setLoading(true);
@@ -1012,22 +1040,44 @@ const MangaBrowser = () => {
       fetchUserChapters(series.title, user.id);
     }
     try {
-      if (!series.url || series.url.startsWith("offline:") || series.url.startsWith("online:http") || series.url.includes("/read/")) {
-        throw new Error("No online series details URL available.");
+      let seriesUrl = series.url;
+
+      if (!seriesUrl || seriesUrl.startsWith("offline:") || seriesUrl.startsWith("online:http") || seriesUrl.includes("/read/")) {
+        // Series cards saved by older builds recorded a chapter link (or nothing) in
+        // place of the series link, which left the series permanently stuck on "0
+        // chapters available". Look the title up on its source again to recover, and
+        // write the result back so the next open is direct.
+        const recovered = await recoverSeriesUrl(activeSource, series.title);
+        if (!recovered) {
+          throw new Error("No online series details URL available.");
+        }
+        seriesUrl = recovered;
+        series = { ...series, url: recovered };
+        setCurrentSeries(series);
+        if (user?.id) {
+          supabase
+            .from("books")
+            .update({ file_url: recovered })
+            .eq("user_id", user.id)
+            .eq("title", series.title)
+            .eq("file_type", "manga")
+            .then(undefined, (e: any) => console.warn("[Manga] Could not persist recovered series URL:", e));
+        }
       }
+
       let list: ChapterRef[] = [];
       if (activeSource === "comix") {
-        list = await comixChapters(series.url);
+        list = await comixChapters(seriesUrl);
       } else if (activeSource === "mangadex") {
-        list = await mangadexChapters(series.url);
+        list = await mangadexChapters(seriesUrl);
       } else if (activeSource === "mangafire") {
-        list = await mangafireChapters(series.url);
+        list = await mangafireChapters(seriesUrl);
       } else if (activeSource === "mangafreak") {
-        list = await mangafreakChapters(series.url);
+        list = await mangafreakChapters(seriesUrl);
       } else if (activeSource === "mangapark") {
-        list = await mangaparkChapters(series.url);
+        list = await mangaparkChapters(seriesUrl);
       } else if (activeSource === "manganato") {
-        list = await manganatoChapters(series.url);
+        list = await manganatoChapters(seriesUrl);
       }
       const sortedList = [...list].sort((a, b) => {
         const numA = getChapterNumber(a.title);

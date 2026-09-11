@@ -54,20 +54,29 @@ const Series = () => {
   const fetchSeriesBooks = async () => {
     setLoading(true);
     try {
-      const decodedSeries = decodeURIComponent(seriesName || "");
-      
+      // useParams already decodes the segment. Decoding a second time corrupts a
+      // series whose name contains '%' — decodeURIComponent throws "URI malformed"
+      // on it, which surfaced as an empty page.
+      const decodedSeries = seriesName || "";
+
       // If user is logged in, show their books in this series
       // If not logged in, only show public books
       if (user) {
+        // Filtered here rather than with .ilike so this page groups books exactly the
+        // way the library grid does. A server-side exact match disagreed with the
+        // library's own grouping whenever the stored name differed by case or
+        // surrounding whitespace, leaving a series that shows "2 books" on its card
+        // reading "0 books in this series" once opened.
         const { data, error } = await supabase
           .from("books")
           .select("*")
-          .ilike("series", decodedSeries)
           .eq("user_id", user.id)
           .order("title", { ascending: true });
 
         if (error) throw error;
-        setBooks(data || []);
+        const normalize = (value: string | null | undefined) => (value || "").trim().toLowerCase();
+        const target = normalize(decodedSeries);
+        setBooks(((data || []) as Book[]).filter(b => normalize(b.series) === target));
       } else {
         // The local mirror is cloned per-user, so a signed-out visitor's copy is empty.
         // Read public books from the backend and fall back to the mirror only when offline.
