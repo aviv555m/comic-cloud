@@ -1690,20 +1690,49 @@ const localStorageProxy = {
     
     createSignedUrl: async (filePath: string, expiresIn: number) => {
       const fullPath = `${bucket}/${filePath}`;
-      
-      // 1. If online, serve directly from the local Node server static path
+
       if (navigator.onLine) {
+        // 1. Prefer the local file server, but only once it is confirmed to hold the
+        //    file. Books predating the local-first migration still live in hosted
+        //    Supabase Storage, and returning an unverified local URL for those made
+        //    every one of them fail to open.
         const serverUrl = `${getServerUrl()}/uploads/${bucket}/${filePath}`;
-        return { data: { signedUrl: serverUrl }, error: null };
+        const token = getLocalSession()?.access_token;
+        try {
+          const probe = await fetch(serverUrl, {
+            method: 'HEAD',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          const contentType = probe.headers.get('content-type') || '';
+          // An HTML body here is nginx's error page or an auth redirect, not a file.
+          if (probe.ok && !contentType.includes('text/html')) {
+            return { data: { signedUrl: serverUrl }, error: null };
+          }
+        } catch (e) {
+          console.warn(`[Storage] Local server probe failed for ${fullPath}:`, e);
+        }
+
+        // 2. Fall back to hosted Supabase Storage, which is where pre-existing
+        //    files are still kept.
+        try {
+          const { data, error } = await originalSupabase.storage
+            .from(bucket)
+            .createSignedUrl(filePath, expiresIn);
+          if (!error && data?.signedUrl) {
+            return { data: { signedUrl: data.signedUrl }, error: null };
+          }
+        } catch (e) {
+          console.warn(`[Storage] Remote signed URL failed for ${fullPath}:`, e);
+        }
       }
-      
-      // 2. If offline, fallback to IndexedDB file blob
+
+      // 3. Offline, or nothing reachable: use the IndexedDB copy if we have one.
       const localFile = await getLocalFile(fullPath);
       if (localFile) {
         const localUrl = `${window.location.origin}/local-file-route/${encodeURIComponent(fullPath)}`;
         return { data: { signedUrl: localUrl }, error: null };
       }
-      
+
       return { data: null, error: new Error("File not available offline") };
     },
     
