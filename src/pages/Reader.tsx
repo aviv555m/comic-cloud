@@ -29,7 +29,7 @@ import { AnnotationPanel } from "@/components/AnnotationPanel";
 import { HighlightMenu } from "@/components/HighlightMenu";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
-import { openLocalDB, getServerUrl, originalSupabase } from "@/lib/local-supabase";
+import { openLocalDB, getServerUrl, originalSupabase, bookFileStoragePath } from "@/lib/local-supabase";
 import { ChapterNavigation, Chapter } from "@/components/ChapterNavigation";
 import { Badge } from "@/components/ui/badge";
 import { NarrationControls } from "@/components/NarrationControls";
@@ -699,21 +699,20 @@ const Reader = () => {
       
       // Dynamically generate a fresh signed URL if online to avoid expired URL issues
       let fileUrl = data.file_url;
-      let filePath = data.file_url;
-      
+      // Resolve from the storage path, not the stored link: links saved on a phone
+      // point at that phone (https://localhost/...) and are dead everywhere else.
+      const filePath = bookFileStoragePath(data.file_url);
+
       // If it's a relative path, prepend the server URL
       if (fileUrl && !fileUrl.startsWith('http') && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
         fileUrl = `${getServerUrl()}/uploads/book-files/${fileUrl}`;
-      } else {
-        const fileParts = fileUrl.split('/book-files/');
-        filePath = fileParts[1] ? fileParts[1].split('?')[0] : data.file_url;
       }
-      
+
       if (filePath) {
         try {
           const { data: signedData, error: signedError } = await supabase.storage
             .from('book-files')
-            .createSignedUrl(decodeURIComponent(filePath), 60 * 60 * 4); // 4 hours
+            .createSignedUrl(filePath, 60 * 60 * 4); // 4 hours
           if (!signedError && signedData?.signedUrl) {
             fileUrl = signedData.signedUrl;
           }

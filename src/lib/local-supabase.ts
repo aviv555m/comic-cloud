@@ -1615,6 +1615,49 @@ const localAuthProxy = {
   }
 };
 
+// Returns the object path inside the book-files bucket ("<userId>/<file>") for any
+// file_url shape the app has ever stored, or null if there is none to recover.
+//
+// Stored links are often device-specific. The Android app's own origin is
+// https://localhost, so books added on a phone were saved as
+// https://localhost/local-file-route/book-files%2F<uid>%2F<file> or
+// https://localhost/uploads/book-files/... — links that point at nothing on any
+// other device. The storage path inside them is still valid, so callers resolve
+// that through storage.createSignedUrl (file server, then Supabase, then the
+// on-device copy) instead of trusting the stored link.
+export function bookFileStoragePath(fileUrl: string | null | undefined): string | null {
+  if (!fileUrl || fileUrl.startsWith('blob:') || fileUrl.startsWith('data:')) return null;
+
+  let source = fileUrl;
+  const localRouteMarker = '/local-file-route/';
+  const localRouteAt = source.indexOf(localRouteMarker);
+  if (localRouteAt !== -1) {
+    // The whole IndexedDB key is URL-encoded here, including the slashes.
+    try {
+      source = decodeURIComponent(source.slice(localRouteAt + localRouteMarker.length).split('?')[0]);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const bucketMarker = 'book-files/';
+  const bucketAt = source.indexOf(bucketMarker);
+  if (bucketAt !== -1) {
+    const path = source.slice(bucketAt + bucketMarker.length).split('?')[0];
+    try {
+      return decodeURIComponent(path) || null;
+    } catch (e) {
+      return path || null;
+    }
+  }
+
+  // A bare relative path, as some upload flows stored it.
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
+    return source.split('?')[0] || null;
+  }
+  return null;
+}
+
 export function getServerUrl() {
   if (typeof window === 'undefined') return "https://cc.displayname.top";
   
