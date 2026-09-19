@@ -600,7 +600,12 @@ const Library = () => {
                   <ContinueReading 
                     book={books
                       .filter(b => b.reading_progress > 0 && b.reading_progress < 100)
-                      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null
+                      // Most recently *read* first: progress saves bump updated_at. Sorting
+                      // by created_at surfaced whatever was added last instead.
+                      .sort((a, b) =>
+                        new Date(b.updated_at || b.created_at).getTime() -
+                        new Date(a.updated_at || a.created_at).getTime()
+                      )[0] || null
                     }
                   />
                 </div>

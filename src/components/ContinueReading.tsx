@@ -12,6 +12,8 @@ interface Book {
   reading_progress: number;
   last_page_read: number | null;
   total_pages: number | null;
+  series?: string | null;
+  file_type?: string;
 }
 
 interface ContinueReadingProps {
@@ -22,6 +24,13 @@ export const ContinueReading = ({ book }: ContinueReadingProps) => {
   const navigate = useNavigate();
 
   if (!book || book.reading_progress === 0) return null;
+
+  // A downloaded manga chapter is stored as its own row, but it belongs to a series:
+  // lead with the series and show the chapter underneath, rather than presenting
+  // "Ch. 92 [Offline]" as if it were a standalone book.
+  const isChapter = book.file_type === "cbz" && !!book.series;
+  const heading = isChapter ? book.series! : book.title;
+  const subheading = isChapter ? book.title.replace(/\s*\[Offline\]\s*$/i, "") : book.author;
 
   return (
     <Card className="bg-gradient-to-r from-primary/10 to-primary/5 border-primary/20 overflow-hidden">
@@ -41,9 +50,9 @@ export const ContinueReading = ({ book }: ContinueReadingProps) => {
           
           <div className="flex-1 min-w-0">
             <p className="text-xs text-muted-foreground mb-0.5 sm:mb-1">Continue reading</p>
-            <h3 className="font-semibold truncate text-sm sm:text-base">{book.title}</h3>
-            {book.author && (
-              <p className="text-xs sm:text-sm text-muted-foreground truncate">{book.author}</p>
+            <h3 className="font-semibold truncate text-sm sm:text-base">{heading}</h3>
+            {subheading && (
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">{subheading}</p>
             )}
             
             <div className="mt-1.5 sm:mt-2 flex items-center gap-2">
@@ -53,7 +62,8 @@ export const ContinueReading = ({ book }: ContinueReadingProps) => {
               </span>
             </div>
             
-            {book.last_page_read && book.total_pages && (
+            {/* Explicit booleans: `0 && ...` renders a literal "0" in React. */}
+            {!!book.last_page_read && !!book.total_pages && (
               <p className="text-xs text-muted-foreground mt-0.5 sm:mt-1">
                 Page {book.last_page_read} of {book.total_pages}
               </p>
