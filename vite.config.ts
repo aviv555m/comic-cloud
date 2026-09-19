@@ -50,7 +50,7 @@ const imageProxyMiddleware = (req: any, res: any, next: any) => {
               } else if (host.includes("mangafire.to") || host.includes("mstcdn.xyz") || host.includes("mfcdn")) {
                 headers["referer"] = "https://mangafire.to/";
               } else if (host.includes("mangafreak.me")) {
-                headers["referer"] = "https://ww2.mangafreak.me/";
+                headers["referer"] = "https://ww3.mangafreak.me/";
               } else if (host.includes("mangapark.io") || host.includes("mpcdn.net")) {
                 headers["referer"] = "https://mangapark.io/";
               }
@@ -138,13 +138,13 @@ export default defineConfig(({ mode }) => ({
         }
       },
       "/api-mangafreak": {
-        target: "https://ww2.mangafreak.me",
+        target: "https://ww3.mangafreak.me",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-mangafreak/, ""),
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq) => {
-            proxyReq.setHeader("referer", "https://ww2.mangafreak.me/");
-            proxyReq.setHeader("origin", "https://ww2.mangafreak.me");
+            proxyReq.setHeader("referer", "https://ww3.mangafreak.me/");
+            proxyReq.setHeader("origin", "https://ww3.mangafreak.me");
           });
         }
       },

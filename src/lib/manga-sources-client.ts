@@ -35,8 +35,8 @@ export async function proxyFetchText(targetUrl: string, headers?: Record<string,
     let proxiedUrl = targetUrl;
     if (targetUrl.startsWith('https://mangafire.to')) {
       proxiedUrl = targetUrl.replace('https://mangafire.to', '/api-mangafire');
-    } else if (targetUrl.startsWith('https://ww2.mangafreak.me')) {
-      proxiedUrl = targetUrl.replace('https://ww2.mangafreak.me', '/api-mangafreak');
+    } else if (targetUrl.startsWith('https://ww3.mangafreak.me')) {
+      proxiedUrl = targetUrl.replace('https://ww3.mangafreak.me', '/api-mangafreak');
     } else if (targetUrl.startsWith('https://mangapark.io')) {
       proxiedUrl = targetUrl.replace('https://mangapark.io', '/api-mangapark');
     } else if (targetUrl.startsWith('https://manganato.com')) {
@@ -72,8 +72,8 @@ export async function proxyFetchJson(
     let proxiedUrl = targetUrl;
     if (targetUrl.startsWith('https://mangafire.to')) {
       proxiedUrl = targetUrl.replace('https://mangafire.to', '/api-mangafire');
-    } else if (targetUrl.startsWith('https://ww2.mangafreak.me')) {
-      proxiedUrl = targetUrl.replace('https://ww2.mangafreak.me', '/api-mangafreak');
+    } else if (targetUrl.startsWith('https://ww3.mangafreak.me')) {
+      proxiedUrl = targetUrl.replace('https://ww3.mangafreak.me', '/api-mangafreak');
     } else if (targetUrl.startsWith('https://mangapark.io')) {
       proxiedUrl = targetUrl.replace('https://mangapark.io', '/api-mangapark');
     } else if (targetUrl.startsWith('https://manganato.com')) {
@@ -319,7 +319,7 @@ export const mangafirePages = async (chapterId: string) => {
 // 2. MANGAFREAK CLIENT
 // ============================================================================
 export const mangafreakSearch = async (query: string) => {
-  const url = `https://ww2.mangafreak.me/Find/${encodeURIComponent(query)}`;
+  const url = `https://ww3.mangafreak.me/Find/${encodeURIComponent(query)}`;
   const html = await proxyFetchText(url);
   const doc = LoadDoc(html);
   
@@ -352,7 +352,7 @@ export const mangafreakSearch = async (query: string) => {
 };
 
 export const mangafreakChapters = async (mangaId: string) => {
-  const url = `https://ww2.mangafreak.me/Manga/${mangaId}`;
+  const url = `https://ww3.mangafreak.me/Manga/${mangaId}`;
   const html = await proxyFetchText(url);
   const doc = LoadDoc(html);
   
@@ -398,7 +398,7 @@ export const mangafreakChapters = async (mangaId: string) => {
 };
 
 export const mangafreakPages = async (chapterId: string) => {
-  const url = `https://ww2.mangafreak.me/${chapterId}`;
+  const url = `https://ww3.mangafreak.me/${chapterId}`;
   const html = await proxyFetchText(url);
   const doc = LoadDoc(html);
   

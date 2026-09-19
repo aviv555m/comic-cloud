@@ -290,7 +290,7 @@ const getSourceUrl = (source: Source, seriesUrl: string): string => {
     return `https://mangafire.to/manga/${seriesUrl}`;
   }
   if (source === "mangafreak") {
-    return `https://ww2.mangafreak.me/Manga/${seriesUrl}`;
+    return `https://ww3.mangafreak.me/Manga/${seriesUrl}`;
   }
   if (source === "mangapark") {
     return `https://mangapark.io/title/${seriesUrl}`;
