@@ -754,6 +754,8 @@ const Library = () => {
                         navigate(`/reader/${book.id}`);
                       }}
                       onLongPress={() => setSelectedBook(book)}
+                      onOpenDetails={() => setSelectedBook(book)}
+                      onUpdate={() => user && fetchBooks(user.id)}
                       onCoverGenerated={() => user && fetchBooks(user.id)}
                       onDelete={() => user && fetchBooks(user.id)}
                     />

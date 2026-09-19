@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, Globe, Lock, CheckCircle2, CloudOff, DownloadCloud, Trash2, Loader2, MoreVertical } from "lucide-react";
+import { BookOpen, Globe, Lock, CheckCircle2, CloudOff, DownloadCloud, Trash2, Loader2, MoreVertical, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useOfflineBooks } from "@/hooks/useOfflineBooks";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
+import { bookFileStoragePath } from "@/lib/local-supabase";
 import { useToast } from "@/components/ui/use-toast";
 
 interface BookCardProps {
@@ -38,6 +39,10 @@ interface BookCardProps {
   onLongPress?: () => void;
   onCoverGenerated?: () => void;
   onDelete?: () => void;
+  /** Opens the details dialog (edit, reviews, tags). Shown as a menu item when set. */
+  onOpenDetails?: () => void;
+  /** Called after a change made from the card menu, e.g. toggling public. */
+  onUpdate?: () => void;
 }
 
 export const BookCard = ({
@@ -56,9 +61,36 @@ export const BookCard = ({
   onClick,
   onLongPress,
   onDelete,
+  onOpenDetails,
+  onUpdate,
 }: BookCardProps) => {
   const { isBookOffline, saveBookOffline, removeBookOffline, isBookDownloading } = useOfflineBooks();
   const { toast } = useToast();
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
+
+  const handleTogglePublic = async () => {
+    setIsTogglingPublic(true);
+    try {
+      const { error } = await supabase
+        .from('books')
+        .update({ is_public: !isPublic })
+        .eq('id', id);
+      if (error) throw error;
+      toast({
+        title: isPublic ? "Book is now private" : "Book is now public",
+        description: isPublic ? "Only you can see this book" : "It now appears in the Public Library",
+      });
+      onUpdate?.();
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error?.message || "Failed to change visibility",
+      });
+    } finally {
+      setIsTogglingPublic(false);
+    }
+  };
   const isOffline = isBookOffline(id);
   const isDownloading = isBookDownloading(id);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -100,7 +132,10 @@ export const BookCard = ({
     try {
       await removeBookOffline(id);
 
-      const filePath = fileUrl?.split('/book-files/')[1];
+      // Recovers the path from every stored link shape, including the URL-encoded
+      // phone links that split('/book-files/') missed, which left their files
+      // orphaned in storage after the book was deleted.
+      const filePath = bookFileStoragePath(fileUrl);
       if (filePath) {
         await supabase.storage.from('book-files').remove([filePath]);
       }
@@ -340,6 +375,23 @@ export const BookCard = ({
                       <DownloadCloud className="w-4 h-4 mr-2" /> Download Offline
                     </DropdownMenuItem>
                   )}
+                  {onOpenDetails && (
+                    <DropdownMenuItem onClick={() => onOpenDetails()}>
+                      <Info className="w-4 h-4 mr-2" /> Details &amp; settings
+                    </DropdownMenuItem>
+                  )}
+                  {canEdit && (
+                    <DropdownMenuItem onClick={handleTogglePublic} disabled={isTogglingPublic}>
+                      {isTogglingPublic ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : isPublic ? (
+                        <Lock className="w-4 h-4 mr-2" />
+                      ) : (
+                        <Globe className="w-4 h-4 mr-2" />
+                      )}
+                      {isPublic ? "Make private" : "Make public"}
+                    </DropdownMenuItem>
+                  )}
                   {canEdit && (
                     <>
                       <DropdownMenuSeparator />
@@ -388,12 +440,15 @@ export const BookCard = ({
                 <CloudOff className="w-3 h-3" />
               </Badge>
             )}
+            {/* Explicit icon colour: the badge background is always white, but the
+                secondary variant's text colour turns near-white in dark mode, which
+                left an empty white pill with an invisible icon. */}
             {isPublic ? (
-              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm text-xs">
+              <Badge variant="secondary" className="bg-white/90 text-zinc-900 backdrop-blur-sm text-xs" title="Public">
                 <Globe className="w-3 h-3" />
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-white/90 backdrop-blur-sm text-xs">
+              <Badge variant="secondary" className="bg-white/90 text-zinc-900 backdrop-blur-sm text-xs" title="Private">
                 <Lock className="w-3 h-3" />
               </Badge>
             )}
