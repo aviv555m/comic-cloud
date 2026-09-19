@@ -1604,13 +1604,9 @@ const MangaBrowser = () => {
           >
             MangaFreak
           </Badge>
-          <Badge
-            variant={source === "mangapark" ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => setSource("mangapark")}
-          >
-            MangaPark
-          </Badge>
+          {/* MangaPark is hidden: mangapark.io serves an incomplete certificate chain and
+              a generic redirect page instead of its API, so it may no longer be the real
+              site. Its code path stays so previously saved series still open. */}
           <Badge
             variant={source === "manganato" ? "default" : "outline"}
             className="cursor-pointer"

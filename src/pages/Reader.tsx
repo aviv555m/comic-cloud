@@ -704,7 +704,16 @@ const Reader = () => {
         }
       }
 
-      if (fileUrl && session?.access_token && !fileUrl.startsWith('blob:') && !fileUrl.startsWith('data:')) {
+      // The session token only authenticates against our own file server. A hosted
+      // Supabase signed URL already carries its own `token` parameter; adding a second
+      // one made Supabase reject every such PDF with "querystring/token must be string".
+      if (
+        fileUrl &&
+        session?.access_token &&
+        fileUrl.startsWith(getServerUrl()) &&
+        !fileUrl.includes('token=') &&
+        !fileUrl.includes('/local-file-route/')
+      ) {
         fileUrl += (fileUrl.includes('?') ? '&' : '?') + `token=${session.access_token}`;
       }
 
