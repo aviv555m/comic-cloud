@@ -40,7 +40,7 @@ function generateUUID(): string {
 
 const safeLocalStorage = getSafeStorage();
 
-export const CURRENT_VERSION = "v1.2.4";
+export const CURRENT_VERSION = "v1.2.5";
 if (typeof window !== 'undefined') {
   try {
     const lastVersion = safeLocalStorage.getItem("app_version");
