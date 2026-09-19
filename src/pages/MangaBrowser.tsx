@@ -1451,7 +1451,7 @@ const MangaBrowser = () => {
       <div className="min-h-screen bg-background flex flex-col">
         <div className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-violet-500/10 shadow-sm">
           <div className="max-w-3xl mx-auto flex items-center gap-2 p-3">
-            <Button variant="ghost" size="icon" onClick={() => { setCurrentChapter(null); setPages([]); }} className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-full hover:bg-violet-500/10">
+            <Button variant="ghost" size="icon" onClick={() => { setCurrentChapter(null); setPages([]); }} className="h-10 w-10 shrink-0 text-muted-foreground hover:text-foreground rounded-full hover:bg-violet-500/10" aria-label="Back to chapter list">
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="flex-1 min-w-0">
@@ -1459,7 +1459,7 @@ const MangaBrowser = () => {
               <p className="text-sm font-bold text-white truncate leading-tight mt-0.5">{currentChapter.title}</p>
             </div>
             
-            <div className="flex items-center gap-1.5 mr-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:mr-2">
               {!user ? (
                 <Button
                   size="sm"
@@ -1472,37 +1472,43 @@ const MangaBrowser = () => {
                 </Button>
               ) : (
                 <>
+                  {/* Icon-only on phones: labelled buttons plus the chapter arrows left
+                      the series and chapter name squeezed to a single letter. */}
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 px-2.5 text-xs flex items-center gap-1 border-violet-500/20 hover:bg-violet-500/10 text-violet-300"
+                    className="h-10 w-10 p-0 sm:w-auto sm:px-3 text-xs flex items-center justify-center gap-1 border-violet-500/20 hover:bg-violet-500/10 text-violet-300 rounded-full sm:rounded-md"
                     onClick={() => saveChapter(false)}
                     disabled={saving}
+                    aria-label="Save to bookshelf"
+                    title="Save to bookshelf"
                   >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <BookOpen className="w-4 h-4" />}
                     <span className="hidden sm:inline">Save to Bookshelf</span>
-                    <span className="sm:hidden">Save</span>
                   </Button>
                   <Button
                     size="sm"
-                    className="h-8 px-2.5 text-xs flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20"
+                    className="h-10 w-10 p-0 sm:w-auto sm:px-3 text-xs flex items-center justify-center gap-1 bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20 rounded-full sm:rounded-md"
                     onClick={() => saveChapter(true)}
                     disabled={saving}
+                    aria-label="Download for offline reading"
+                    title="Download for offline reading"
                   >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                     <span className="hidden sm:inline">Download Offline</span>
-                    <span className="sm:hidden">Download</span>
                   </Button>
                 </>
               )}
             </div>
 
+            {/* Chapter arrows live in the bottom bar on phones (see below). */}
             <Button
               size="sm"
               variant="outline"
               disabled={!prev}
               onClick={() => prev && openChapter(prev)}
-              className="h-8 w-8 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
+              className="hidden sm:inline-flex h-10 w-10 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
+              aria-label="Previous chapter"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
@@ -1511,13 +1517,43 @@ const MangaBrowser = () => {
               variant="outline"
               disabled={!next}
               onClick={() => next && openChapter(next)}
-              className="h-8 w-8 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
+              className="hidden sm:inline-flex h-10 w-10 p-0 border-violet-500/20 hover:bg-violet-500/10 text-muted-foreground hover:text-foreground"
+              aria-label="Next chapter"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
-        <div className="flex-1 max-w-3xl mx-auto w-full flex flex-col items-center py-4 px-2">
+
+        {/* Phones: chapter navigation at the bottom, within thumb reach. */}
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-border/60 bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <Button
+              variant="outline"
+              disabled={!prev}
+              onClick={() => prev && openChapter(prev)}
+              className="h-10 gap-1 rounded-full px-3 text-xs"
+              aria-label="Previous chapter"
+            >
+              <ChevronLeft className="w-4 h-4" /> Prev
+            </Button>
+            <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
+              {idx >= 0 ? `${idx + 1} / ${chapters.length}` : currentChapter.title}
+            </span>
+            <Button
+              variant="outline"
+              disabled={!next}
+              onClick={() => next && openChapter(next)}
+              className="h-10 gap-1 rounded-full px-3 text-xs"
+              aria-label="Next chapter"
+            >
+              Next <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Edge to edge on phones; room at the bottom for the chapter bar. */}
+        <div className="flex-1 max-w-3xl mx-auto w-full flex flex-col items-center py-4 px-0 sm:px-2 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:pb-4">
           {pages.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-4 py-20">
               <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
@@ -1535,21 +1571,24 @@ const MangaBrowser = () => {
                   referrerPolicy="no-referrer"
                 />
               ))}
-              <div className="flex gap-4 p-8 w-full justify-center">
-                <Button variant="outline" disabled={!prev} onClick={() => prev && openChapter(prev)} className="border-violet-500/20 hover:bg-violet-500/10 text-violet-300 font-semibold">
-                  <ChevronLeft className="w-4 h-4 mr-1" /> Previous Chapter
+              {/* Buttons share the width: two fixed-size buttons plus p-8 needed ~410px and
+                  pushed a 360px phone screen sideways. */}
+              <div className="flex w-full justify-center gap-3 px-4 py-8 sm:gap-4 sm:p-8">
+                <Button variant="outline" disabled={!prev} onClick={() => prev && openChapter(prev)} className="h-11 min-w-0 flex-1 sm:flex-none border-violet-500/20 hover:bg-violet-500/10 text-violet-300 font-semibold">
+                  <ChevronLeft className="w-4 h-4 mr-1 shrink-0" /> <span className="truncate">Previous<span className="hidden sm:inline"> Chapter</span></span>
                 </Button>
-                <Button disabled={!next} onClick={() => next && openChapter(next)} className="bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20">
-                  Next Chapter <ChevronRight className="w-4 h-4 ml-1" />
+                <Button disabled={!next} onClick={() => next && openChapter(next)} className="h-11 min-w-0 flex-1 sm:flex-none bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-lg shadow-violet-500/20">
+                  <span className="truncate">Next<span className="hidden sm:inline"> Chapter</span></span> <ChevronRight className="w-4 h-4 ml-1 shrink-0" />
                 </Button>
               </div>
             </>
           )}
         </div>
 
-        {/* Floating progress overlay for inline reader */}
+        {/* Floating progress overlay for inline reader. On phones it sits above the
+            chapter bar instead of on top of it. */}
         {pages.length > 0 && currentPage < pages.length && !isNearBottom && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto">
+          <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] sm:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-sm pointer-events-auto">
             <div className="bg-background/95 backdrop-blur-md border border-violet-500/20 px-4 py-2.5 rounded-2xl shadow-xl flex flex-col gap-1.5 animate-in fade-in slide-in-from-bottom-4 duration-300">
               <div className="flex justify-between items-center text-xs font-semibold">
                 <span className="truncate text-violet-300 max-w-[70%]">
