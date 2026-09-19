@@ -68,7 +68,25 @@ const Reader = () => {
   const [showControls, setShowControls] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [scale, setScale] = useState(typeof window !== "undefined" && window.innerWidth < 768 ? 1.5 : 1.0);
+  // Fit-to-width by default. Pages are already sized to the screen, so the old phone
+  // default of 1.5x made every page wider than the display and clipped both edges.
+  // A zoom the reader picks in settings is remembered across books.
+  const [scale, setScale] = useState(() => {
+    try {
+      const saved = parseFloat(localStorage.getItem("pdf_scale") || "");
+      if (saved >= 0.5 && saved <= 5) return saved;
+    } catch (e) {
+      // storage unavailable; fall through to the default
+    }
+    return 1.0;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("pdf_scale", String(scale));
+    } catch (e) {
+      // storage unavailable; the zoom just won't persist
+    }
+  }, [scale]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [textContent, setTextContent] = useState<string>("");

@@ -82,15 +82,18 @@ export const ChapterNavigation = ({
   return (
     <div className="flex flex-col items-center gap-2 w-full">
       {/* Chapter info bar */}
-      <div className="flex items-center justify-center gap-2 text-xs sm:text-sm text-muted-foreground w-full max-w-md rounded-full border border-border/60 bg-background/90 px-1.5 py-1 shadow-sm backdrop-blur-md">
+      {/* min-w-0 + overflow-hidden let the pill shrink into whatever space the reader's
+          action row leaves. It used to be centred with content that could not shrink,
+          so on phones it overflowed both sides and the chapter title was cut off. */}
+      <div className="flex min-w-0 items-center justify-center gap-2 overflow-hidden text-xs sm:text-sm text-muted-foreground w-full max-w-md rounded-full border border-border/60 bg-background/90 px-1.5 py-1 shadow-sm backdrop-blur-md">
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
             <Button
               variant="ghost"
               size="sm"
-              className="h-9 px-3 gap-1.5 rounded-full"
+              className="h-9 min-w-0 shrink px-3 gap-1.5 rounded-full"
             >
-              <List className="w-3.5 h-3.5" />
+              <List className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate max-w-[150px] sm:max-w-[200px]">
                 {currentChapter?.label || "Table of Contents"}
               </span>
@@ -134,8 +137,15 @@ export const ChapterNavigation = ({
         </Sheet>
 
         {pagesUntilNext !== null && pagesUntilNext > 0 && (
-          <span className="text-xs border-l border-border/60 pl-3 pr-2 text-muted-foreground whitespace-nowrap">
-            {pagesUntilNext} {pagesUntilNext === 1 ? "page" : "pages"} to next chapter
+          <span
+            className="shrink-0 text-xs border-l border-border/60 pl-3 pr-2 text-muted-foreground whitespace-nowrap"
+            title={`${pagesUntilNext} ${pagesUntilNext === 1 ? "page" : "pages"} to next chapter`}
+          >
+            {/* Short form on phones, where the full sentence does not fit beside the reader's tool buttons. */}
+            <span className="sm:hidden">{pagesUntilNext} left</span>
+            <span className="hidden sm:inline">
+              {pagesUntilNext} {pagesUntilNext === 1 ? "page" : "pages"} to next chapter
+            </span>
           </span>
         )}
       </div>
