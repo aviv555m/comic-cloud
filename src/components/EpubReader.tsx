@@ -587,7 +587,9 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
               fileType="epub"
             />
           )}
-          <span className="text-xs font-bold truncate max-w-[150px] sm:max-w-xs opacity-90">
+          {/* The chapter pill already names the chapter; on phones repeating it here
+              only squeezed both into truncation. Shown alone when there is no pill. */}
+          <span className={`text-xs font-bold truncate max-w-[150px] sm:max-w-xs opacity-90 ${chapters.length > 0 ? "hidden sm:inline" : ""}`}>
             {currentChapterLabel || "Reading..."}
           </span>
         </div>
@@ -596,7 +598,8 @@ export const EpubReader = ({ url, onLocationChange, onThemeChange, onToggleContr
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg"
+            className="h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full"
+            aria-label="Appearance settings"
             onClick={() => setSettingsOpen(prev => !prev)}
             title="Appearance Settings (Aa)"
           >

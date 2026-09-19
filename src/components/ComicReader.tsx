@@ -360,18 +360,19 @@ export const ComicReader = ({
   if (readingMode === "scroll") {
     return (
       <div className="flex flex-col items-center w-full">
+        {/* Only while the controls are hidden: with them shown the bottom bar already
+            has the page count, and a sticky pill slid under the reader's header. */}
         <ReaderPagePill
-          variant="sticky"
           current={currentPage + 1}
           total={images.length}
-          label={chapterTitle}
-          visible={showControls}
-          className="top-[80px]"
+          visible={!showControls}
         />
 
         {/* Seamless Webtoon Continuous list */}
+        {/* Full width on phones: comics were held to 90%, leaving black bars on
+            both sides of an already narrow screen. */}
         <div 
-          className="flex flex-col gap-0 w-[90%] sm:w-full max-w-3xl px-0 mt-4 pb-28 cursor-pointer mx-auto animate-fade-in"
+          className="flex flex-col gap-0 w-full max-w-3xl px-0 mt-4 pb-28 cursor-pointer mx-auto animate-fade-in"
           onClick={(e) => {
             e.stopPropagation();
             onToggleControls?.();
@@ -437,7 +438,7 @@ export const ComicReader = ({
         visible={showOverlayPage && !showControls}
       />
       {/* Immersive Image Container with Navigation Overlays */}
-      <div className="relative max-w-4xl w-[90%] sm:w-full select-none shadow-2xl rounded-lg overflow-hidden border border-border/40 mx-auto">
+      <div className="relative max-w-4xl w-full select-none overflow-hidden mx-auto sm:rounded-lg sm:border sm:border-border/40 sm:shadow-2xl">
         <img
           src={images[currentPage]?.data}
           alt={`Page ${currentPage + 1}`}

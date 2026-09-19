@@ -109,14 +109,18 @@ export const ReadingTimer = ({ onSessionComplete }: ReadingTimerProps) => {
 
   if (isMinimized) {
     return (
+      // Icon-only while idle: this floats over the page, and a labelled pill covered
+      // a noticeable patch of text or artwork on a phone.
       <Button
         variant="outline"
-        size="sm"
+        size={isRunning ? "sm" : "icon"}
         onClick={() => setIsMinimized(false)}
-        className="gap-2"
+        className={isRunning ? "gap-2 rounded-full bg-background/90 backdrop-blur-md" : "h-10 w-10 rounded-full bg-background/90 backdrop-blur-md"}
+        aria-label={isRunning ? `Reading timer, ${formatTime(timeLeft)} left` : "Reading timer"}
+        title="Reading timer"
       >
         <Timer className="w-4 h-4" />
-        {isRunning ? formatTime(timeLeft) : "Timer"}
+        {isRunning && formatTime(timeLeft)}
       </Button>
     );
   }

@@ -258,6 +258,62 @@ const Reader = () => {
   const [headerHeight, setHeaderHeight] = useState(0);
   const [containerWidth, setContainerWidth] = useState(360);
 
+  // --- PDF touch gestures ---------------------------------------------------------
+  // Inside the Android app the WebView has no pinch-zoom, and in a mobile browser
+  // pinch zooms the whole interface, so small PDF text could not be enlarged.
+  // Pinch shows a CSS transform while the fingers move (re-rendering the PDF every
+  // frame is too slow) and commits the result to `scale` when they lift.
+  const pdfZoomLayerRef = useRef<HTMLDivElement>(null);
+  const pinchRef = useRef<{ startDistance: number; startScale: number; ratio: number } | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
+
+  const clampScale = (value: number) => Math.min(4, Math.max(0.5, Math.round(value * 20) / 20));
+  const touchDistance = (touches: React.TouchList) =>
+    Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+
+  const handlePdfTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      pinchRef.current = { startDistance: touchDistance(e.touches), startScale: scale, ratio: 1 };
+    }
+  };
+
+  const handlePdfTouchMove = (e: React.TouchEvent) => {
+    const pinch = pinchRef.current;
+    if (!pinch || e.touches.length !== 2 || pinch.startDistance === 0) return;
+    pinch.ratio = touchDistance(e.touches) / pinch.startDistance;
+    const layer = pdfZoomLayerRef.current;
+    if (layer) {
+      layer.style.transformOrigin = "top center";
+      layer.style.transform = `scale(${pinch.ratio})`;
+    }
+  };
+
+  const handlePdfTouchEnd = (e: React.TouchEvent) => {
+    const pinch = pinchRef.current;
+    if (pinch) {
+      if (e.touches.length < 2) {
+        if (pdfZoomLayerRef.current) pdfZoomLayerRef.current.style.transform = "";
+        pinchRef.current = null;
+        setScale(clampScale(pinch.startScale * pinch.ratio));
+      }
+      return;
+    }
+
+    // Double-tap toggles between fit-to-width and 2x.
+    if (e.changedTouches.length !== 1 || e.touches.length !== 0) return;
+    const touch = e.changedTouches[0];
+    const now = Date.now();
+    const last = lastTapRef.current;
+    const isDoubleTap =
+      now - last.time < 300 && Math.abs(touch.clientX - last.x) < 30 && Math.abs(touch.clientY - last.y) < 30;
+    if (isDoubleTap) {
+      lastTapRef.current = { time: 0, x: 0, y: 0 };
+      setScale(prev => (prev > 1.05 ? 1 : 2));
+    } else {
+      lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+    }
+  };
+
   const handleContentClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (
@@ -300,7 +356,9 @@ const Reader = () => {
 
       const w = window.innerWidth;
       if (w < 768) {
-        setContainerWidth(Math.round(w * 0.9));
+        // Phones: use the full width less a small gutter. At 90% a PDF page wasted
+        // ~40px of an already narrow screen, shrinking its text further.
+        setContainerWidth(Math.max(240, w - 16));
       } else {
         setContainerWidth(Math.min(800, Math.round(w * 0.8)));
       }
@@ -309,7 +367,17 @@ const Reader = () => {
     // The header only mounts once the book resolves, so measure again then
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+
+    // The header grows after mount (chapter list, narration controls arrive later),
+    // and a one-off measurement left it covering the top of the content.
+    const header = headerRef.current;
+    const observer = header && typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (header && observer) observer.observe(header);
+
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
   }, [book?.id]);
 
 
@@ -1098,6 +1166,45 @@ const Reader = () => {
     return "bg-white/80 border-white/20 text-gray-900 backdrop-blur-xl shadow-sm";
   };
 
+  const hasChapterRow = isPDF && pdfChapters.length > 0;
+
+  // One icon per tool. Rendered in the title row, or beside the chapter list when
+  // there is one, so the header is never a near-empty second row on a phone.
+  const headerTools = (
+    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+      {(isTXT || isPDF) && (
+        <NarrationControls 
+          text={isTXT ? textContent : pdfTextContent}
+          onPlayingChange={setIsPlaying}
+        />
+      )}
+
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => setShowAnnotations(!showAnnotations)}
+        className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
+        title="View annotations"
+        aria-label="View annotations"
+      >
+        <StickyNote className="w-4 h-4" />
+      </Button>
+
+      {isPDF && (
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setSettingsOpen(true)}
+          className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
+          title="Reading settings"
+          aria-label="Reading settings"
+        >
+          <Settings2 className="w-4 h-4" />
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className={`min-h-screen transition-colors duration-300 ${getPageBgClass()}`}>
       {/* Header */}
@@ -1120,21 +1227,30 @@ const Reader = () => {
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <div className="min-w-0 flex-1">
-              <h1 className="font-semibold truncate text-sm">{book.title}</h1>
-              {book.author && (
+              {/* "[Offline]" is a storage marker on downloaded chapters, not part of the
+                  name; for a chapter the series is more useful than the source name. */}
+              <h1 className="font-semibold truncate text-sm">
+                {book.title.replace(/\s*\[Offline\]\s*$/i, "")}
+              </h1>
+              {(isCBZ || isCBR) && book.series ? (
+                <p className="text-xs text-muted-foreground truncate">{book.series}</p>
+              ) : book.author ? (
                 <p className="text-xs text-muted-foreground truncate">{book.author}</p>
-              )}
+              ) : null}
             </div>
             {isReadingOffline && (
               <Badge variant="secondary" className="bg-amber-500/20 text-amber-600 border-0 shrink-0 text-xs">
                 <CloudOff className="w-3 h-3" />
               </Badge>
             )}
+            {!hasChapterRow && headerTools}
           </div>
 
-          {/* Action row: chapters on the left, one icon per tool on the right */}
+          {/* Second row only when there is a chapter list to show; otherwise the tools
+              sit in the title row and the header stays one row tall on phones. */}
+          {hasChapterRow && (
           <div className="mt-2 flex items-center gap-2">
-            {isPDF && pdfChapters.length > 0 && (
+            {hasChapterRow && (
               <div className="min-w-0 flex-1">
                 <ChapterNavigation
                   chapters={pdfChapters}
@@ -1154,37 +1270,9 @@ const Reader = () => {
               </div>
             )}
 
-            <div className="ml-auto flex items-center gap-1.5">
-              {(isTXT || isPDF) && (
-                <NarrationControls 
-                  text={isTXT ? textContent : pdfTextContent}
-                  onPlayingChange={setIsPlaying}
-                />
-              )}
-
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => setShowAnnotations(!showAnnotations)}
-                className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
-                title="View annotations"
-              >
-                <StickyNote className="w-4 h-4" />
-              </Button>
-
-              {isPDF && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setSettingsOpen(true)}
-                  className="h-10 w-10 rounded-full border-border/60 bg-background/90 backdrop-blur-md"
-                  title="Reading settings"
-                >
-                  <Settings2 className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
+            {headerTools}
           </div>
+          )}
         </div>
       </div>
 
@@ -1268,7 +1356,20 @@ const Reader = () => {
         }}
       >
         {isPDF && signedUrl && (
-          <div className="flex flex-col items-center gap-4 sm:gap-6">
+          <div
+            ref={pdfZoomLayerRef}
+            // items-stretch + min-w-0, not items-center: a centred child wider than the
+            // column overflowed on both sides and its left part could never be scrolled
+            // to once zoomed. Stretched, each page's own overflow-x-auto box scrolls.
+            className="flex w-full min-w-0 flex-col items-stretch gap-4 sm:gap-6"
+            // pan-x pan-y keeps scrolling native but stops the browser zooming the
+            // whole interface, so the pinch reaches the handlers below.
+            style={{ touchAction: "pan-x pan-y" }}
+            onTouchStart={handlePdfTouchStart}
+            onTouchMove={handlePdfTouchMove}
+            onTouchEnd={handlePdfTouchEnd}
+            onTouchCancel={handlePdfTouchEnd}
+          >
             <Document
               file={signedUrl instanceof ArrayBuffer ? { data: signedUrl } : signedUrl}
               onLoadSuccess={onDocumentLoadSuccessWrapper}
